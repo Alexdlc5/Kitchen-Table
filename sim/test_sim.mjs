@@ -195,4 +195,8 @@ test("spades bidding: minimum team bid, nil exempt; a nil bidder's partner may b
   assert.ok(spades.legal(st2).some((a) => a.bid === 1));
 });
 
-console.log(`\n${n} checks passed`);
+
+test("site/verify.html runs the very same dealer.js as the app", () => {
+  assert.equal(readFileSync(new URL("../site/dealer.js", import.meta.url), "utf8").replace(/\r\n/g, "\n"), readFileSync(new URL("../proto/dealer.js", import.meta.url), "utf8").replace(/\r\n/g, "\n"));
+});
+console.log(`${n} checks passed`);

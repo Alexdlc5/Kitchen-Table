@@ -342,7 +342,7 @@ function finishHand() {
   const m = MOD[G.game], st = G.st, sc = m.score(st), me = 0;
   const lines = sc.lines;
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
-  G.history.push({ seed: st.seed, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
+  G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
   track("hand_end", { game: G.game, preset: G.preset, level: S.last.opps, hands_this_session: ++sessionHands });
@@ -372,7 +372,7 @@ function renderSheet() {
     ${g.total !== null ? `<tr><th>Total${sp ? ` · ${g.bags} bag${g.bags === 1 ? "" : "s"}` : ""}</th><td class="n">${g.total}</td></tr>` : ""}</table>`).join("");
   const totals = sp ? "" : `<table>${G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${h.totals.score[i]}</td></tr>`).join("")}</table>`;
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad"><h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
-    <p class="muted">Deal #${S.hands} · seed <span class="seed">${h.seed}</span></p>
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
     <button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
 }
