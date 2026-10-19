@@ -20,6 +20,10 @@ jobs:
         run: |
           node sim/test_euchre.mjs
           node sim/test_ai_euchre.mjs
+      - name: Oh Hell and Whist rules, the hook, scoring tables; every Oh Hell and Whist sin at every level
+        run: |
+          node sim/test_family.mjs
+          node sim/test_ai_family.mjs
       - name: 20K hands per game at Standard meet the AI_SPEC targets, zero sins played
         run: |
           node sim/sim.mjs --check --game spades --hands 20000
@@ -27,3 +31,6 @@ jobs:
           node sim/sim.mjs --check --game hearts --hands 20000
           node sim/sim.mjs --check --game euchre --hands 20000
           node sim/sim.mjs --check --game euchre --preset kitchen --hands 20000
+          node sim/sim.mjs --check --game ohhell --hands 20000
+          node sim/sim.mjs --check --game ohhell --preset tournament --hands 20000
+          node sim/sim.mjs --check --game whist --hands 20000

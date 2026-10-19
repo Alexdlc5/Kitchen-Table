@@ -25,6 +25,13 @@ const BOXES = {
   hearts: { body: "#a3232f", trim: "#e8cf94", pip: "H", pipCol: "#a3232f" },
   spades: { body: "#1f2f52", trim: "#d8c08a", pip: "S", pipCol: "#1f2f52" },
   euchre: { body: "#2c5a3e", trim: "#d8c08a", pip: "C", pipCol: "#2c5a3e" },
+  ohhell: { body: "#9a6a1f", trim: "#f0dca6", pip: "D", pipCol: "#9a6a1f" },
+  whist: { body: "#5b2d4f", trim: "#d8c08a", pip: "S", pipCol: "#5b2d4f" },
+  // coming to the table: closed, ribboned
+  cribbage: { body: "#7a3b2a", trim: "#e8cf94", pip: "C", pipCol: "#7a3b2a" },
+  ginrummy: { body: "#2d6466", trim: "#d8c08a", pip: "D", pipCol: "#2d6466" },
+  pinochle: { body: "#3a4a7a", trim: "#d8c08a", pip: "S", pipCol: "#3a4a7a" },
+  canasta: { body: "#8a2f45", trim: "#e8cf94", pip: "H", pipCol: "#8a2f45" },
 };
 export function tuckBox(game, name, { locked = false, soon = false } = {}) {
   const b = BOXES[game], dark = mix(b.body, "#000000", 0.35), light = mix(b.body, "#ffffff", 0.18);
