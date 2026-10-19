@@ -16,14 +16,36 @@ function grain(base, dark) { // stretched fractal noise tinted to the wood, with
 const frame = (inner, outer, w = 10) => `inset 0 0 0 ${w}px ${outer}, inset 0 0 0 ${w + 2}px ${inner}`;
 
 // ---------------------------------------------------------------- patterns (SVG tiles)
-function leopard(seed = 7) {
-  const r = rng(seed); let s = "";
-  for (let i = 0; i < 26; i++) {
-    const x = r() * 220, y = r() * 220, rx = 9 + r() * 8, ry = 7 + r() * 6, rot = r() * 3;
-    s += `<path d="${curve(ring(x, y, rx * 0.55, ry * 0.55, 9, 0.25, seed + i, rot))}" fill="#b4793c"/>`;
-    for (let k = 0; k < 4; k++) { const a = rot + k * 1.6 + r() * 0.5; s += `<path d="${curve(ring(x + Math.cos(a) * rx, y + Math.sin(a) * ry, 4 + r() * 3, 2.5 + r() * 2, 8, 0.35, seed * 7 + i * 4 + k, a))}" fill="#2a1a10"/>`; }
+// one leopard rosette: a broken ring of 3-5 black, uneven crescents around a darker tawny centre
+function rosetteMark(x, y, rx, ry, rot, r, ink = "#1c120b", core = "#bf7d38") {
+  let s = `<path d="${curve(ring(x, y, rx * 0.62, ry * 0.6, 10, 0.3, Math.floor(r() * 1e6), rot))}" fill="${core}" opacity=".8"/>`;
+  const n = 3 + Math.floor(r() * 3);
+  let at = r() * Math.PI * 2;
+  for (let k = 0; k < n; k++) {
+    const span = ((Math.PI * 2) / n) * (0.68 + r() * 0.22), w = 3.4 + r() * 2.8, pts = [];
+    for (let j = 0; j <= 6; j++) { // a crescent: thick in the middle, tapering at both ends
+      const u = at + (span * j) / 6, wob = 1 + (r() - 0.5) * 0.18, cx = Math.cos(u) * rx * wob, cy = Math.sin(u) * ry * wob;
+      pts.push([x + cx * Math.cos(rot) - cy * Math.sin(rot), y + cx * Math.sin(rot) + cy * Math.cos(rot)]);
+    }
+    const thick = (j) => w * Math.sin((j / 6) * Math.PI) + 0.6, outer = [], inner = [];
+    pts.forEach(([px, py], j) => { const dx = px - x, dy = py - y, l = Math.hypot(dx, dy) || 1; outer.push([px + (dx / l) * thick(j), py + (dy / l) * thick(j)]); inner.unshift([px - (dx / l) * thick(j) * 0.35, py - (dy / l) * thick(j) * 0.35]); });
+    s += `<path d="${curve([...outer, ...inner])}" fill="${ink}"/>`;
+    at += (Math.PI * 2) / n + (r() - 0.5) * 0.3;
   }
-  return svgURL(220, 220, `<rect width="220" height="220" fill="#d9a86a"/>${s}`);
+  return s;
+}
+function leopard(seed = 7) { // rosettes on a jittered grid, drawn again across the edges so the tile repeats without seams
+  const r = rng(seed), W = 260, cell = 52; let s = "";
+  const marks = [];
+  for (let gy = 0; gy < W / cell; gy++) for (let gx = 0; gx < W / cell; gx++)
+    marks.push({ x: gx * cell + cell * (0.25 + r() * 0.5) + (gy % 2) * cell * 0.3, y: gy * cell + cell * (0.25 + r() * 0.5), rx: 10 + r() * 9, ry: 8 + r() * 7, rot: r() * Math.PI, seed: r() });
+  const spots = Array.from({ length: 46 }, () => ({ x: r() * W, y: r() * W, rr: 1.4 + r() * 2.4, seed: r() }));
+  for (const dx of [-W, 0, W]) for (const dy of [-W, 0, W]) {
+    for (const m of marks) if (m.x + dx > -30 && m.x + dx < W + 30 && m.y + dy > -30 && m.y + dy < W + 30) s += rosetteMark(m.x + dx, m.y + dy, m.rx, m.ry, m.rot, rng(Math.floor(m.seed * 1e6) + 1));
+    for (const p of spots) if (p.x + dx > -8 && p.x + dx < W + 8 && p.y + dy > -8 && p.y + dy < W + 8) s += `<path d="${curve(ring(p.x + dx, p.y + dy, p.rr, p.rr * 0.8, 7, 0.35, Math.floor(p.seed * 1e6) + 2))}" fill="#1c120b"/>`;
+  }
+  const fur = `<filter id="f"><feTurbulence type="fractalNoise" baseFrequency=".9 .25" numOctaves="2" seed="5" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .45  0 0 0 0 .28  0 0 0 0 .1  0 0 0 .22 0"/></filter>`;
+  return svgURL(W, W, `${fur}<rect width="${W}" height="${W}" fill="#d9a35c"/><rect width="${W}" height="${W}" filter="url(#f)"/>${s}`);
 }
 function roses(seed = 3) { // chintz: soft cabbage roses and leaves on linen
   const r = rng(seed); let s = "";
@@ -61,6 +83,40 @@ function filigree(ink, flip = false) { // corner scrolls for the luxe frames (fl
   const s = (flip ? '<g transform="rotate(180 60 60)">' : "<g>") + `<path d="M8 60 C8 30 30 8 60 8 M18 60 C18 36 36 18 60 18 M30 60 C30 44 44 30 60 30" fill="none" stroke="${ink}" stroke-width="2"/><circle cx="60" cy="60" r="4" fill="${ink}"/></g>`;
   return svgURL(120, 120, s);
 }
+function staves() { // charred oak barrel staves, an iron hoop with rivets across them
+  const W = 240, H = 420; let s = "";
+  const cols = ["#5b341a", "#4e2c15", "#63391c", "#472812", "#57311a", "#4b2a14"];
+  for (let i = 0; i < 6; i++) s += `<rect x="${i * 40}" width="40" height="${H}" fill="${cols[i]}"/><rect x="${i * 40}" width="1.5" height="${H}" fill="#1c0f06" opacity=".8"/><rect x="${i * 40 + 1.5}" width="1" height="${H}" fill="#8a5a30" opacity=".35"/>`;
+  const grain = `<filter id="g"><feTurbulence type="fractalNoise" baseFrequency=".12 .008" numOctaves="3" seed="7" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .1  0 0 0 0 .05  0 0 0 0 .02  0 0 0 .55 -.1"/></filter>`;
+  const hoop = (y) => `<rect y="${y}" width="${W}" height="16" fill="#2b2a28"/><rect y="${y}" width="${W}" height="2" fill="#5d5b57"/><rect y="${y + 14}" width="${W}" height="2" fill="#141312"/>` + [20, 60, 100, 140, 180, 220].map((x) => `<circle cx="${x}" cy="${y + 8}" r="2.6" fill="#77736b"/><circle cx="${x - .6}" cy="${y + 7.4}" r="1" fill="#b9b3a8"/>`).join("");
+  return svgURL(W, H, `${grain}${s}<rect width="${W}" height="${H}" filter="url(#g)"/>${hoop(260)}`);
+}
+// shotgun shells and 9mm casings lying where they rolled, mostly toward the edges so the cards keep the middle.
+// One picture stretched over the whole table (no tiling), so nothing repeats.
+function scatteredShells(seed = 12) {
+  const r = rng(seed), W = 400, H = 860, items = [];
+  const clear = (x, y) => x > 70 && x < 330 && y > 170 && y < 690; // where the cards play
+  for (let n = 0, tries = 0; n < 34 && tries < 400; tries++) {
+    const x = r() * W, y = r() * H;
+    if (clear(x, y)) continue;
+    if (items.some((p) => Math.hypot(p.x - x, p.y - y) < 34)) continue;
+    items.push({ x, y, rot: r() * 360, shot: n % 3 === 0 });
+    n++;
+  }
+  const shell = ({ x, y, rot }) => `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse cx="3" cy="6" rx="30" ry="9" fill="#000" opacity=".35" filter="url(#sh)"/>
+    <rect x="-26" y="-8" width="38" height="16" rx="2" fill="url(#hull)"/>${[-18, -10, -2, 6].map((v) => `<rect x="${v}" y="-8" width="1.2" height="16" fill="#5e1010" opacity=".4"/>`).join("")}
+    <path d="M-26 -7 L-22 0 L-26 7" fill="none" stroke="#5e1010" stroke-width="1.2" opacity=".7"/>
+    <rect x="12" y="-8" width="11" height="16" fill="url(#brassV)"/><rect x="22" y="-9.5" width="3.5" height="19" rx="1" fill="#9a6d24"/>
+    <rect x="-24" y="-6" width="34" height="3" rx="1.5" fill="#fff" opacity=".2"/></g>`;
+  const nine = ({ x, y, rot }) => `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse cx="2" cy="4" rx="11" ry="5" fill="#000" opacity=".35" filter="url(#sh)"/>
+    <rect x="-9" y="-4.5" width="16" height="9" rx="1" fill="url(#brassV)"/><rect x="6" y="-5" width="3" height="10" rx="1" fill="#9a6d24"/>
+    <ellipse cx="-9" cy="0" rx="1.6" ry="4.2" fill="#3a2608"/><rect x="-7" y="-3.5" width="12" height="1.6" rx=".8" fill="#fff4cf" opacity=".55"/></g>`;
+  const defs = `<defs><filter id="sh" x="-50%" y="-80%" width="200%" height="260%"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e1414"/><stop offset=".35" stop-color="#c22a2a"/><stop offset=".65" stop-color="#9c1d1d"/><stop offset="1" stop-color="#5a0f0f"/></linearGradient>
+    <linearGradient id="brassV" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>`;
+  const body = items.map((p) => (p.shot ? shell(p) : nine(p))).join("");
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">${defs}${body}</svg>`)}")`;
+}
 const gingham = (c) => `repeating-linear-gradient(0deg, ${c}66 0 26px, transparent 26px 52px), repeating-linear-gradient(90deg, ${c}66 0 26px, transparent 26px 52px), #f7efe2`;
 const plaid = `repeating-linear-gradient(0deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), #9e2a24`;
 const marble = svgURL(300, 300, `<filter id="m"><feTurbulence type="fractalNoise" baseFrequency=".012 .03" numOctaves="4" seed="9"/><feColorMatrix values="0 0 0 0 .35  0 0 0 0 .33  0 0 0 0 .31  0 0 0 -2.2 1.25"/></filter><rect width="300" height="300" fill="#f3efe8"/><rect width="300" height="300" filter="url(#m)"/>`);
@@ -85,6 +141,9 @@ export const THEMES = {
   parlor: { name: "Antique parlor", tier: "signature", blurb: "Green leather, mahogany and gold tooling.", table: leather("#2e4a36"), frame: frame("#c9a45c", "#4a1f14", 14), back: { base: "#3a1d14", ink: "#c9a45c", motif: "damask" }, accent: { paper: "#f6efdf", brass: "#b8924c", line: "#d6c49c" } },
   leopard: { name: "Leopard lounge", tier: "signature", blurb: "A little wild, black lacquer edge.", table: `${lamp(0.14)}, ${vignette(0.45)}, ${leopard()}`, frame: frame("#c9a45c", "#111111", 12), back: { base: "#141414", ink: "#d9a86a", motif: "leopard" }, accent: { paper: "#fbf3e6", brass: "#c9a45c", line: "#dccdb0" } },
   midcentury: { name: "Mid-century", tier: "signature", blurb: "Teak, mustard and atomic stars.", table: `${lamp(0.16)}, ${vignette(0.4)}, ${atomic()}`, back: { base: "#4f8c86", ink: "#d9a43a", motif: "starburst" }, accent: { paper: "#fbf4e4", brass: "#d9a43a", line: "#dccaa2" } },
+  whiskey: { name: "Whiskey & shells", tier: "signature", blurb: "Barrel staves, amber light, shotgun shells and 9mm brass scattered about.",
+    table: `${scatteredShells()} center / cover no-repeat, radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255,170,70,.28), transparent 70%), ${vignette(0.5)}, ${staves()}`,
+    frame: frame("#c8963e", "#1c0f06", 6), back: { base: "#3b2010", ink: "#d9a54a", motif: "headstamp" }, accent: { paper: "#f6ecd9", brass: "#c8963e", line: "#dcc59c" } },
   leather: { name: "Leather & brass", tier: "signature", blurb: "Oxblood leather and brass studs, a quiet club.", table: leather("#5a1d1d"), frame: frame("#d8b56a", "#2b1410", 10), back: { base: "#4a1414", ink: "#d8b56a", motif: "studs" }, accent: { paper: "#f7efe1", brass: "#c9a45c", line: "#d8c7a4" } },
 
   gilded: { name: "Gilded", tier: "luxe", blurb: "Black velvet, gold leaf and gilt-edged backs.", table: `${filigree("#c9a45c")} top left no-repeat, ${filigree("#c9a45c", true)} bottom right no-repeat, ${leather("#151210")}`, frame: frame("#e6cb8a", "#8a6a2c", 6), back: { base: "#121010", ink: "#d4b062", motif: "filigree", gilt: true }, accent: { paper: "#fbf5e6", brass: "#d4b062", line: "#e2d2a8" } },
@@ -105,10 +164,15 @@ export function themeBack(id) {
   if (motif === "starburst") for (const [x, y, r] of [[50, 70, 22], [28, 34, 9], [72, 108, 9]]) for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; m += `<line x1="${x}" y1="${y}" x2="${x + Math.cos(a) * r}" y2="${y + Math.sin(a) * r}" stroke="${ink}" stroke-width="2.4" stroke-linecap="round"/>`; }
   if (motif === "rose") for (const [x, y] of [[35, 40], [65, 70], [35, 100]]) m += `<path d="${curve(ring(x, y, 12, 11, 12, 0.18, x + y))}" fill="${ink}"/><path d="${curve(ring(x + 1, y, 6, 5, 9, 0.3, x * y))}" fill="${mix(ink, base, 0.4)}"/>`;
   if (motif === "damask") m += `<path d="M50 18 C68 44 86 54 68 76 C58 90 58 104 50 124 C42 104 42 90 32 76 C14 54 32 44 50 18Z" fill="${ink}" opacity=".85"/><circle cx="50" cy="70" r="7" fill="${base}"/>`;
-  if (motif === "leopard") { const r = rng(11); for (let i = 0; i < 14; i++) { const x = 14 + r() * 72, y = 14 + r() * 112; m += `<path d="${curve(ring(x, y, 6, 4.5, 8, 0.35, i + 3, r() * 3))}" fill="${ink}"/>`; } }
+  if (motif === "leopard") { const r = rng(11); m += `<rect x="10" y="10" width="80" height="120" fill="#d6a05a"/>`; for (const [x, y] of [[30, 30], [68, 40], [42, 66], [76, 82], [28, 100], [60, 116]]) m += rosetteMark(x, y, 9 + r() * 3, 7 + r() * 3, r() * 3, r); for (let i = 0; i < 8; i++) m += `<circle cx="${14 + r() * 72}" cy="${14 + r() * 112}" r="${1.4 + r() * 1.4}" fill="#1c120b"/>`; }
   if (motif === "studs") for (let i = 0; i < 8; i++) m += `<circle cx="${16 + i * 9.7}" cy="16" r="2.2" fill="${ink}"/><circle cx="${16 + i * 9.7}" cy="124" r="2.2" fill="${ink}"/>` + (i < 7 ? `<circle cx="16" cy="${30 + i * 13.5}" r="2.2" fill="${ink}"/><circle cx="84" cy="${30 + i * 13.5}" r="2.2" fill="${ink}"/>` : "") + (i === 0 ? `<path d="M50 50 l14 20 l-14 20 l-14 -20z" fill="none" stroke="${ink}" stroke-width="2"/>` : "");
   if (motif === "filigree") m += `<path d="M50 30 C70 30 74 52 50 70 C26 52 30 30 50 30Z M50 110 C70 110 74 88 50 70 C26 88 30 110 50 110Z" fill="none" stroke="${ink}" stroke-width="2"/><circle cx="50" cy="70" r="4" fill="${ink}"/><rect x="16" y="16" width="68" height="108" rx="3" fill="none" stroke="${ink}" stroke-width="1"/>`;
   if (motif === "fan") for (const y of [40, 80, 120]) { m += `<path d="M20 ${y} a30 30 0 0 1 60 0" fill="none" stroke="${ink}" stroke-width="1.6"/>`; for (let k = 1; k < 8; k++) { const a = Math.PI + (k * Math.PI) / 8; m += `<line x1="50" y1="${y}" x2="${50 + Math.cos(a) * 28}" y2="${y + Math.sin(a) * 28}" stroke="${ink}" stroke-width="1"/>`; } }
+  if (motif === "headstamp") m += `<circle cx="50" cy="70" r="30" fill="#c8963e"/><circle cx="50" cy="70" r="30" fill="none" stroke="#8a5f1c" stroke-width="3"/><circle cx="50" cy="70" r="24" fill="none" stroke="#f2cf7a" stroke-width="1" opacity=".7"/>
+    <circle cx="50" cy="70" r="9" fill="#a7a39a"/><circle cx="50" cy="70" r="9" fill="none" stroke="#6b675f" stroke-width="2"/><circle cx="47.5" cy="67.5" r="2.5" fill="#e6e2da" opacity=".7"/>
+    <text x="50" y="52" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">12 GAUGE</text>
+    <text x="50" y="94" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">1952</text>
+    ${[22, 118].map((y) => `<rect x="14" y="${y - 2}" width="72" height="4" fill="${ink}" opacity=".6"/>`).join("")}`;
   if (motif === "memphis") m += `<path d="M18 30 q8 -10 16 0 t16 0 t16 0" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/><path d="M60 60 l16 28 h-32z" fill="#f6a5b4"/><circle cx="30" cy="100" r="9" fill="#5b8de0"/><rect x="58" y="100" width="16" height="16" fill="#2fa79a"/>`;
   return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="${uid}"><rect x="10" y="10" width="80" height="120" rx="5"/></clipPath></defs>` +
     `<rect x="1" y="1" width="98" height="138" rx="9" fill="${edge}" stroke="${mix(edge, "#000000", 0.25)}" stroke-width="1.5"/><rect x="10" y="10" width="80" height="120" rx="5" fill="${base}"/>` +

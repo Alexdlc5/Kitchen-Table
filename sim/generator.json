@@ -90,6 +90,15 @@
    ]
   },
   {
+   "id": "theme_whiskey",
+   "type": "non-consumable",
+   "price": "4.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:whiskey"
+   ]
+  },
+  {
    "id": "theme_gilded",
    "type": "non-consumable",
    "price": "9.99",

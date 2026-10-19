@@ -24,15 +24,15 @@ export function face(c, { four = false } = {}) {
   if (c === "BJ" || c === "LJ") {
     const col = c === "BJ" ? "#d0182f" : "#16181d", star = curve(ring(50, 70, 26, 26, 10, 0, 3).map(([x, y], i) => (i % 2 ? [50 + (x - 50) * 0.45, 70 + (y - 70) * 0.45] : [x, y])));
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}<path d="${star}" fill="${col}"/>` +
-      `<text x="8" y="30" font-family="Fraunces, Georgia, serif" font-weight="700" font-size="20" fill="${col}" writing-mode="tb" letter-spacing="1">JOKER</text>` +
-      `<text x="50" y="128" text-anchor="middle" font-family="Figtree, system-ui, sans-serif" font-weight="700" font-size="13" fill="${col}">${c === "BJ" ? "BIG" : "LITTLE"}</text></svg>`;
+      `<text x="8" y="30" font-family="Alegreya, Georgia, serif" font-weight="700" font-size="20" fill="${col}" writing-mode="tb" letter-spacing="1">JOKER</text>` +
+      `<text x="50" y="128" text-anchor="middle" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="13" fill="${col}">${c === "BJ" ? "BIG" : "LITTLE"}</text></svg>`;
   }
   const s = c[1], col = (four ? COLORS.four : COLORS.two)[s], r = label(c);
-  const idx = (flip) => `<g ${flip ? `transform="rotate(180 50 70)"` : ""}><text x="${r === "10" ? 5 : 9}" y="33" font-family="Figtree, system-ui, sans-serif" font-weight="700" font-size="${r === "10" ? 28 : 31}" fill="${col}" letter-spacing="${r === "10" ? -2 : 0}">${r}</text>${pip(s, 20, 47, 22, col)}</g>`;
+  const idx = (flip) => `<g ${flip ? `transform="rotate(180 50 70)"` : ""}><text x="${r === "10" ? 5 : 9}" y="33" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="${r === "10" ? 28 : 31}" fill="${col}" letter-spacing="${r === "10" ? -2 : 0}">${r}</text>${pip(s, 20, 47, 22, col)}</g>`;
   let mid;
   if ("JQK".includes(c[0])) {
     const panel = mix(col, "#ffffff", 0.82), d = curve(ring(56, 76, 30, 42, 14, 0.06, c.charCodeAt(0) + c.charCodeAt(1)));
-    mid = shape(d, panel, mix(col, "#ffffff", 0.55)) + `<text x="56" y="92" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="700" font-size="46" fill="${col}">${c[0]}</text>` + pip(s, 56, 108, 18, col);
+    mid = shape(d, panel, mix(col, "#ffffff", 0.55)) + `<text x="56" y="92" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="700" font-size="46" fill="${col}">${c[0]}</text>` + pip(s, 56, 108, 18, col);
   } else mid = pip(s, 57, 80, c[0] === "A" ? 52 : 40, col);
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}${mid}${idx(false)}${idx(true)}</svg>`;
 }
@@ -65,7 +65,7 @@ export function titleProps() {
   const pad = shade(200, 226, 70, 8) + shape("M138 197 L262 192 Q265 192 265 195 L267 227 Q267 230 264 230 L142 233 Q139 233 139 230 Z", "#fbf6ea", "#8f7a5a") +
     [0, 1, 2].map((i) => `<path d="M146 ${206 + i * 8} L256 ${203 + i * 8}" stroke="#b9c6d6" stroke-width="1"/>`).join("") +
     `<path d="M196 197 L198 230" stroke="#d98585" stroke-width="1"/>` +
-    `<text x="152" y="212" font-family="Fraunces, Georgia, serif" font-style="italic" font-size="9" fill="#5a4a3a" transform="rotate(-1.5 152 212)">Us 320 · Them 285</text>` +
+    `<text x="152" y="212" font-family="Alegreya, Georgia, serif" font-style="italic" font-size="9" fill="#5a4a3a" transform="rotate(-1.5 152 212)">Us 320 · Them 285</text>` +
     shape(curve([[168, 236], [292, 214], [296, 220], [172, 242]]), "#e2b24a", "#8a6420") + `<path d="M292 214 L306 214 L296 220Z" fill="#e8c9a0"/><path d="M302 214 L306 214 L303 216Z" fill="#3a3a3a"/>` +
     `<path d="M168 236 L160 238 L164 244 L172 242Z" fill="#d98a9a"/>`;
   return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>${cup}${plate}${pad}</svg>`;

@@ -596,14 +596,23 @@ function paintPreviews(root) { // backgrounds are set from JS: their SVG data UR
 }
 function renderShop() {
   const ids = (tier) => Object.keys(THEMES).filter((k) => THEMES[k].tier === tier);
-  const swatch = (id) => `<button class="swatch ${(S.opt.theme || "walnut") === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
+  const mine = Object.keys(THEMES).filter(ownsTheme), table = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", backNow = ownsTheme(S.opt.back) ? S.opt.back : null;
+  const swatch = (id) => `<button class="swatch ${table === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)} table${table === id ? ", in use" : ""}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
+  // the card backs you own, fanned out like a hand: tap one to play with it
+  const backs = [null, ...mine].map((id, i) => {
+    const on = backNow === id, label = id ? THEMES[id].name : "Matches the table";
+    return `<button class="backpick ${on ? "on" : ""}" style="--i:${i}" data-act="useback" data-v="${id || ""}" aria-label="Card back: ${esc(label)}${on ? ", selected" : ""}">${themeBack(id || table)}<small>${esc(id ? THEMES[id].name.replace(" felt", "") : "Match table")}</small></button>`;
+  }).join("");
+  const forSale = TIER_ORDER.map((tier) => [tier, ids(tier).filter((id) => !ownsTheme(id))]).filter(([, list]) => list.length);
   $("#shop").innerHTML = `<div class="stack"><h1 class="sign">The table shop</h1>
     <div class="paper thanks"><h2>Thank you for being here</h2>
       <p>${cfg.brand.wordmark} has no ads and never will. It's made by one small team, and every theme you pick up is what keeps the cards coming: new games, new rules, and a table that stays calm. We're truly grateful. Thank you for supporting us.</p>
       <p class="muted">Every theme is yours to keep, on every device in your Family Sharing group. Nothing renews.</p></div>
-    <div class="paper"><h2>Free tables</h2><div class="swatches">${ids("free").map(swatch).join("")}</div></div>
-    ${TIER_ORDER.map((tier) => `<div class="paper ${tier === "luxe" ? "luxebox" : ""}"><h2>${cfg.shop.tiers[tier].name} <span class="muted">· ${priceOf(tier)} each</span></h2>
-      <div class="tiles ${tier === "luxe" ? "one" : ""}">${ids(tier).map((id) => themeTile(id, tier === "luxe")).join("")}</div></div>`).join("")}
+    <div class="paper"><h2>Your card backs</h2><p class="muted">Tap a card to deal with it. Any back goes with any table.</p><div class="backfan">${backs}</div></div>
+    <div class="paper"><h2>Your tables</h2><div class="swatches">${mine.map(swatch).join("")}</div></div>
+    ${forSale.map(([tier, list]) => `<div class="paper ${tier === "luxe" ? "luxebox" : ""}"><h2>${cfg.shop.tiers[tier].name} <span class="muted">· ${priceOf(tier)} each</span></h2>
+      <div class="tiles ${tier === "luxe" ? "one" : ""}">${list.map((id) => themeTile(id, tier === "luxe")).join("")}</div></div>`).join("")}
+    ${forSale.length ? "" : `<div class="paper thanks"><p>You have every table in the shop. Thank you, truly.</p></div>`}
     <button class="btn" data-act="restore">Restore purchases</button>
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
   paintPreviews($("#shop"));
@@ -706,7 +715,18 @@ const ACT = {
     if (!owns(g)) return go("unlock");
     setupGame = g; go("setup");
   },
-  flip: (el) => { el.classList.toggle("flipped"); sound.card(); },
+  flip: async (el) => {
+    sound.card();
+    if (calm()) return el.classList.toggle("flipped");
+    await el.animate([{ scale: "1 1" }, { scale: "0 1" }], { duration: 140, easing: "ease-in" }).finished.catch(() => {});
+    el.classList.toggle("flipped");
+    el.animate([{ scale: "0 1" }, { scale: "1 1" }], { duration: 160, easing: "ease-out" });
+  },
+  useback: async (el) => { // the chosen back lifts out of the fan and flips over
+    S.opt.back = el.dataset.v || null; save(); applyLook(); sound.card();
+    if (!calm()) await el.animate([{ transform: "translateY(0) rotateY(0)" }, { transform: "translateY(-18px) rotateY(90deg)" }, { transform: "translateY(-12px) rotateY(0)" }], { duration: 360, easing: "ease-out" }).finished.catch(() => {});
+    renderShop(); speech.say("Card back chosen.");
+  },
   usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
   buytheme: async (el) => {
     const id = el.dataset.v;
