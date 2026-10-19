@@ -1,0 +1,23 @@
+name: rules, bots and sim
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: dealer isolation, golden deal, house rules, legal play, scoring tables
+        run: node sim/test_sim.mjs
+      - name: every AI_SPEC sin as a scenario at every level; views show nothing hidden
+        run: node sim/test_ai.mjs
+      - name: 20K hands per game at Standard meet the AI_SPEC targets, zero sins played
+        run: |
+          node sim/sim.mjs --check --game spades --hands 20000
+          node sim/sim.mjs --check --game spades --preset kitchen --hands 20000
+          node sim/sim.mjs --check --game hearts --hands 20000

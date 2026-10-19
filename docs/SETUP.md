@@ -1,4 +1,4 @@
-# Kitchen Table (working title): everything you set up, step by step
+# Kitchen Table: everything you set up, step by step
 
 The owner's step list. Same shape as Glimmerwood's SETUP.md, minus everything about ads (no AdMob, no `app-ads.txt`, no UMP,
 no ATT). You don't need a Mac: GitHub's Macs build and upload the app.
@@ -13,7 +13,7 @@ no ATT). You don't need a Mac: GitHub's Macs build and upload the app.
 | ⬜ | Public website | — | `site/` (privacy, terms, support, verify.html) on GitHub Pages; Phase 5 |
 | ✅ | A1. Apple Developer Program | — | already active (Glimmerwood) |
 | ✅ | A2. Agreements, tax, banking | — | already active (Paid Apps agreement) |
-| ⬜ | **A13. Name check** | 5 minutes | **your choice of name needed now** (below) |
+| ✅ | A13. Name check | decided 2026-10-19 | **Kitchen Table** (store name "Kitchen Table: Spades, Hearts") |
 | ⬜ | A3. Bundle ID + app record | 10 minutes | after A13; tick **Game Center** on the bundle ID |
 | ⬜ | A4-A6. CI key + GitHub secrets | 10 minutes | reuse the Glimmerwood API key: add the same 4 secrets to this repo |
 | ⬜ | A7. First TestFlight build | ~30 minutes | after A3/A6; carries the GameKit spike |
@@ -50,8 +50,7 @@ counts. "Stars & Spades": "Spades Stars" on the App Store (50K ratings). "House 
 *game cards* (28). "All-American Card…": live "MIXED COMPANY THE ALL-AMERICAN CARD GAME!" (28). Anything "Trick-"
 (Trickster, TrickSmith, Trickpad exist).
 
-**Your step (5 minutes):** pick one (or send your own and Claude checks it the same way). Optionally confirm on
-**tmsearch.uspto.gov** by searching the exact name. **Send Claude:** the name.
+**Owner decision, 2026-10-19: Kitchen Table** (#2). App Store name "Kitchen Table: Spades, Hearts" (29 characters).
 
 ---
 
