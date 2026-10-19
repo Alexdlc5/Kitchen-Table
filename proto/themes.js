@@ -83,6 +83,23 @@ function filigree(ink, flip = false) { // corner scrolls for the luxe frames (fl
   const s = (flip ? '<g transform="rotate(180 60 60)">' : "<g>") + `<path d="M8 60 C8 30 30 8 60 8 M18 60 C18 36 36 18 60 18 M30 60 C30 44 44 30 60 30" fill="none" stroke="${ink}" stroke-width="2"/><circle cx="60" cy="60" r="4" fill="${ink}"/></g>`;
   return svgURL(120, 120, s);
 }
+function staves() { // charred oak barrel staves, an iron hoop with rivets across them
+  const W = 240, H = 420; let s = "";
+  const cols = ["#5b341a", "#4e2c15", "#63391c", "#472812", "#57311a", "#4b2a14"];
+  for (let i = 0; i < 6; i++) s += `<rect x="${i * 40}" width="40" height="${H}" fill="${cols[i]}"/><rect x="${i * 40}" width="1.5" height="${H}" fill="#1c0f06" opacity=".8"/><rect x="${i * 40 + 1.5}" width="1" height="${H}" fill="#8a5a30" opacity=".35"/>`;
+  const grain = `<filter id="g"><feTurbulence type="fractalNoise" baseFrequency=".12 .008" numOctaves="3" seed="7" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .1  0 0 0 0 .05  0 0 0 0 .02  0 0 0 .55 -.1"/></filter>`;
+  const hoop = (y) => `<rect y="${y}" width="${W}" height="16" fill="#2b2a28"/><rect y="${y}" width="${W}" height="2" fill="#5d5b57"/><rect y="${y + 14}" width="${W}" height="2" fill="#141312"/>` + [20, 60, 100, 140, 180, 220].map((x) => `<circle cx="${x}" cy="${y + 8}" r="2.6" fill="#77736b"/><circle cx="${x - .6}" cy="${y + 7.4}" r="1" fill="#b9b3a8"/>`).join("");
+  return svgURL(W, H, `${grain}${s}<rect width="${W}" height="${H}" filter="url(#g)"/>${hoop(260)}`);
+}
+function casings() { // polished brass casings lying side by side, for the top and bottom edges
+  let s = "";
+  for (let i = 0; i < 6; i++) {
+    const x = i * 22 + 3;
+    s += `<rect x="${x}" y="6" width="16" height="44" rx="2" fill="url(#br)"/><rect x="${x - 1}" y="46" width="18" height="6" rx="1.5" fill="#9a6d24"/>
+      <rect x="${x + 3}" y="8" width="3" height="38" rx="1.5" fill="#fff4cf" opacity=".45"/><path d="M${x} 10 L${x + 3} 6 L${x + 13} 6 L${x + 16} 10Z" fill="#7a5418" opacity=".55"/>`;
+  }
+  return svgURL(132, 58, `<defs><linearGradient id="br" x1="0" x2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>${s}`);
+}
 const gingham = (c) => `repeating-linear-gradient(0deg, ${c}66 0 26px, transparent 26px 52px), repeating-linear-gradient(90deg, ${c}66 0 26px, transparent 26px 52px), #f7efe2`;
 const plaid = `repeating-linear-gradient(0deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), #9e2a24`;
 const marble = svgURL(300, 300, `<filter id="m"><feTurbulence type="fractalNoise" baseFrequency=".012 .03" numOctaves="4" seed="9"/><feColorMatrix values="0 0 0 0 .35  0 0 0 0 .33  0 0 0 0 .31  0 0 0 -2.2 1.25"/></filter><rect width="300" height="300" fill="#f3efe8"/><rect width="300" height="300" filter="url(#m)"/>`);
@@ -107,6 +124,9 @@ export const THEMES = {
   parlor: { name: "Antique parlor", tier: "signature", blurb: "Green leather, mahogany and gold tooling.", table: leather("#2e4a36"), frame: frame("#c9a45c", "#4a1f14", 14), back: { base: "#3a1d14", ink: "#c9a45c", motif: "damask" }, accent: { paper: "#f6efdf", brass: "#b8924c", line: "#d6c49c" } },
   leopard: { name: "Leopard lounge", tier: "signature", blurb: "A little wild, black lacquer edge.", table: `${lamp(0.14)}, ${vignette(0.45)}, ${leopard()}`, frame: frame("#c9a45c", "#111111", 12), back: { base: "#141414", ink: "#d9a86a", motif: "leopard" }, accent: { paper: "#fbf3e6", brass: "#c9a45c", line: "#dccdb0" } },
   midcentury: { name: "Mid-century", tier: "signature", blurb: "Teak, mustard and atomic stars.", table: `${lamp(0.16)}, ${vignette(0.4)}, ${atomic()}`, back: { base: "#4f8c86", ink: "#d9a43a", motif: "starburst" }, accent: { paper: "#fbf4e4", brass: "#d9a43a", line: "#dccaa2" } },
+  whiskey: { name: "Whiskey & casings", tier: "signature", blurb: "Charred barrel staves, amber light and a row of brass casings.",
+    table: `${casings()} top / 132px 58px repeat-x, ${casings()} bottom / 132px 58px repeat-x, radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255,170,70,.28), transparent 70%), ${vignette(0.5)}, ${staves()}`,
+    frame: frame("#c8963e", "#1c0f06", 6), back: { base: "#3b2010", ink: "#d9a54a", motif: "headstamp" }, accent: { paper: "#f6ecd9", brass: "#c8963e", line: "#dcc59c" } },
   leather: { name: "Leather & brass", tier: "signature", blurb: "Oxblood leather and brass studs, a quiet club.", table: leather("#5a1d1d"), frame: frame("#d8b56a", "#2b1410", 10), back: { base: "#4a1414", ink: "#d8b56a", motif: "studs" }, accent: { paper: "#f7efe1", brass: "#c9a45c", line: "#d8c7a4" } },
 
   gilded: { name: "Gilded", tier: "luxe", blurb: "Black velvet, gold leaf and gilt-edged backs.", table: `${filigree("#c9a45c")} top left no-repeat, ${filigree("#c9a45c", true)} bottom right no-repeat, ${leather("#151210")}`, frame: frame("#e6cb8a", "#8a6a2c", 6), back: { base: "#121010", ink: "#d4b062", motif: "filigree", gilt: true }, accent: { paper: "#fbf5e6", brass: "#d4b062", line: "#e2d2a8" } },
@@ -131,6 +151,11 @@ export function themeBack(id) {
   if (motif === "studs") for (let i = 0; i < 8; i++) m += `<circle cx="${16 + i * 9.7}" cy="16" r="2.2" fill="${ink}"/><circle cx="${16 + i * 9.7}" cy="124" r="2.2" fill="${ink}"/>` + (i < 7 ? `<circle cx="16" cy="${30 + i * 13.5}" r="2.2" fill="${ink}"/><circle cx="84" cy="${30 + i * 13.5}" r="2.2" fill="${ink}"/>` : "") + (i === 0 ? `<path d="M50 50 l14 20 l-14 20 l-14 -20z" fill="none" stroke="${ink}" stroke-width="2"/>` : "");
   if (motif === "filigree") m += `<path d="M50 30 C70 30 74 52 50 70 C26 52 30 30 50 30Z M50 110 C70 110 74 88 50 70 C26 88 30 110 50 110Z" fill="none" stroke="${ink}" stroke-width="2"/><circle cx="50" cy="70" r="4" fill="${ink}"/><rect x="16" y="16" width="68" height="108" rx="3" fill="none" stroke="${ink}" stroke-width="1"/>`;
   if (motif === "fan") for (const y of [40, 80, 120]) { m += `<path d="M20 ${y} a30 30 0 0 1 60 0" fill="none" stroke="${ink}" stroke-width="1.6"/>`; for (let k = 1; k < 8; k++) { const a = Math.PI + (k * Math.PI) / 8; m += `<line x1="50" y1="${y}" x2="${50 + Math.cos(a) * 28}" y2="${y + Math.sin(a) * 28}" stroke="${ink}" stroke-width="1"/>`; } }
+  if (motif === "headstamp") m += `<circle cx="50" cy="70" r="30" fill="#c8963e"/><circle cx="50" cy="70" r="30" fill="none" stroke="#8a5f1c" stroke-width="3"/><circle cx="50" cy="70" r="24" fill="none" stroke="#f2cf7a" stroke-width="1" opacity=".7"/>
+    <circle cx="50" cy="70" r="9" fill="#a7a39a"/><circle cx="50" cy="70" r="9" fill="none" stroke="#6b675f" stroke-width="2"/><circle cx="47.5" cy="67.5" r="2.5" fill="#e6e2da" opacity=".7"/>
+    <text x="50" y="52" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">KT · 45</text>
+    <text x="50" y="94" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">1952</text>
+    ${[22, 118].map((y) => `<rect x="14" y="${y - 2}" width="72" height="4" fill="${ink}" opacity=".6"/>`).join("")}`;
   if (motif === "memphis") m += `<path d="M18 30 q8 -10 16 0 t16 0 t16 0" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/><path d="M60 60 l16 28 h-32z" fill="#f6a5b4"/><circle cx="30" cy="100" r="9" fill="#5b8de0"/><rect x="58" y="100" width="16" height="16" fill="#2fa79a"/>`;
   return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="${uid}"><rect x="10" y="10" width="80" height="120" rx="5"/></clipPath></defs>` +
     `<rect x="1" y="1" width="98" height="138" rx="9" fill="${edge}" stroke="${mix(edge, "#000000", 0.25)}" stroke-width="1.5"/><rect x="10" y="10" width="80" height="120" rx="5" fill="${base}"/>` +

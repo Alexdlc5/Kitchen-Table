@@ -23,7 +23,7 @@ no subscriptions, no rentals, nothing that makes a game easier, no timers, no na
 |---|---|---|---|
 | Free | — | Walnut (default), Green, Blue, Red, Orange, Pink felt | the owner's free colours plus the warm default |
 | Classic | $2.99 each | Sunday gingham, Lake cabin, Diner '57, Garden party | nostalgic Americana: farmhouse, lodge, 1950s, chintz |
-| Signature | $4.99 each | Antique parlor, Leopard lounge, Mid-century, Leather & brass | antique, a little wild, mid-century modern, club |
+| Signature | $4.99 each | Antique parlor, Leopard lounge, Mid-century, Leather & brass, Whiskey & casings | antique, a little wild, mid-century modern, club, a lodge bar with barrel staves and brass casings |
 | **Luxe collection** | $9.99 each | Gilded (gold), Sterling (silver), Art deco, Postmodern '86, Marble & brass | gold to silver, antique to art deco to postmodern |
 
 - A theme is a table surface, a card back and an accent colour (paper and brass). Card *faces* never change, so
