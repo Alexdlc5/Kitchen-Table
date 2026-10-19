@@ -1,4 +1,4 @@
-// Smoke test: every screen in WebKit and Chromium at iPhone size, plus a whole hand of each game.
+// Smoke test: every screen in WebKit and Chromium at iPhone size, plus a whole hand of each game (Hearts, Spades, Euchre).
 // Fails on a page error, a screen that doesn't show, a button off screen or smaller than a tap target (44pt; 64pt in
 // Comfort), a hand card whose visible strip is smaller than a tap target, any overlay between the deal and the last
 // trick (DESIGN R2), or a human seat that gets played for them while they think (R10).
@@ -85,7 +85,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     const shown = await page.evaluate((id) => document.getElementById(id).classList.contains("on") && document.getElementById(id).innerHTML.length > 50, id);
     await report(id, [!shown && "not shown", ...(await page.evaluate(AUDIT, id))]);
   }
-  for (const game of ["hearts", "spades", "ohhell", "whist"]) {
+  for (const game of ["hearts", "spades", "euchre", "ohhell", "whist"]) {
     await page.evaluate((g) => kt.newGame(g), game);
     // R10: the human's turn waits as long as they need
     await page.waitForFunction(() => kt.G && kt.pending && kt.pending.seat === 0, null, { timeout: 20000 }); // the game is asking the player
