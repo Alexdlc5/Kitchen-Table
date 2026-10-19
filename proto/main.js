@@ -117,8 +117,9 @@ function renderPicker() {
   const games = ["hearts", "spades", "euchre"].filter((g) => g === "euchre" || S.care.games.includes(g));
   const rows = games.map((g) => {
     const soon = !!cfg.games[g].release, locked = !owns(g);
-    const sub = soon ? "Coming next, free with Everything" : g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Unlocked";
-    return `<button class="btn gamecard" data-act="${soon ? "noop" : locked ? "go" : "setup"}" data-to="unlock" data-game="${g}" ${soon ? "disabled" : ""}>
+    const sub = soon ? "Free with Everything when it arrives" : g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Unlocked";
+    if (soon) return `<div class="gamecard soon"><span class="mini">${svgFor("JC")}</span><span>${GAME_NAME[g]}<small>${sub}</small></span><span class="tag">Coming next</span></div>`;
+    return `<button class="btn gamecard" data-act="${locked ? "go" : "setup"}" data-to="unlock" data-game="${g}">
       <span class="mini">${svgFor(g === "hearts" ? "QH" : g === "spades" ? "AS" : "JC")}</span><span>${GAME_NAME[g]} ${locked && !soon ? '<span class="lock" aria-label="locked">🔒</span>' : ""}<small>${sub}</small></span></button>`;
   }).join("");
   const unlockRow = !platform.owns("everything") && !S.opt.comfort && !S.care.lock ? `<button class="btn" data-act="go" data-to="unlock">Unlock everything · $6.99 once</button>` : "";
@@ -142,7 +143,7 @@ function renderSetup() {
   }).join("") : defs.filter((d) => d.presets[L.preset] !== d.presets.standard || L.preset === "standard").slice(0, 6).map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, rulesFor(cfg, g, L.preset)[d.id])}</b></div>`).join("");
   $("#setup").innerHTML = `<div class="stack">
     <h1>${GAME_NAME[g]}</h1>
-    <div class="paper"><h2>House rules</h2>${seg("preset", L.preset, ["standard", "kitchen", "tournament", "custom"], PRESET_NAME)}${custom}</div>
+    <div class="paper"><h2>House rules</h2><div class="grid2">${seg("preset", L.preset, ["standard", "kitchen", "tournament", "custom"], PRESET_NAME)}</div>${custom}</div>
     <div class="paper"><h2>Players</h2>
       ${g === "spades" ? `<div class="row"><span>Partner plays</span>${seg("partner", L.partner, ["easy", "standard", "expert", "extreme"], LEVEL_NAME)}</div>` : ""}
       <div class="row"><span>${g === "spades" ? "Opponents play" : "Computer players"}</span>${seg("opps", L.opps, ["easy", "standard", "expert", "extreme"], LEVEL_NAME)}</div>
@@ -237,11 +238,11 @@ function drawTable(justPlayed = -1) {
   const plate = (s) => {
     const p = pos(s), seat = G.seats[s], cls = ["s-me", "s-left", "s-top", "s-right"][p];
     const bid = isSp ? (st.bids[s] === null ? "" : st.bids[s] === 0 ? (st.blind[s] ? "Blind nil" : "Nil") : `Bid ${st.bids[s]}`) : "";
-    const took = isSp ? `${bid ? " · " : ""}took ${st.tricks[s]}` : `${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts`;
+    const status = isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`;
     const pips = seat.kind === "bot" ? `<span class="pips" aria-label="${LEVEL_NAME[seat.level]}">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : "";
-    const tag = isSp && s === partner(me) && !S.opt.comfort ? (bid ? "Partner · " : "Partner") : "";
+    const tag = isSp && s === partner(me) && !S.opt.comfort ? "<span>Partner</span>" : "";
     const whyLine = why[s] && G.reasons[s] ? `<span class="why">${WHY[G.reasons[s].split(":")[0]] || ""}</span>` : "";
-    return `<button class="seat ${cls} ${st.turn === s && st.phase !== "done" ? "turn" : ""}" data-act="why" data-seat="${s}" aria-label="${esc(seat.name)}"><b>${esc(seat.name)}</b><span>${tag}${bid}${bid || !isSp ? took : ""}</span>${pips}${whyLine}</button>`;
+    return `<button class="seat ${cls} ${st.turn === s && st.phase !== "done" ? "turn" : ""}" data-act="why" data-seat="${s}" aria-label="${esc(seat.name)}"><b>${esc(seat.name)}</b>${tag || status ? `<span class="st">${tag}${status}</span>` : ""}${pips}${whyLine}</button>`;
   };
   $("#seats").innerHTML = [0, 1, 2, 3].map(plate).join("");
   // trick

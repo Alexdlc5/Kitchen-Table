@@ -10,7 +10,8 @@
   --speed: 1;
 }
 html.comfort { --cw: 106px; --tap: 64px; --fs: 22px; --fs-s: 19px; --fs-l: 28px; }
-@media (min-width: 700px) { :root { --cw: 92px; --tcw: 92px; } html.comfort { --cw: 138px; --tcw: 110px; } }
+/* iPad: bigger cards and type, so the table does not look empty */
+@media (min-width: 700px) { :root { --cw: 118px; --tcw: 112px; --fs: 20px; --fs-s: 17px; --fs-l: 26px; } html.comfort { --cw: 168px; --tcw: 130px; --fs: 26px; --fs-s: 22px; --fs-l: 32px; } }
 [hidden] { display: none !important; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #1b4029; color: var(--ink);
@@ -44,7 +45,10 @@ h2 { font-size: var(--fs-l); }
 .pill { min-height: var(--tap); min-width: var(--tap); padding: 6px 14px; border-radius: 999px; border: 0; background: rgba(251,244,226,.92);
   font-weight: 600; box-shadow: 0 3px 0 rgba(0,0,0,.2); }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; min-height: var(--tap); }
-.row > span { flex: 1 1 12em; min-width: 0; }
+.row > span { flex: 1 1 0; min-width: 0; }   /* the label wraps; the control keeps its place on the right */
+.row > .seg { flex: 1 1 100%; }
+.row > b { margin-left: auto; text-align: right; max-width: 45%; }
+.grid2 .seg { display: grid; grid-template-columns: 1fr 1fr; }
 .stack > * { min-width: 0; }
 .row + .row { border-top: 1px solid var(--rule); }
 /* the whole tap-target square is the switch; the track and knob are drawn inside it */
@@ -66,6 +70,10 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 10px; bord
 .gamecard { display: flex; align-items: center; gap: 14px; text-align: left; justify-content: flex-start; width: 100%; }
 .gamecard .mini { width: calc(var(--tap) * .9); flex: none; }
 .gamecard small { display: block; font-weight: 400; color: #6a5f50; font-size: var(--fs-s); }
+.gamecard.soon { padding: 10px 18px; border-radius: 12px; background: rgba(251,244,226,.82); border: 2px dashed #c9b78f; font-weight: 600; }
+.gamecard.soon > span:nth-child(2) { flex: 1; }
+.gamecard.soon .mini { opacity: .7; }
+.tag { flex: none; font-size: var(--fs-s); background: var(--gold); border-radius: 999px; padding: 2px 10px; }
 
 /* cards */
 .card { width: var(--cw); height: calc(var(--cw) * 1.4); padding: 0; border: 0; background: none; display: block; border-radius: 9px;
@@ -82,6 +90,9 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 10px; bord
 #seats .seat { position: absolute; display: grid; justify-items: center; gap: 2px; padding: 6px 12px; border-radius: 12px; min-width: 96px;
   background: rgba(251,244,226,.92); box-shadow: 0 3px 0 rgba(0,0,0,.2); border: 0; font-size: var(--fs-s); line-height: 1.2; min-height: var(--tap); align-content: center; }
 #seats .seat b { font-size: var(--fs); }
+#seats .seat .st span + span::before { content: " · "; }
+html.comfort #seats .seat:not(.s-me) .st span { display: block; }
+html.comfort #seats .seat:not(.s-me) .st span + span::before { content: none; }
 #seats .seat.turn { box-shadow: 0 0 0 4px var(--gold2), 0 3px 0 rgba(0,0,0,.2); }
 #seats .seat .why { max-width: 200px; font-size: calc(var(--fs-s) * .92); color: #5a4c3a; text-align: center; }
 .s-top { top: calc(var(--safe-t) + 64px); left: 50%; transform: translateX(-50%); }
