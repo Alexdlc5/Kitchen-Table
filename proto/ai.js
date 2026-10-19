@@ -7,7 +7,7 @@ import * as hearts from "./hearts.js";
 import { newDeck, partner, team, next } from "./cards.js";
 
 const GAMES = { spades, hearts };
-const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.3, standard: 0.22, expert: 0.22, extreme: 0.22 } };
+const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 } };
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
 export function legalFor(v) {
@@ -183,6 +183,10 @@ function spadesPlay(v, K, rng) {
       return R(lowest(legal, K), "cover_nil_cannot");
     }
     if (!partnerPlayed) {
+      if (oppNil.includes(T.winSeat) && losers.length) { // their nil is winning: leave it there; partner can duck under it
+        const under = losers.filter((c) => K.eff(c) === T.led);
+        return R(highest(under.length ? under : losers, K), "keep_opp_nil_trapped");
+      }
       const follow = legal.filter((c) => K.eff(c) === T.led);
       if (follow.length) return R(highest(follow, K), "cover_nil_unblock_high");
       const trumps = winners.filter((c) => K.eff(c) === "S");
@@ -390,7 +394,8 @@ export function sins(v, action) {
       if (!wins && legal.some(T.beats)) out.push(legal.some((x) => K.eff(x) === T.led) ? "S05" : "S06");
       if (wins && legal.some((x) => T.beats(x) && K.eff(x) === K.eff(c) && K.pow(x) < K.pow(c))) out.push("S07");
     }
-    if (nilAlive(v, p) && !v.trick.some((t) => t.seat === p) && K.eff(c) === T.led) {
+    // S08 yields when an opponent's live nil is winning: keeping it trapped matters more, and partner can still duck under it
+    if (nilAlive(v, p) && !v.trick.some((t) => t.seat === p) && K.eff(c) === T.led && !opps.some((o) => nilAlive(v, o) && T.winSeat === o)) {
       const follow = legal.filter((x) => K.eff(x) === T.led), hi = highest(follow, K);
       if (c !== hi && T.beats(hi)) out.push("S08");
     }

@@ -53,6 +53,7 @@ sc("S05", "cover partner's nil: beat partner's card", sv({ bids: [4, 3, 0, 4], h
 sc("S06", "cover partner's nil: trump rather than throw off", sv({ bids: [4, 3, 0, 4], hand: "3S 9S 4C 5C", trick: "1:5H 2:QH 3:3H" }), (c) => c === "3S");
 sc("S07", "cover with the lowest winner, keep the big one", sv({ bids: [4, 3, 0, 4], hand: "AH KH 2H 8C", trick: "1:5H 2:QH 3:3H" }), (c) => c === "KH");
 sc("S08", "partner's nil plays after me: play high to give partner room", sv({ bids: [4, 3, 0, 4], hand: "KC 4C 7D 8H", trick: "3:9C" }), (c) => c === "KC");
+sc("S08", "both nils alive and theirs is winning: keep theirs trapped; partner can still duck", sv({ bids: [3, 4, 0, 0], hand: "KC 4C 7D 8H", trick: "3:9C" }), (c) => c === "4C");
 sc("S09", "own nil: never trump when I can throw off", sv({ bids: [0, 3, 5, 4], hand: "QS 4H 6H 7C", trick: "1:9D 2:3D 3:5D" }), (c) => c[1] !== "S");
 sc("S09", "own nil: duck with the highest card that still loses", sv({ bids: [0, 3, 5, 4], hand: "TD 8D 4H", trick: "1:9D 2:3D 3:5D" }), (c) => c === "8D");
 sc("S10", "keep an opponent's nil trapped", sv({ bids: [4, 0, 3, 4], tricks: [2, 0, 3, 4], hand: "9H 3H 5C 6D", trick: "1:6H 2:4H 3:2H" }), (c) => c === "3H");
