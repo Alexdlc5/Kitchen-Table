@@ -169,6 +169,18 @@ html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline
 #center > * { pointer-events: auto; }
 .bidpad { display: grid; grid-template-columns: repeat(5, minmax(var(--tap), 1fr)); gap: 8px; max-width: 420px; width: 100%; }
 .bidpad .btn { padding: 4px; }
+/* Euchre: the kitty with its upcard (turned sideways once it's turned down), and the pad for calling trump */
+.kitty { --kw: calc(var(--tcw) * .55); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
+.kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.kitty svg { display: block; width: 100%; height: 100%; }
+.kitty .kb:nth-child(1) { left: 0; transform: rotate(-5deg); } .kitty .kb:nth-child(2) { left: 4px; transform: rotate(3deg); }
+.kitty .up { left: 12px; }
+.kitty.down .up { transform: rotate(90deg) scale(.85); opacity: .8; }
+.eurow { display: flex; gap: 12px; align-items: center; justify-content: center; max-width: 420px; }
+.callpad { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 420px; }
+.callpad .say { font-size: var(--fs-s); }
+.btn.suit { display: grid; justify-items: center; padding: 4px; line-height: 1.1; }
+.btn.suit .sym { font-size: var(--fs-l); } .btn.suit .sH, .btn.suit .sD { color: var(--red); }
 .say { border-radius: 5px; padding: 8px 16px; font-weight: 700; text-align: center; color: var(--ink);
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--stock)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-2); }
 #peek { position: absolute; top: calc(var(--safe-t) + 64px); right: 12px; left: 12px; max-width: 420px; margin-left: auto; z-index: 6; }

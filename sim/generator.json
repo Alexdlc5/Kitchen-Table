@@ -160,8 +160,7 @@
   "euchre": {
    "free": false,
    "seats": 4,
-   "teams": true,
-   "release": "1.1"
+   "teams": true
   },
   "ohhell": {
    "free": false,
@@ -524,6 +523,17 @@
      "kitchen": false,
      "tournament": false
     }
+   },
+   {
+    "id": "lonerLeft",
+    "name": "Loner's left leads",
+    "explain": "Against a player going alone, the opponent on the loner's left leads the first trick instead of the player on the dealer's left.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": true
+    }
    }
   ],
   "ohhell": [
@@ -668,6 +678,12 @@
    "id": "spades_wins",
    "name": "Spades: games won",
    "explain": "Every Spades game you've won",
+   "order": "high"
+  },
+  {
+   "id": "euchre_wins",
+   "name": "Euchre: games won",
+   "explain": "Every Euchre game you've won",
    "order": "high"
   },
   {

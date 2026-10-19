@@ -9,6 +9,7 @@ import * as whist from "./whist.js";
 import * as ohhellBot from "./ai-ohhell.js";
 import * as whistBot from "./ai-whist.js";
 import { newDeck, partner, team, next } from "./cards.js";
+import * as euchreAI from "./ai-euchre.js"; // Euchre bots live in their own module; dispatched below
 
 const GAMES = { spades, hearts, ohhell, whist };
 const BOTS = { ohhell: ohhellBot, whist: whistBot }; // games whose bots live in their own module (ai-<game>.js)
@@ -16,6 +17,7 @@ const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
 export function legalFor(v) {
+  if (v.game === "euchre") return euchreAI.legalFor(v);
   const st = { ...v, turn: v.seat, hands: [] };
   st.hands[v.seat] = v.hand;
   return GAMES[v.game].legal(st);
@@ -24,6 +26,7 @@ export function legalFor(v) {
 // what this seat can work out from the table: unseen cards and who has shown out of which suit
 const DECKS = { false: newDeck(false), true: newDeck(true) };
 export function know(v, memory = Infinity) {
+  if (v.game === "euchre") return euchreAI.know(v, memory);
   const g = GAMES[v.game], j = v.game === "spades" && !!v.rules.jokers, eff = (c) => g.eff(c, j), pow = (c) => g.pow(c, j);
   const h = v.history, cut = (h.length ? h[h.length - 1].n : -1) - memory;
   const gone = new Set(v.hand), voids = [new Set(), new Set(), new Set(), new Set()];
@@ -371,6 +374,7 @@ function heartsPlay(v, K, level, rng) {
 // ids of the sins an action would commit in this view; [] is clean. Shared by tests, the sim and the in-game detector.
 export function sins(v, action) {
   if (BOTS[v.game]) return BOTS[v.game].sins(v, action);
+  if (v.game === "euchre") return euchreAI.sins(v, action);
   const out = [];
   if (v.game === "spades") {
     const s = v.seat, p = partner(s), r = v.rules;
@@ -527,6 +531,7 @@ function outcome(st, seat) { // higher is better for seat's side, in points
 // ---------------------------------------------------------------- entry point
 
 export function decide(v, level = "standard", rng = Math.random, tune = DEFAULT_TUNE) {
+  if (v.game === "euchre") return euchreAI.decide(v, level, rng, tune);
   tune = { ...DEFAULT_TUNE, ...tune };
   if (BOTS[v.game]) return BOTS[v.game].decide(v, level, rng, tune);
   const easy = level === "easy";

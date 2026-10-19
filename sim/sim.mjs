@@ -11,12 +11,13 @@ import { rulesFor, team, partner } from "../proto/cards.js";
 import { encode } from "../proto/dealer.js";
 import * as spades from "../proto/spades.js";
 import * as hearts from "../proto/hearts.js";
+import * as euchre from "../proto/euchre.js";
 import * as ohhell from "../proto/ohhell.js";
 import * as whist from "../proto/whist.js";
 import { decide, sins, nilRisk, nilForbidden } from "../proto/ai.js";
 
 const cfg = JSON.parse(readFileSync(new URL("generator.json", import.meta.url)));
-const GAMES = { spades, hearts, ohhell, whist };
+const GAMES = { spades, hearts, euchre, ohhell, whist };
 const TEAMS = (game) => cfg.games[game].teams;
 
 function mulberry(a) {
@@ -30,6 +31,7 @@ function run({ game, levels, preset, custom = {}, hands, seed }) {
   const m = { hands: 0, games: 0, wins: [0, 0, 0, 0], decisions: 0, guarded: 0, rawSins: {}, shippedSins: 0,
     contracts: 0, made: 0, exact: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindBids: 0, blindMade: 0, nilChances: 0,
     besideNil: 0, besideNilSet: 0, moons: 0, moonAttempts: 0, moonStops: 0, points: [0, 0, 0, 0], qsSeat0: 0, bidSum: 0, bidErr: 0,
+    calls: 0, euchred: 0, marches: 0, loners: 0, lonerMarch: 0, lonerEuchred: 0, thrown: 0, stuck: 0, round2: 0, makerPts: 0,
     bids: 0, exactBids: 0, overBids: 0, hooked: 0, overTables: 0, underTables: 0, teamTricks: [0, 0], honours: 0, trickPts: 0 };
   while (m.hands < hands) {
     let totals, handNo = 0, w = null; // undefined: each game starts from its own empty totals
@@ -42,7 +44,7 @@ function run({ game, levels, preset, custom = {}, hands, seed }) {
         const v = g.view(st, st.turn), d = decide(v, levels[st.turn], rng, cfg.ai);
         m.decisions++;
         if (d.guarded) { m.guarded++; const raw = d.reason.split(":")[0]; m.rawSins[raw] = (m.rawSins[raw] || 0) + 1; }
-        if (st.phase === "play" && sins(v, d.action).length) m.shippedSins++;
+        if ((st.phase === "play" || game === "euchre") && sins(v, d.action).length) m.shippedSins++;
         g.apply(st, d.action);
         if (game === "hearts" && st.history.length === 24 && !st.trick.length && !attempt) { // halfway: one seat has every point so far
           const pts = st.taken.map((t) => t.filter((c) => c[1] === "H" || c === "QS").reduce((a, c) => a + (c === "QS" ? 13 : 1), 0));
@@ -66,6 +68,7 @@ function run({ game, levels, preset, custom = {}, hands, seed }) {
             if (st.bids[t] === 0 || st.bids[t + 2] === 0) { m.besideNil++; if (T < B) m.besideNilSet++; }
           }
         }
+      } else if (game === "euchre") { euchreMetrics(m, st);
       } else if (game === "ohhell") {
         for (let s = 0; s < 4; s++) { m.bids++; if (st.bids[s] === st.tricks[s]) m.exactBids++; else if (st.tricks[s] < st.bids[s]) m.overBids++; m.bidErr += Math.abs(st.bids[s] - st.tricks[s]); }
         const total = st.bids.reduce((a, b) => a + b, 0);
@@ -84,6 +87,17 @@ function run({ game, levels, preset, custom = {}, hands, seed }) {
     if (w !== null) { m.games++; m.wins[w]++; }
   }
   return m;
+}
+
+// Euchre: who called, how it went (AI_SPEC §5: maker euchre rate, loner success = all five tricks)
+function euchreMetrics(m, st) {
+  if (st.maker === null) { m.thrown++; return; }
+  const l = euchre.score(st).lines[0], round = st.calls.find((c) => c.seat === st.maker && c.call !== "pass").round;
+  m.calls++; if (round === 2) m.round2++;
+  if (round === 2 && st.maker === st.dealer && st.rules.stickDealer && st.calls.filter((c) => c.round === 2).length === 4) m.stuck++;
+  if (l.kind === "euchre" || l.kind === "loneEuchre") { m.euchred++; if (st.alone) m.lonerEuchred++; } else m.makerPts += l.pts;
+  if (l.kind === "march") m.marches++;
+  if (st.alone) { m.loners++; if (l.kind === "lonerMarch") m.lonerMarch++; }
 }
 
 function merge(ms) {
@@ -117,6 +131,14 @@ function report(game, level, m) {
       ["Nil bids vs nil-able hands", (m.nilBids / Math.max(1, m.nilChances)).toFixed(2)],
       ["Set rate beside a nil", pct(m.besideNilSet, m.besideNil)], ["Blind nil bids", `${m.blindBids} (${pct(m.blindMade, m.blindBids)} made)`],
       ["Team 0 / team 1 wins", `${pct(m.wins[0], m.games)} / ${pct(m.wins[1], m.games)}`]);
+  } else if (game === "euchre") {
+    const plain = m.calls - m.loners;
+    rows.push(["Hands with a maker", pct(m.calls, m.hands)], ["Thrown in (everyone passed twice)", pct(m.thrown, m.hands)],
+      ["Called in round two", pct(m.round2, m.calls)], ["Dealer stuck (forced call)", pct(m.stuck, m.calls)],
+      ["Makers euchred", pct(m.euchred, m.calls)], ["Marches (all five, with partner)", pct(m.marches, plain)],
+      ["Points per call (makers)", ((m.makerPts - 2 * m.euchred) / Math.max(1, m.calls)).toFixed(2)],
+      ["Loners per 100 hands", ((100 * m.loners) / m.hands).toFixed(1)], ["Loner success (all five tricks)", pct(m.lonerMarch, m.loners)],
+      ["Loners euchred", pct(m.lonerEuchred, m.loners)], ["Team 0 / team 1 wins", `${pct(m.wins[0], m.games)} / ${pct(m.wins[1], m.games)}`]);
   } else if (game === "ohhell") {
     rows.push(["Exact bids (took exactly what they bid)", pct(m.exactBids, m.bids)], ["Missed by taking too few / too many", `${pct(m.overBids, m.bids)} / ${pct(m.bids - m.exactBids - m.overBids, m.bids)}`],
       ["Average miss (tricks off the bid)", (m.bidErr / m.bids).toFixed(2)], ["Tables bid over / under the tricks", `${pct(m.overTables, m.hands)} / ${pct(m.underTables, m.hands)}`],
@@ -144,6 +166,10 @@ function check(game, m) {
     need(m.set / m.contracts <= 0.12, `set rate ${pct(m.set, m.contracts)} > 12%`);
     need(m.nilMade / m.nilBids >= 0.7, `nil success ${pct(m.nilMade, m.nilBids)} < 70%`);
     need(m.bags / m.contracts <= 1.5, "bags per hand > 1.5");
+  } else if (game === "euchre") {
+    need(m.euchred / m.calls <= 0.2, `maker euchre rate ${pct(m.euchred, m.calls)} > 20%`);
+    need(m.lonerMarch / Math.max(1, m.loners) >= 0.6, `loner success ${pct(m.lonerMarch, m.loners)} < 60%`);
+    need(m.loners > 0, "nobody ever went alone");
   } else if (game === "ohhell") {
     need(m.exactBids / m.bids >= 0.5, `exact bids ${pct(m.exactBids, m.bids)} < 50%`);
     need(m.bidErr / m.bids <= 0.6, "average miss > 0.6 tricks");
@@ -160,7 +186,7 @@ function check(game, m) {
 async function ladder(game, strong, weak, games, preset, workers) {
   // strong side on seats 0 (+2 in spades), then swapped, so seat order can't flatter either level
   const teams = TEAMS(game), lv = (a, b) => (teams ? [a, b, a, b] : [a, b, b, b]);
-  const hands = games * { spades: 9, hearts: 14, ohhell: ohhell.sequence(rulesFor(cfg, "ohhell", preset)).length, whist: 6 }[game];
+  const hands = games * { spades: 9, hearts: 14, euchre: 12, ohhell: ohhell.sequence(rulesFor(cfg, "ohhell", preset)).length, whist: 6 }[game];
   const a = await parallel({ game, levels: lv(strong, weak), preset, hands: hands / 2, seed: 11 }, workers);
   const b = await parallel({ game, levels: teams ? lv(weak, strong) : [weak, strong, weak, weak], preset, hands: hands / 2, seed: 12 }, workers);
   const won = a.wins[0] + b.wins[1];
@@ -175,7 +201,7 @@ else {
   const workers = +opt("workers", Math.max(1, availableParallelism() - 2)), preset = opt("preset", "standard");
   const hands = +opt("hands", 20000), all = args.includes("--all");
   const custom = Object.fromEntries(opt("custom", "").split(",").filter(Boolean).map((kv) => kv.split("=")).map(([k, v]) => [k, JSON.parse(v)]));
-  const games = all ? ["spades", "hearts", "ohhell", "whist"] : [opt("game", "spades")];
+  const games = all ? ["spades", "hearts", "euchre", "ohhell", "whist"] : [opt("game", "spades")];
   const levels = all ? ["easy", "standard", "expert", "extreme"] : [opt("level", "standard")];
   const fails = [];
   console.log(`Kitchen Table sim: preset ${preset}, ${workers} workers, ${new Date().toISOString().slice(0, 10)}`);
