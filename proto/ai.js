@@ -373,8 +373,8 @@ function heartsPlay(v, K, level, rng) {
 
 // ids of the sins an action would commit in this view; [] is clean. Shared by tests, the sim and the in-game detector.
 export function sins(v, action) {
-  if (v.game === "euchre") return euchreAI.sins(v, action);
   if (BOTS[v.game]) return BOTS[v.game].sins(v, action);
+  if (v.game === "euchre") return euchreAI.sins(v, action);
   const out = [];
   if (v.game === "spades") {
     const s = v.seat, p = partner(s), r = v.rules;

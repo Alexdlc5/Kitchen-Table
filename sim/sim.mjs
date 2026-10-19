@@ -68,8 +68,8 @@ function run({ game, levels, preset, custom = {}, hands, seed }) {
             if (st.bids[t] === 0 || st.bids[t + 2] === 0) { m.besideNil++; if (T < B) m.besideNilSet++; }
           }
         }
-      } else if (game === "euchre") euchreMetrics(m, st);
-      else if (game === "ohhell") {
+      } else if (game === "euchre") { euchreMetrics(m, st);
+      } else if (game === "ohhell") {
         for (let s = 0; s < 4; s++) { m.bids++; if (st.bids[s] === st.tricks[s]) m.exactBids++; else if (st.tricks[s] < st.bids[s]) m.overBids++; m.bidErr += Math.abs(st.bids[s] - st.tricks[s]); }
         const total = st.bids.reduce((a, b) => a + b, 0);
         if (total > st.size) m.overTables++; else if (total < st.size) m.underTables++;

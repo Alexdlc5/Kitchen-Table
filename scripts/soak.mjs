@@ -32,7 +32,7 @@ await cdp.send("Performance.enable");
 await page.evaluate(async () => {
   const { THEMES } = await import("./themes.js"), free = Object.keys(THEMES).filter((k) => THEMES[k].tier === "free");
   window.played = { games: 0, themes: 0 };
-  const start = () => { const n = played.games++; kt.S.opt.comfort = !!((n >> 1) & 1); kt.applyLook(); kt.newGame(["hearts", "spades", "euchre"][n % 3]); kt.autoplay(); };
+  const start = () => { const n = played.games++; kt.S.opt.comfort = !!((n >> 1) & 1); kt.applyLook(); kt.newGame(["hearts", "spades", "euchre", "ohhell", "whist"][n % 5]); kt.autoplay(); };
   start();
   setInterval(() => { if (kt.screen === "sheet") kt.ACT.next(); else if (kt.screen !== "table") start(); }, 250);
   setInterval(() => { kt.S.opt.theme = free[++played.themes % free.length]; kt.applyLook(); }, 45000);

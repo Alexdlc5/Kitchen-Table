@@ -348,7 +348,7 @@ function drawTable(justPlayed = -1) {
   const hh = layoutHand();
   const mePlate = document.querySelector(".s-me");
   mePlate.style.bottom = `calc(var(--safe-b) + ${hh + 18}px)`;
-  $("#trump").innerHTML = more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
+  $("#trump").innerHTML = !more.NAMES[G.game] ? "" : more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
   // the trick and the side seats sit in the middle of whatever room the top seat and the hand leave
   const free0 = Math.max(...[".s-top", ...(S.opt.comfort ? [".s-left", ".s-right"] : [])].map((q) => document.querySelector(q).getBoundingClientRect().bottom)), free1 = mePlate.getBoundingClientRect().top;
   $("#table").style.setProperty("--free0", free0 + "px"); $("#table").style.setProperty("--mid", (free0 + free1) / 2 + "px");
@@ -679,8 +679,8 @@ function postScores(won, extreme) {
   const newBest = [];
   if (g === "hearts") { if (won) set("hearts_best", G.totals.score[0]); set("hearts_wins", rec.won); }
   if (g === "spades") { set("spades_streak", rec.bestStreak || 0); set("spades_wins", rec.won); }
-  if (g === "euchre") set("euchre_wins", rec.won);
   if (more.NAMES[g]) set(`${g}_wins`, rec.won);
+  if (g === "euchre") set("euchre_wins", rec.won);
   if (won && extreme) set("extreme_wins", (S.best.extreme_wins || 0) + 1);
   return newBest;
 }
@@ -774,8 +774,8 @@ function describeTable() {
   if (st.trick.length) parts.push(st.trick.map((t) => `${G.seats[t.seat].name} played the ${cardName(t.card)}`).join(", ") + ".");
   else parts.push("No cards on the table.");
   if (G.game === "euchre") parts.push(euchreTable());
-  if (more.NAMES[G.game]) parts.push(st.trump ? `Trump is ${SUIT_WORD[st.trump].toLowerCase()}.` : "No trump this hand.");
-  if (G.game === "spades" || G.game === "ohhell") parts.push(G.seats.map((x, s) => `${x.name} bid ${st.bids[s] === null ? "nothing yet" : st.bids[s] === 0 ? "nil" : st.bids[s]} and has ${st.tricks[s]}`).join(". ") + ".");
+  else if (st.trump !== undefined) parts.push(st.trump ? `Trump is ${SUIT_WORD[st.trump].toLowerCase()}.` : "No trump this hand.");
+  if (st.bids) parts.push(G.seats.map((x, s) => `${x.name} bid ${st.bids[s] === null ? "nothing yet" : st.bids[s] === 0 ? "nil" : st.bids[s]} and has ${st.tricks[s]}`).join(". ") + ".");
   if (pending && pending.seat === G.viewer && EUCHRE_ASK[pending.kind]) parts.push(EUCHRE_ASK[pending.kind]);
   else if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : "");
   return parts.join(" ");
