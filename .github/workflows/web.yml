@@ -1,0 +1,25 @@
+name: web game at iPhone size
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit chromium
+      - name: the app bundle builds and every import resolves
+        run: node scripts/build-web.mjs
+      - name: save mirror (localStorage <-> Preferences)
+        run: node scripts/check-save-mirror.mjs
+      - name: every screen and a whole hand of each game, WebKit + Chromium, no overlay during a hand, tap targets
+        run: node scripts/smoke.mjs
+      - name: the same on iPhone SE with Comfort mode on (64pt targets, 1.6x cards)
+        run: node scripts/smoke.mjs --se --comfort

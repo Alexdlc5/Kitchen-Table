@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Kitchen Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Grandstander:wght@700&display=swap" rel="stylesheet">
+<!-- the native splash stays up until the first screen has painted; this hides it anyway if the game never boots -->
+<script>setTimeout(() => window.Capacitor?.Plugins?.SplashScreen?.hide(), 4000);</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="felt" aria-hidden="true"></div>
+<div id="haze" aria-hidden="true"></div>
+<main>
+  <section id="title" class="screen" aria-label="Title"></section>
+  <section id="picker" class="screen" aria-label="Games"></section>
+  <section id="setup" class="screen" aria-label="Table setup"></section>
+  <section id="table" class="screen" aria-label="Table">
+    <header class="bar">
+      <button id="menuBtn" class="pill" data-act="menu" aria-label="Menu">☰ <span>Menu</span></button>
+      <button id="scoreChip" class="pill" data-act="peek" aria-label="Score"></button>
+    </header>
+    <div id="seats"></div>
+    <div id="trick" aria-live="polite"></div>
+    <div id="center"></div>
+    <div id="peek" class="paper" hidden></div>
+    <div id="hand" role="group" aria-label="Your hand"></div>
+    <div id="handoff" hidden></div>
+  </section>
+  <section id="sheet" class="screen" aria-label="Score sheet"></section>
+  <section id="results" class="screen" aria-label="Results"></section>
+  <section id="options" class="screen" aria-label="Options"></section>
+  <section id="caregiver" class="screen" aria-label="Caregiver"></section>
+  <section id="stats" class="screen" aria-label="Fair deal"></section>
+  <section id="unlock" class="screen" aria-label="Unlock everything"></section>
+  <section id="howto" class="screen" aria-label="How to play"></section>
+</main>
+<div id="dialog" class="dialog" role="dialog" aria-modal="true" hidden><div class="paper" id="dialogBody"></div></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
