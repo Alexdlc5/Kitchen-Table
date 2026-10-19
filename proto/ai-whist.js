@@ -109,17 +109,6 @@ export function sins(v, action) {
 
 // ---------------------------------------------------------------- entry point (ai.decide sends Whist views here)
 
-// Extreme reads the opening leads: a world is kept only if every seat that has led holds (as dealt) 3+ cards of the suit it first led
-const fitsLeads = (v) => (hs) => {
-  for (let s = 0; s < 4; s++) {
-    if (s === v.seat) continue;
-    const first = v.history.find((h, i) => i % 4 === 0 && h.seat === s);
-    if (!first) continue;
-    const dealt = [...hs[s], ...v.history.filter((h) => h.seat === s).map((h) => h.card), ...v.trick.filter((t) => t.seat === s).map((t) => t.card)];
-    if (dealt.filter((c) => c[1] === first.card[1]).length < 3) return false;
-  }
-  return true;
-};
 const outcome = (st, seat) => { const t = seat % 2; return st.tricks[t] + st.tricks[t + 2] - st.tricks[1 - t] - st.tricks[3 - t]; };
 
 export function decide(v, level, rng, tune) {
@@ -131,7 +120,7 @@ export function decide(v, level, rng, tune) {
   }
   if (level === "expert" || level === "extreme") {
     const x = level === "extreme", pinned = v.seat === v.dealer ? [] : [{ seat: v.dealer, card: v.trumpCard }];
-    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, pinned, keep: x ? fitsLeads(v) : null });
+    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, pinned }); // Extreme: more samples
   }
   if (sins(v, d.action).length) {
     const clean = legal.filter((c) => !sins(v, c).length);

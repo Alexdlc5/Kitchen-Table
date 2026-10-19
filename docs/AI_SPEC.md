@@ -125,7 +125,7 @@ and Expert's sampled worlds put it there.
 Sim (`node sim/sim.mjs --game whist --check`, Standard, 20K hands): tricks per team within 0.15 a hand with equal bots
 (6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%): see the table below
 the Euchre runs in `docs/RELEASE_REVIEW.md`; on 100-game smoke runs Expert beat Standard 71% and Standard beat Easy 69%.
-Extreme keeps worlds where each seat's first lead came from a suit it held 3+ of.
+Extreme is Expert with 60 samples instead of 24 (a bid-reading filter has nothing to read in Whist: there is no bidding).
 
 ## 8. Canasta / Hand and Foot (v2 note)
 
