@@ -264,8 +264,11 @@ async function dealIn() { // cards fly from the dealer to your hand, one by one
   if (calm()) return;
   const els = [...document.querySelectorAll("#hand .card")], [dx, dy] = offset(pos(G.st.dealer), 3), hand = $("#hand").getBoundingClientRect();
   const fromY = window.innerHeight * 0.42 - hand.top + dy;
-  await Promise.all(els.map((el, i) => el.animate([{ transform: `translate(${dx + hand.width / 2 - parseFloat(el.style.left)}px, ${fromY}px) rotate(${-20 + i * 3}deg) scale(.6)`, opacity: 0 }, { transform: "none", opacity: 1 }],
-    { duration: 380 * speed(), delay: i * 45 * speed(), easing: "cubic-bezier(.2,.8,.3,1)", fill: "backwards" }).finished.catch(() => {})));
+  const anims = els.map((el, i) => el.animate([{ transform: `translate(${dx + hand.width / 2 - parseFloat(el.style.left)}px, ${fromY}px) rotate(${-20 + i * 3}deg) scale(.6)`, opacity: 0 }, { transform: "none", opacity: 1 }],
+    { duration: 380 * speed(), delay: i * 45 * speed(), easing: "cubic-bezier(.2,.8,.3,1)", fill: "backwards" }));
+  // never hold up the game: if the animations stall (a backgrounded page, a slow device), finish them and carry on
+  await Promise.race([Promise.all(anims.map((a) => a.finished.catch(() => {}))), wait((380 + els.length * 45) * speed() + 400)]);
+  anims.forEach((a) => { try { a.finish(); } catch {} });
 }
 function confetti() { // a few cards drift down past the winner's name; decoration only
   const box = document.createElement("div");
@@ -768,6 +771,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };
