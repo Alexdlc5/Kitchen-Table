@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.alexdlc5.kitchentable",
+  "appName": "Kitchen Table",
+  "webDir": "www",
+  "ios": { "backgroundColor": "#3a2414" },
+  "plugins": {
+    "SplashScreen": { "launchAutoHide": false, "launchFadeOutDuration": 250, "backgroundColor": "#3a2414", "showSpinner": false }
+  },
+  "experimental": {
+    "ios": { "spm": { "swiftToolsVersion": "6.1", "packageTraits": { "@capacitor-firebase/analytics": ["AnalyticsWithoutAdIdSupport"] } } }
+  }
+}
