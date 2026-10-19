@@ -19,7 +19,7 @@ const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf
 const shots = arg("--shots"), LANG = arg("--lang"), SE = process.argv.includes("--se"), COMFORT = process.argv.includes("--comfort"), IPAD = process.argv.includes("--ipad");
 if (shots) mkdirSync(shots, { recursive: true });
 const VW = IPAD ? 820 : SE ? 375 : 402, VH = IPAD ? 1180 : SE ? 667 : 874, DPR = SE || IPAD ? 2 : 3;
-const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto"];
+const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards"];
 
 // in the page: buttons on the current screen that are off screen or too small to tap
 const AUDIT = (id) => {

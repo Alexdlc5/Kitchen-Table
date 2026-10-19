@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Kitchen Table</title>
+<title>The Kitchen Table</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Grandstander:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:ital,wght@0,600;1,400&display=swap" rel="stylesheet">
 <!-- the native splash stays up until the first screen has painted; this hides it anyway if the game never boots -->
 <script>setTimeout(() => window.Capacitor?.Plugins?.SplashScreen?.hide(), 4000);</script>
 <link rel="stylesheet" href="style.css">
@@ -20,10 +20,11 @@
   <section id="table" class="screen" aria-label="Table">
     <header class="bar">
       <button id="menuBtn" class="pill" data-act="menu" aria-label="Menu">☰ <span>Menu</span></button>
+      <button id="readBtn" class="pill" data-act="read" aria-label="Read the table aloud" hidden>🔊 <span>Read</span></button>
       <button id="scoreChip" class="pill" data-act="peek" aria-label="Score"></button>
     </header>
     <div id="seats"></div>
-    <div id="trick" aria-live="polite"></div>
+    <div id="trick"></div>
     <div id="center"></div>
     <div id="peek" class="paper" hidden></div>
     <div id="hand" role="group" aria-label="Your hand"></div>
@@ -36,7 +37,10 @@
   <section id="stats" class="screen" aria-label="Fair deal"></section>
   <section id="unlock" class="screen" aria-label="Unlock everything"></section>
   <section id="howto" class="screen" aria-label="How to play"></section>
+  <section id="shop" class="screen" aria-label="Table shop"></section>
+  <section id="boards" class="screen" aria-label="Leaderboards"></section>
 </main>
+<div id="announce" class="vh" aria-live="polite" aria-atomic="true"></div>
 <div id="dialog" class="dialog" role="dialog" aria-modal="true" hidden><div class="paper" id="dialogBody"></div></div>
 <script type="module" src="main.js"></script>
 </body>

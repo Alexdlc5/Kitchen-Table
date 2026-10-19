@@ -7,12 +7,11 @@ mkdirSync(`${out}/fonts`, { recursive: true });
 for (const f of readdirSync("proto").filter((f) => /\.(js|css)$/.test(f))) copyFileSync(`proto/${f}`, `${out}/${f}`);
 mkdirSync(`${out}/lang`); for (const f of readdirSync("proto/lang")) copyFileSync(`proto/lang/${f}`, `${out}/lang/${f}`); // translations (i18n.js)
 copyFileSync("sim/generator.json", `${out}/generator.json`);
-const weights = [400, 600, 700];
-for (const w of weights) copyFileSync(`node_modules/@fontsource/fredoka/files/fredoka-latin-${w}-normal.woff2`, `${out}/fonts/fredoka-${w}.woff2`);
-copyFileSync("node_modules/@fontsource/grandstander/files/grandstander-latin-700-normal.woff2", `${out}/fonts/grandstander-700.woff2`);
+// Figtree for reading, Fraunces (a soft serif) for titles: calm and grown-up, still friendly
+const FONTS = [["figtree", 400, "normal"], ["figtree", 500, "normal"], ["figtree", 600, "normal"], ["figtree", 700, "normal"], ["fraunces", 600, "normal"], ["fraunces", 400, "italic"]];
+for (const [f, w, s] of FONTS) copyFileSync(`node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2`, `${out}/fonts/${f}-${w}-${s}.woff2`);
 let html = readFileSync("proto/index.html", "utf8");
-const font = weights.map((w) => `@font-face { font-family: Fredoka; font-weight: ${w}; font-display: swap; src: url(fonts/fredoka-${w}.woff2) format("woff2"); }`).join("\n") +
-  `\n@font-face { font-family: Grandstander; font-weight: 700; font-display: swap; src: url(fonts/grandstander-700.woff2) format("woff2"); }`;
+const font = FONTS.map(([f, w, s]) => `@font-face { font-family: ${f[0].toUpperCase() + f.slice(1)}; font-weight: ${w}; font-style: ${s}; font-display: swap; src: url(fonts/${f}-${w}-${s}.woff2) format("woff2"); }`).join("\n");
 html = html.replace(/<link rel="preconnect"[^>]*>\s*<link href="https:\/\/fonts\.googleapis\.com[^>]*>/, `<style>${font}</style>`);
 if (html.includes("fonts.googleapis.com")) throw new Error("Google Fonts link not replaced");
 writeFileSync(`${out}/index.html`, html);

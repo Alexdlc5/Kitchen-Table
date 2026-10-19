@@ -7,7 +7,9 @@ import { rulesFor, team, partner, newDeck } from "./cards.js";
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
 import { decide, nilRisk, nilForbidden } from "./ai.js";
-import { face, back, cardName, FELTS, BACKS, PIP } from "./art.js";
+import { face, cardName, titleProps } from "./art.js";
+import { THEMES, themeBack, themeStyle } from "./themes.js";
+import { speech } from "./speech.js";
 import { sound } from "./sound.js";
 
 const cfg = await (await fetch("../sim/generator.json", { cache: "no-cache" })).json();
@@ -21,9 +23,10 @@ const BOTS = { easy: ["Dot", "Gus", "Pearl"], standard: ["June", "Earl", "Rosa"]
 const KEY = "kt.save", RESET = 1; // bump RESET for an "as a new player" TestFlight build: wipes the save once per device
 const fresh = () => ({
   v: 1, reset: RESET, hands: 0, consentAsked: false,
-  opt: { sound: true, loud: false, haptics: true, comfort: false, four: false, confirm: false, speed: "normal", lang: CHOSEN, analytics: null, back: "classic", felt: "green" },
+  opt: { sound: true, loud: false, haptics: true, comfort: false, four: false, confirm: false, speed: "normal", lang: CHOSEN, analytics: null,
+    theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1 },
   last: { game: "hearts", preset: "standard", custom: {}, partner: "standard", opps: "standard", seats: ["you", "bot", "bot", "bot"] },
-  cur: null, deals: [], record: {}, care: { pin: null, lock: false, games: ["hearts", "spades"], straight: false },
+  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades"], straight: false },
 });
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); if (S.reset !== RESET) S = fresh(); } catch { S = fresh(); }
@@ -50,13 +53,20 @@ function applyLook() {
   const root = document.documentElement;
   root.classList.toggle("comfort", !!S.opt.comfort);
   root.style.setProperty("--speed", S.opt.speed === "fast" ? 0.6 : 1);
-  $("#felt").style.background = (FELTS[S.opt.felt] && (FELTS[S.opt.felt].pack ? platform.owns(FELTS[S.opt.felt].pack) : true) ? FELTS[S.opt.felt] : FELTS.green).bg;
+  const theme = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", st = themeStyle(theme), felt = $("#felt");
+  felt.style.background = st.background; felt.style.boxShadow = st.boxShadow;
+  for (const [k, v] of Object.entries(st.vars)) root.style.setProperty(k, v);
+  root.classList.toggle("text-l", S.opt.text === "large"); root.classList.toggle("text-xl", S.opt.text === "xl");
+  speech.enabled = !!S.opt.speak; speech.rate = S.opt.speakRate || 1;
   sound.enabled = S.opt.sound; sound.setIgnoreSilent(S.opt.loud);
   faces.clear();
+  backSvg = themeBack(ownsTheme(S.opt.back) ? S.opt.back : theme);
 }
+const ownsTheme = (id) => THEMES[id] && (THEMES[id].tier === "free" || platform.owns("theme_" + id));
 const faces = new Map();
 const svgFor = (c) => { const k = c + S.opt.four; if (!faces.has(k)) faces.set(k, face(c, { four: S.opt.four })); return faces.get(k); };
-const cardEl = (c, attrs = "", cls = "") => `<button class="card ${cls}" data-card="${c}" aria-label="${cardName(c)}" ${attrs}>${svgFor(c)}</button>`;
+const cardEl = (c, attrs = "", cls = "", label = cardName(c)) => `<button class="card ${cls}" data-card="${c}" aria-label="${label}" ${attrs}>${svgFor(c)}</button>`;
+let backSvg = ""; // the chosen card back, drawn once per change of theme
 
 // R2: nothing may pop up between the deal and the last trick. dialog() refuses unless the player opened it themselves.
 let handLive = false;
@@ -102,14 +112,19 @@ const WHY = {
 function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
   const fan = ["AS", "AH", "AD", "AC"].map((c, i) => cardEl(c, `tabindex="-1" aria-hidden="true" style="transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px); margin: 0 calc(var(--cw) * -.32)"`)).join("");
-  $("#title").innerHTML = `<div class="stack">
-    <h1>${BRAND}</h1><div class="hero">${fan}</div>
+  $("#title").innerHTML = `<div class="stack title">
+    <p class="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
+    <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
     <button class="btn big" data-act="deal" data-game="${game}">${S.cur ? "Back to the table" : `Deal: ${GAME_NAME[game]}`}</button>
-    <button class="btn" data-act="go" data-to="picker">Games and house rules</button>
-    <button class="btn" data-act="go" data-to="stats">Fair deal and your stats</button>
-    <button class="btn" data-act="go" data-to="howto">How to play</button>
-    <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
-    <div class="row" style="justify-content:center"><button class="link" data-act="restore">Restore purchases</button><button class="link" data-act="care" aria-label="Caregiver settings">🔑 Caregiver</button></div>
+    <div class="grid2">
+      <button class="btn" data-act="go" data-to="picker">Games and rules</button>
+      <button class="btn" data-act="go" data-to="boards">Leaderboards</button>
+      <button class="btn" data-act="${lock ? "care" : "go"}" data-to="shop">Table shop</button>
+      <button class="btn" data-act="go" data-to="stats">Fair deal</button>
+      <button class="btn" data-act="go" data-to="howto">How to play</button>
+      <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
+    </div>
+    <div class="row" style="justify-content:center"><button class="link" data-act="restore">Restore purchases</button><button class="link" data-act="care" aria-label="Caregiver settings">Caregiver</button></div>
   </div>`;
 }
 
@@ -175,6 +190,7 @@ function startHand() {
   recordDeal(G.st.hands[0], G.game, G.rules);
   S.cur = G; save();
   sound.shuffle();
+  announce(`Hand ${G.handNo + 1}. New cards are dealt.`, { interrupt: true });
   run();
 }
 function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals (seat 0 only, as dealt)
@@ -200,12 +216,15 @@ async function run() {
       if (my !== runId) return;
     } else {
       await wait((st.phase === "play" ? 520 : 380) * speed());
+      await speech.idle(); // when the table is read aloud, the bots wait for the voice to finish
       if (my !== runId) return;
       const d = decide(m.view(st, s), seat.level);
       action = d.action; G.reasons[s] = d.reason;
     }
-    const before = st.history.length;
+    const before = st.history.length, phase = st.phase;
     m.apply(st, action);
+    if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? "nil" : action.bid}.`);
+    if (phase === "pass" && st.phase === "play") announce(`Cards passed. You received ${(st.received[G.viewer] || []).map(cardName).join(", ")}.`);
     if (st.history.length > before) await played(s, action);
     else drawTable();
     save();
@@ -214,8 +233,14 @@ async function run() {
   if (my === runId) finishHand();
 }
 async function played(seat, card) {
-  sound.card(); if (G.seats[seat].kind === "human") platform.haptic();
+  sound.card(); if (G.seats[seat].kind === "human" && S.opt.haptics) platform.haptic();
   const st = G.st, done = !st.trick.length;
+  announce(`${G.seats[seat].name} played the ${cardName(card)}.`);
+  if (done) {
+    const w = st.turn, ours = G.game === "spades" ? team(w) === team(G.viewer) : w === G.viewer;
+    announce(`${w === G.viewer ? "You take" : G.seats[w].name + " takes"} the trick.`);
+    if (ours && S.opt.haptics) platform.haptic("medium");
+  }
   showTrick = done ? st.lastTrick : st.trick;
   drawTable(seat);
   if (!done) return;
@@ -242,8 +267,9 @@ function drawTable(justPlayed = -1) {
     const pips = seat.kind === "bot" ? `<span class="pips" aria-label="${LEVEL_NAME[seat.level]}">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : "";
     const tag = isSp && s === partner(me) && !S.opt.comfort ? "<span>Partner</span>" : "";
     const whyLine = why[s] && G.reasons[s] ? `<span class="why">${WHY[G.reasons[s].split(":")[0]] || ""}</span>` : "";
-    return `<button class="seat ${cls} ${st.turn === s && st.phase !== "done" ? "turn" : ""}" data-act="why" data-seat="${s}" aria-label="${esc(seat.name)}"><b>${esc(seat.name)}</b>${tag || status ? `<span class="st">${tag}${status}</span>` : ""}${pips}${whyLine}</button>`;
+    return `<button class="seat ${cls} ${st.turn === s && st.phase !== "done" ? "turn" : ""}" data-act="why" data-seat="${s}" aria-label="${esc(seat.name)}"><b>${esc(seat.name)}</b>${tag || status ? `<span class="st">${tag}${status}</span>` : ""}${pips}${p ? `<span class="backs" aria-hidden="true">${backSvg.repeat(Math.min(3, st.hands[s].length))}</span>` : ""}${whyLine}</button>`;
   };
+  $("#readBtn").hidden = !S.opt.speak;
   $("#seats").innerHTML = [0, 1, 2, 3].map(plate).join("");
   // trick
   const tr = showTrick || st.trick;
@@ -258,7 +284,7 @@ function drawTable(justPlayed = -1) {
   const legal = mine?.kind === "play" ? new Set(mine.legal) : null;
   $("#hand").innerHTML = hand.map((c) => {
     const enabled = mine && (mine.kind === "pass" || (legal && legal.has(c))), dim = legal && !legal.has(c); // dim only what you can't play now
-    return cardEl(c, `data-act="card" ${enabled ? "" : "disabled"}`, `${mine?.sel?.includes(c) ? "sel" : ""} ${dim ? "dim" : ""}`);
+    return cardEl(c, `data-act="card" ${enabled ? "" : "disabled"}`, `${mine?.sel?.includes(c) ? "sel" : ""} ${dim ? "dim" : ""}`, `${cardName(c)}${dim ? ", can't play now" : mine?.sel?.includes(c) ? ", selected" : ""}`);
   }).join("");
   const hh = layoutHand();
   const mePlate = document.querySelector(".s-me");
@@ -329,6 +355,8 @@ function ask(seat) { // resolves with the human's action
     const legal = m.legal(st);
     pending = { seat, legal, kind: st.phase === "play" ? "play" : st.phase, sel: [], resolve: (a) => { pending = null; resolve(a); } };
     drawTable();
+    if (S.opt.haptics) platform.haptic("medium");
+    announce({ play: "Your turn.", bid: "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?" }[pending.kind]);
   });
 }
 async function handoff(s) {
@@ -383,19 +411,22 @@ function renderResults() {
   const who = sp ? (w === 0 ? `You and ${G.seats[2].name} win!` : `${G.seats[1].name} and ${G.seats[3].name} win.`) : w === 0 ? "You win!" : `${G.seats[w].name} wins.`;
   const rec = (S.record[G.game] ??= { played: 0, won: 0, streak: 0, best: null });
   rec.played++; if (won) { rec.won++; rec.streak++; } else rec.streak = 0;
+  rec.bestStreak = Math.max(rec.bestStreak || 0, rec.streak);
   if (!sp && won) rec.best = rec.best === null ? G.totals.score[0] : Math.min(rec.best, G.totals.score[0]);
-  if (sp) platform.submitScore("spades_streak", rec.streak); else if (won) platform.submitScore("hearts_best", G.totals.score[0]);
+  const solo = humans() === 1, extreme = G.seats.filter((x, s) => x.kind === "bot" && (!sp || s % 2 === 1)).every((x) => x.level === "extreme");
+  const newBest = solo ? postScores(won, extreme) : [];
+  announce(`${who} Final score: ${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => G.totals.score[i]).join(" to ")}.`);
   track("game_end", { game: G.game, won: won ? 1 : 0, hands: G.handNo });
   const consent = S.opt.analytics === null && !S.care.lock ? `<div class="paper" id="consentCard"><h2>Help make ${BRAND} better?</h2>
     <p>Share anonymous numbers like how many hands you play and which rules you pick. No ads, no tracking, nothing about you. You can change this in Options.</p>
     <div class="row"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn big" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
   S.cur = null; save();
-  $("#results").innerHTML = `<div class="stack"><h1>${who}</h1>
+  $("#results").innerHTML = `<div class="stack"><h1>${who}</h1>${newBest.length ? `<p class="say" style="justify-self:center">New personal best: ${esc(newBest.join(", "))}</p>` : ""}
     <div class="paper pad"><table>${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => `<tr><td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
     <p class="muted">${G.handNo} hands · ${PRESET_NAME[G.preset]} rules · ${rec.won} won of ${rec.played}</p></div>
     <button class="btn big" data-act="again">Deal again</button>
     ${consent}
-    <button class="btn" data-act="go" data-to="stats">Fair deal and your stats</button>
+    <div class="grid2"><button class="btn" data-act="go" data-to="boards">Leaderboards</button><button class="btn" data-act="go" data-to="stats">Fair deal</button></div>
     <button class="btn ghost" data-act="go" data-to="title">Done</button></div>`;
 }
 
@@ -432,14 +463,22 @@ function renderStats() {
 
 // ---------------------------------------------------------------- options, caregiver, unlock, how to play
 function renderOptions() {
-  const o = S.opt, ownedBacks = Object.entries(BACKS).filter(([, b]) => !b.pack || platform.owns(b.pack)), ownedFelts = Object.entries(FELTS).filter(([, f]) => !f.pack || platform.owns(f.pack));
+  const o = S.opt, seg = (act, val, opts) => `<div class="seg">${opts.map(([v, label]) => `<button data-act="${act}" data-v="${v}" aria-pressed="${val === v}">${label}</button>`).join("")}</div>`;
+  const owned = Object.keys(THEMES).filter(ownsTheme);
   $("#options").innerHTML = `<div class="stack"><h1>Options</h1>
-    <div class="paper">${toggle("opt:comfort", o.comfort, "Comfort mode: bigger cards, tap twice to play, slower table")}
+    <div class="paper"><h2>Accessibility</h2>
+      <div class="row"><span>Text size</span>${seg("textsize", o.text || "normal", [["normal", "Normal"], ["large", "Large"], ["xl", "Extra large"]])}</div>
+      ${toggle("opt:comfort", o.comfort, "Comfort mode: bigger cards, tap twice to play, slower table")}
       ${toggle("opt:four", o.four, "Four-color deck (♦ blue, ♣ green)")}${toggle("opt:confirm", o.confirm || o.comfort, "Tap twice to play a card")}
-      <div class="row"><span>Table speed</span><div class="seg">${["relaxed", "normal", "fast"].map((v) => `<button data-act="speed" data-v="${v}" aria-pressed="${o.speed === v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join("")}</div></div></div>
-    <div class="paper">${toggle("opt:sound", o.sound, "Sound")}${toggle("opt:loud", o.loud, "Play sound when the phone is on silent")}${toggle("opt:haptics", o.haptics, "Vibration")}</div>
-    <div class="paper"><div class="row"><span>Card back</span><select data-act="back">${ownedBacks.map(([id, b]) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${b.name}</option>`).join("")}</select></div>
-      <div class="row"><span>Table</span><select data-act="felt">${ownedFelts.map(([id, f]) => `<option value="${id}" ${o.felt === id ? "selected" : ""}>${f.name}</option>`).join("")}</select></div>
+      ${toggle("opt:speak", o.speak, "Read the table aloud")}
+      ${o.speak ? `<div class="row"><span>Reading speed</span>${seg("speakrate", o.speakRate || 1, [[0.8, "Slower"], [1, "Normal"], [1.2, "Faster"]])}</div>` : ""}
+      ${toggle("opt:haptics", o.haptics, "Vibrate on your turn and when you win a trick")}
+      <p class="muted">Blind or low-vision? ${BRAND} works with VoiceOver: every card, bid and play is announced. "Read the table aloud" speaks the same things with the phone's own voice if you don't use VoiceOver, and adds a Read button at the table.</p></div>
+    <div class="paper"><h2>Table</h2>
+      <div class="row"><span>Speed</span>${seg("speed", o.speed, [["relaxed", "Relaxed"], ["normal", "Normal"], ["fast", "Fast"]])}</div>
+      <div class="row"><span>Card back</span><select data-act="back"><option value="">Matches the table</option>${owned.map((id) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${esc(THEMES[id].name)}</option>`).join("")}</select></div>
+      <div class="row"><span>Table theme</span><button class="btn" data-act="go" data-to="shop">${esc(THEMES[ownsTheme(o.theme) ? o.theme : "walnut"].name)} ›</button></div></div>
+    <div class="paper">${toggle("opt:sound", o.sound, "Sound")}${toggle("opt:loud", o.loud, "Play sound when the phone is on silent")}
       <div class="row"><span>Language</span><select data-act="lang"><option value="">Phone setting</option>${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${o.lang === k ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
     <div class="paper">${toggle("opt:analytics", o.analytics === true, "Share anonymous usage numbers")}
       <div class="row"><button class="btn" data-act="restore">Restore purchases</button></div>
@@ -509,8 +548,79 @@ function renderHowto() {
     <button class="btn ghost" data-act="${G && S.cur ? "resume" : "go"}" data-to="title">Back</button></div>`;
 }
 
+// ---------------------------------------------------------------- the table shop (themes) and leaderboards
+const TIER_ORDER = ["classic", "signature", "luxe"];
+const priceOf = (tier) => `$${cfg.shop.tiers[tier].price}`;
+function themeTile(id, big = false) {
+  const t = THEMES[id], mine = ownsTheme(id), using = (S.opt.theme || "walnut") === id;
+  const action = using ? `<span class="tag">In use</span>` : mine ? `<button class="btn" data-act="usetheme" data-v="${id}">Use</button>`
+    : `<button class="btn big" data-act="buytheme" data-v="${id}">${priceOf(t.tier)}</button>`;
+  return `<div class="tile ${big ? "luxe" : ""} ${using ? "using" : ""}"><span class="tprev" data-theme="${id}" aria-hidden="true"><span class="tback">${themeBack(id)}</span><span class="tface">${svgFor("AH")}</span></span>
+    <span class="tname">${esc(t.name)}</span><span class="tblurb">${esc(t.blurb)}</span>${action}</div>`;
+}
+function paintPreviews(root) { // backgrounds are set from JS: their SVG data URLs carry quotes an attribute can't hold
+  for (const el of root.querySelectorAll("[data-theme]")) { const st = themeStyle(el.dataset.theme); el.style.background = st.background; el.style.boxShadow = st.boxShadow; }
+}
+function renderShop() {
+  const ids = (tier) => Object.keys(THEMES).filter((k) => THEMES[k].tier === tier);
+  const swatch = (id) => `<button class="swatch ${(S.opt.theme || "walnut") === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
+  $("#shop").innerHTML = `<div class="stack"><h1>Table shop</h1>
+    <div class="paper thanks"><h2>Thank you for being here</h2>
+      <p>${cfg.brand.wordmark} has no ads and never will. It's made by one small team, and every theme you pick up is what keeps the cards coming: new games, new rules, and a table that stays calm. We're truly grateful. Thank you for supporting us.</p>
+      <p class="muted">Every theme is yours to keep, on every device in your Family Sharing group. Nothing renews.</p></div>
+    <div class="paper"><h2>Free tables</h2><div class="swatches">${ids("free").map(swatch).join("")}</div></div>
+    ${TIER_ORDER.map((tier) => `<div class="paper ${tier === "luxe" ? "luxebox" : ""}"><h2>${cfg.shop.tiers[tier].name} <span class="muted">· ${priceOf(tier)} each</span></h2>
+      <div class="tiles ${tier === "luxe" ? "one" : ""}">${ids(tier).map((id) => themeTile(id, tier === "luxe")).join("")}</div></div>`).join("")}
+    <button class="btn" data-act="restore">Restore purchases</button>
+    <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+  paintPreviews($("#shop"));
+}
+
+// Game Center is the only identity (no accounts, no server). Scores count for solo games against the bots only.
+function renderBoards() {
+  const fmt = (b, v) => (v == null ? "—" : b.unit ? `${v} ${b.unit}` : v);
+  $("#boards").innerHTML = `<div class="stack"><h1>Leaderboards</h1>
+    <div class="paper pad"><h2>Your bests</h2><table>${cfg.leaderboards.map((b) => `<tr><td>${esc(b.name)}<br><small class="muted">${esc(b.explain)}</small></td><td class="n">${fmt(b, S.best[b.id])}</td></tr>`).join("")}</table>
+      <p class="muted">Scores count for games you play alone against the computer. Pass-and-play games don't post scores.</p></div>
+    ${platform.leaderboards ? `<button class="btn big" data-act="gc">See the Game Center leaderboards</button>`
+      : `<p class="onfelt muted" style="color:var(--cream)">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
+    <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+}
+// after a solo game: update the bests and post them (best = lowest for Hearts, highest elsewhere)
+function postScores(won, extreme) {
+  const g = G.game, rec = S.record[g], set = (id, v) => {
+    const b = cfg.leaderboards.find((x) => x.id === id), old = S.best[id];
+    if (old == null || (b.order === "low" ? v < old : v > old)) { S.best[id] = v; newBest.push(b.name); }
+    platform.submitScore(id, v);
+  };
+  const newBest = [];
+  if (g === "hearts") { if (won) set("hearts_best", G.totals.score[0]); set("hearts_wins", rec.won); }
+  if (g === "spades") { set("spades_streak", rec.bestStreak || 0); set("spades_wins", rec.won); }
+  if (won && extreme) set("extreme_wins", (S.best.extreme_wins || 0) + 1);
+  return newBest;
+}
+
+// ---------------------------------------------------------------- spoken table and VoiceOver announcements
+const SUIT_WORD = { S: "Spades", H: "Hearts", D: "Diamonds", C: "Clubs" };
+function announce(text, { interrupt = false } = {}) {
+  $("#announce").textContent = text; // VoiceOver reads the live region
+  speech.say(text, { interrupt });
+}
+function describeHand(seat) {
+  const st = G.st, j = G.game === "spades" && G.rules.jokers, eff = (c) => (G.game === "spades" ? spades.eff(c, j) : c[1]);
+  return "SHDC".split("").map((s) => { const cs = st.hands[seat].filter((c) => eff(c) === s); return cs.length ? `${SUIT_WORD[s]}: ${cs.map((c) => cardName(c).replace(/ of \w+$/, "")).join(", ")}.` : `No ${SUIT_WORD[s].toLowerCase()}.`; }).join(" ");
+}
+function describeTable() {
+  const st = G.st, parts = [];
+  if (st.trick.length) parts.push(st.trick.map((t) => `${G.seats[t.seat].name} played the ${cardName(t.card)}`).join(", ") + ".");
+  else parts.push("No cards on the table.");
+  if (G.game === "spades") parts.push(G.seats.map((x, s) => `${x.name} bid ${st.bids[s] === null ? "nothing yet" : st.bids[s] === 0 ? "nil" : st.bids[s]} and has ${st.tricks[s]}`).join(". ") + ".");
+  if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : "");
+  return parts.join(" ");
+}
+
 // ---------------------------------------------------------------- taps
-const RENDER = { title: renderTitle, picker: renderPicker, setup: renderSetup, options: renderOptions, caregiver: renderCaregiver, stats: renderStats, unlock: renderUnlock, howto: renderHowto };
+const RENDER = { shop: renderShop, boards: renderBoards, title: renderTitle, picker: renderPicker, setup: renderSetup, options: renderOptions, caregiver: renderCaregiver, stats: renderStats, unlock: renderUnlock, howto: renderHowto };
 async function go(to) { await RENDER[to]?.(); show(to); }
 const ACT = {
   go: (el) => go(el.dataset.to),
@@ -527,7 +637,7 @@ const ACT = {
     const c = el.dataset.card;
     if (pending.kind === "pass") { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < 3) pending.sel.push(c); return drawTable(); }
     if (pending.kind !== "play" || !pending.legal.includes(c)) return;
-    if ((S.opt.comfort || S.opt.confirm) && pending.sel[0] !== c) { pending.sel = [c]; return drawTable(); } // tap to pick, tap again to play
+    if ((S.opt.comfort || S.opt.confirm) && pending.sel[0] !== c) { pending.sel = [c]; speech.say(cardName(c) + ". Tap again to play.", { interrupt: true }); return drawTable(); } // tap to pick, tap again to play
     pending.resolve(c);
   },
   step: (el) => { if (pending?.kind === "bid") { pending.step += +el.dataset.v; drawTable(); } },
@@ -556,6 +666,19 @@ const ACT = {
   verify: () => gate(platform.site + "/verify.html", "our verify-a-deal page"),
   link: (el) => gate(platform.site + "/" + el.dataset.url, "our website"),
   consent: (el) => { S.opt.analytics = el.dataset.v === "yes"; setTelemetry(S.opt.analytics, { first: true }); save(); $("#consentCard")?.remove(); },
+  usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
+  buytheme: async (el) => {
+    const id = el.dataset.v;
+    if (!platform.native) return ACT.usetheme(el);
+    if (await platform.buy("theme_" + id)) {
+      S.opt.theme = id; save(); applyLook(); renderShop();
+      await dialog(`<h2>Thank you!</h2><p><b>${esc(THEMES[id].name)}</b> is yours to keep, on every device in your family. Your support keeps ${cfg.brand.wordmark} free of ads and helps us bring the next game to the table. We're so grateful.</p><button class="btn big" data-dlg="">Back to the shop</button>`, { user: true });
+    }
+  },
+  textsize: (el) => { S.opt.text = el.dataset.v; save(); applyLook(); renderOptions(); },
+  speakrate: (el) => { S.opt.speakRate = +el.dataset.v; save(); applyLook(); renderOptions(); speech.say("This is how fast I'll read.", { interrupt: true }); },
+  gc: () => platform.showLeaderboards(),
+  read: () => speech.say(describeTable() + " " + describeHand(G.viewer), { interrupt: true }),
   speed: (el) => { S.opt.speed = el.dataset.v; save(); applyLook(); renderOptions(); },
   carelevel: (el) => { S.last.opps = S.last.partner = el.dataset.v; save(); renderCaregiver(); },
   howto: (el) => { setupGame = el.dataset.v; renderHowto(); },
@@ -582,7 +705,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target, act = el.dataset.act;
   if (act === "rulesel") { const d = cfg.rules[setupGame].find((x) => x.id === el.dataset.id); S.last.custom[d.id] = typeof d.presets.standard === "number" ? +el.value : el.value; save(); }
-  if (act === "back" || act === "felt") { S.opt[act] = el.value; save(); applyLook(); }
+  if (act === "back") { S.opt.back = el.value || null; save(); applyLook(); }
   if (act === "lang") { S.opt.lang = el.value || null; save(); location.reload(); }
 });
 // press-and-hold buttons (the grown-up gate)

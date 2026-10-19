@@ -12,7 +12,7 @@ const qs = new URLSearchParams(globalThis.location?.search ?? "");
 const OWN_KEY = "kt.owned";
 let owned = new Set();
 try { owned = new Set(JSON.parse(localStorage.getItem(OWN_KEY) || "[]")); } catch {}
-if (!native && !qs.has("locked")) owned = new Set(["everything", "backs_porch", "felts_home"]);
+const webAll = !native && !qs.has("locked"); // the browser test build owns every game and theme
 const setOwned = (ids) => { owned = new Set(ids); try { if (native) localStorage.setItem(OWN_KEY, JSON.stringify([...owned])); } catch {} };
 
 const log = [];
@@ -33,7 +33,7 @@ export function track(name, params = {}) {
 let leaderboards = false;
 export const platform = {
   native, os, log, version: VERSION, site: SITE,
-  owns: (id) => owned.has(id),
+  owns: (id) => webAll || owned.has(id),
   get canBuy() { return native && !!Purchases && !!KEYS.revenuecat[os]; },
 
   async init() {

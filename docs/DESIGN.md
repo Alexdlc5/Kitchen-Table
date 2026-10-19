@@ -90,17 +90,23 @@ Table ── last trick ──► Score sheet (line-by-line scoring, seed, "Next
 | Product | Type | Price | Contents |
 |---|---|---|---|
 | `everything` | Non-consumable, Family Sharing | $6.99 | Spades, Euchre (v1.1), every future game and rules pack |
-| `backs_porch` | Non-consumable, Family Sharing | $1.99 | 6 painterly card backs (quilt, county fair, lighthouse, jukebox, corn row, lake cabin) |
-| `felts_home` | Non-consumable, Family Sharing | $2.99 | 4 table surfaces (oak kitchen table, porch boards, diner formica, cabin plaid) + matching backs |
+| `theme_<id>` × 13 | Non-consumable, Family Sharing | $2.99 Classic · $4.99 Signature · $9.99 Luxe | A table theme: surface, card back, accent (the Table shop, SHOP_AND_ENGAGEMENT.md §2) |
 
 - Hearts, every rule preset, every AI level, Comfort mode, the four-color and jumbo decks, stats and pass-and-play are free.
   **Accessibility is never sold.**
 - RevenueCat (as in Glimmerwood; the `purchases-capacitor` plugin and the owner's account already work). Entitlements:
-  `everything`, `backs_porch`, `felts_home`.
+  `everything` and one per theme (`theme_gingham` …). Free tables: Walnut (default) and green, blue, red, orange, pink felt.
 - Restore purchases on the title screen and in Options.
 - Pricing anchor on the listing: "$6.99 once. The ad apps charge $9.99 for 30 days."
+- The shop thanks the player at the top and after every purchase. More income ideas, all within the rules: SHOP_AND_ENGAGEMENT.md §3.
 
 ## 6. Comfort mode and the caregiver screen
+
+### 6.0 Accessibility (Options › Accessibility)
+Text size (Normal / Large / Extra large), Comfort, four-colour deck, vibration on your turn and on tricks won. For blind
+and low-vision players: every card, seat and score is labelled for VoiceOver and every bid, play and trick is announced in
+a live region; **Read the table aloud** speaks the same with the phone's voice (the bots wait for it), adds a Read button
+(the table, then your hand by suit) and speaks the selected card before you confirm it.
 
 ### 6.1 Comfort mode (Options toggle; also set from the caregiver screen; default off)
 - Cards drawn at **≥ 1.6×** the default size; the hand becomes two rows if needed (never overlapping indices). Rank and suit
@@ -215,8 +221,10 @@ The sim plays every preset (balance check: no preset makes a seat or a strategy 
 
 ## 10. Game Center
 
-- Leaderboards: **Hearts: best 100-point game** (lowest final score, low-to-high), **Spades: longest win streak**,
-  later **Deal of the day**.
+- Leaderboards (`generator.json → leaderboards`): **Hearts: best game** (lowest winning score), **Hearts: games won**,
+  **Spades: longest win streak**, **Spades: games won**, **Wins against Extreme**; later **Deal of the day**. Only solo games
+  against the bots post scores (pass-and-play shares one Apple Account). The in-app Leaderboards screen shows your bests and
+  opens Game Center's own boards on iPhone and iPad.
 - Achievements (10): First moon · Stopped a moon · Nil made · Blind nil made · Set them three times in one game · Boston ·
   100 hands · 1,000 hands · Won with every preset · Family table win.
 - Never shown during a hand; the Game Center access point is hidden on the table.
@@ -233,10 +241,13 @@ The sim plays every preset (balance check: no preset makes a seat or a strategy 
 
 ## 12. Cosmetics plan
 
-Procedural SVG like everything else (TABLE.md): card backs and felts are parameterised paintings, so the shop renders its
-own previews and the store-shots script can stage any of them. Free set: the default back (deep red with a cream border),
-the default felt (warm green), the four-color deck, the jumbo deck. Paid packs as in §5. Later packs come from requests;
-never time-limited, never in a loot box.
+The Table shop (`proto/themes.js`): 19 themes, each a procedural surface, card back and accent, so the shop paints its own
+previews and the store-shots script can stage any of them. Free: Walnut and five felts. Paid: Classic $2.99, Signature
+$4.99, Luxe collection $9.99 (SHOP_AND_ENGAGEMENT.md §2). Card faces never change. Never time-limited, never a loot box.
+
+**The look (owner, 2026-10-19):** warm, comforting, a little nostalgic, quietly luxurious, for people unwinding after work;
+modern enough for younger players. Walnut and ivory, brushed-brass accents, Fraunces for titles and Figtree for reading.
+The title reads "Play a game of cards at… The Kitchen Table" over a painted teacup, cookies and a score pad.
 
 ## 13. Sound and haptics
 
