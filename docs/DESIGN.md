@@ -31,7 +31,7 @@ partner and the same house rules. Nothing else on screen.
 | R2 | **Never interrupt a hand.** No modal, toast, rating prompt, purchase prompt or consent card between the deal and the last trick. | `smoke.mjs` plays a full hand per game and fails on any overlay; `ui.overlay()` refuses while `handInProgress` |
 | R3 | **Comfort mode** (§6). | `smoke.mjs --comfort`: target sizes measured on and off |
 | R4 | **House rules are presets, not constants.** Every rule lives in `sim/generator.json` with a name and an explanation. | Rules tests read only the JSON; a rule with no `explain` fails `npm run check` |
-| R5 | **AI quality bar** (AI_SPEC.md). Every named sin is a scenario test at every level; the AI sees only what a player at the table could see. | `test_ai` scenarios; `view()` isolation test; 100K-hand sim per level |
+| R5 | **AI quality bar** (AI_SPEC.md). Four levels: Easy, Standard, Expert, Extreme (for very experienced players). Every named sin is a scenario test at every level; the AI sees only what a player at the table could see. | `test_ai` scenarios; `view()` isolation test; 100K-hand sim per level |
 | R6 | **Save on device, no accounts.** localStorage mirrored to Capacitor Preferences. Game Center is the only identity. | `check-save-mirror.mjs` |
 | R7 | **No ad SDK in the binary, ever.** No AdMob, UMP, ATT, `app-ads.txt`. `NSPrivacyTracking` false, no tracking domains. | `store-check.mjs` fails on an ad SDK in package.json / SPM graph / Podfile |
 | R8 | **Purchases are permanent.** Only non-consumables. No subscriptions, rentals, coins, energy, hand limits. Restore on the title screen. Family Sharing on. | `store-check.mjs` checks `generator.json → products` (all `non-consumable`, `familyShareable: true`) |

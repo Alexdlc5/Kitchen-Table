@@ -150,7 +150,7 @@ else {
   const hands = +opt("hands", 20000), all = args.includes("--all");
   const custom = Object.fromEntries(opt("custom", "").split(",").filter(Boolean).map((kv) => kv.split("=")).map(([k, v]) => [k, JSON.parse(v)]));
   const games = all ? ["spades", "hearts"] : [opt("game", "spades")];
-  const levels = all ? ["easy", "standard", "expert"] : [opt("level", "standard")];
+  const levels = all ? ["easy", "standard", "expert", "extreme"] : [opt("level", "standard")];
   const fails = [];
   console.log(`Kitchen Table sim: preset ${preset}, ${workers} workers, ${new Date().toISOString().slice(0, 10)}`);
   if (!args.includes("--ladder") || all)
@@ -164,7 +164,8 @@ else {
     const n = +opt("games", 2000);
     console.log(`\n### Level ladder (${preset})\n\n| Game | Match-up | Games | Stronger side won |\n|---|---|---|---|`);
     for (const game of games) {
-      if (levels.includes("expert") || !all) await ladder(game, "expert", "standard", n, preset, workers);
+      await ladder(game, "extreme", "expert", n, preset, workers);
+      await ladder(game, "expert", "standard", n, preset, workers);
       await ladder(game, "standard", "easy", n, preset, workers);
     }
   }

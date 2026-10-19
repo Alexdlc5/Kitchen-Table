@@ -31,7 +31,7 @@ function hv({ preset = "standard", hand, taken = [[], [], [], []], trick = "", h
 function sc(id, what, view, check) {
   for (const level of LEVELS) {
     for (let k = 0; k < (level === "easy" ? 12 : 1); k++) { // Easy is random: try it many times
-      const d = decide(structuredClone(view), level, rng, { ...cfg.ai, expertSamples: 12 });
+      const d = decide(structuredClone(view), level, rng, { ...cfg.ai, expertSamples: 12, extremeSamples: 16 });
       assert.deepEqual(sins(view, d.action), [], `${id} ${level}: ${JSON.stringify(d)} commits a sin`);
       assert.ok(check(d.action), `${id} ${level}: ${what}; played ${JSON.stringify(d.action)} (${d.reason})`);
     }
@@ -115,7 +115,7 @@ sc("H06", "I passed the queen: don't lead my ace or king of spades into it", hv(
   const base = hv({ hand: "KS AS 4D 9C 2H", taken: [[], ["3H"], [], []], trick: "1:5S 2:9S 3:JS" });
   const rot = (s) => (s + 2) % 4;
   const turned = { ...structuredClone(base), seat: 2, turn: 2, trick: base.trick.map((t) => ({ ...t, seat: rot(t.seat) })), taken: [[], [], [], ["3H"]] };
-  for (const level of ["standard", "expert"]) {
+  for (const level of ["standard", "expert", "extreme"]) {
     r = 99; const a = decide(structuredClone(base), level, rng).action;
     r = 99; const b = decide(turned, level, rng).action;
     assert.equal(a, b, `H04 ${level}: the decision changed when the table was rotated`);

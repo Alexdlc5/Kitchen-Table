@@ -7,7 +7,7 @@ import * as hearts from "./hearts.js";
 import { newDeck, partner, team, next } from "./cards.js";
 
 const GAMES = { spades, hearts };
-const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, nilMaxRisk: { easy: 0.3, standard: 0.22, expert: 0.22 } };
+const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.3, standard: 0.22, expert: 0.22, extreme: 0.22 } };
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
 export function legalFor(v) {
@@ -429,10 +429,22 @@ export function sins(v, action) {
 
 // ---------------------------------------------------------------- Expert: sample hidden hands, play each option out
 
-function sampleWorld(v, K, rng) {
+// Extreme reads the bids the way a strong player does: a dealt world is kept only if every other seat's hand, as it was
+// dealt (cards held now plus cards already played), fits what that seat bid. Public information only.
+function fitsBids(v, hs) {
+  if (v.game !== "spades") return true;
+  for (let s = 0; s < 4; s++) {
+    if (s === v.seat || v.bids[s] === null || v.blind[s]) continue;
+    const dealt = [...hs[s], ...v.history.filter((h) => h.seat === s).map((h) => h.card), ...v.trick.filter((t) => t.seat === s).map((t) => t.card)];
+    if (v.bids[s] === 0 ? nilForbidden(dealt, v.rules) || nilRisk(dealt, v.rules) > 0.45 : Math.abs(estimateTricks(dealt, v.rules) - v.bids[s]) > 1.5) return false;
+  }
+  return true;
+}
+
+function sampleWorld(v, K, rng, read = false) {
   const g = GAMES[v.game], sizes = v.sizes, hands = [[], [], [], []];
   hands[v.seat] = [...v.hand];
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < (read ? 80 : 40); attempt++) {
     const pool = [...K.unseen];
     const known = [[], [], [], []];
     if (v.passed && v.received) { // cards I passed are still with the receiver unless played
@@ -448,7 +460,7 @@ function sampleWorld(v, K, rng) {
       if (!cands.length) { ok = false; break; }
       hs[pick(rng, cands)].push(c);
     }
-    if (ok) return hs;
+    if (ok && (!read || attempt >= 60 || fitsBids(v, hs))) return hs; // after 60 misses, take any consistent world
   }
   return null;
 }
@@ -464,7 +476,7 @@ function playOut(st, rng, tune) {
   return st;
 }
 
-function expertPlay(v, base, rng, tune) {
+function expertPlay(v, base, rng, tune, extreme = false) {
   const g = GAMES[v.game], legal = legalFor(v).filter((c) => !sins(v, c).length);
   if (legal.length <= 1) return base;
   const K = know(v), totals = new Map(legal.map((c) => [c, 0]));
@@ -473,8 +485,8 @@ function expertPlay(v, base, rng, tune) {
   const fork = (hands) => ({ ...root, hands: hands.map((h) => [...h]), trick: [...root.trick], tricks: [...root.tricks],
     history: [...root.history], bids: root.bids && [...root.bids], taken: root.taken && root.taken.map((t) => [...t]) });
   let samples = 0;
-  for (let i = 0; i < tune.expertSamples; i++) {
-    const hands = sampleWorld(v, K, rng);
+  for (let i = 0; i < (extreme ? tune.extremeSamples : tune.expertSamples); i++) {
+    const hands = sampleWorld(v, K, rng, extreme);
     if (!hands) continue;
     samples++;
     for (const c of legal) {
@@ -519,7 +531,7 @@ export function decide(v, level = "standard", rng = Math.random, tune = DEFAULT_
     const alt = legal.filter((c) => K.eff(c) === K.eff(d.action) && c !== d.action && !sins(v, c).length);
     if (alt.length) d = { action: pick(rng, alt), reason: "easy_slip" };
   }
-  if (level === "expert") d = expertPlay(v, d, rng, tune);
+  if (level === "expert" || level === "extreme") d = expertPlay(v, d, rng, tune, level === "extreme");
   if (sins(v, d.action).length) { // safety net: never ship a sin, whatever the heuristics said
     const clean = legal.filter((c) => !sins(v, c).length);
     if (clean.length) d = { action: lowest(clean, K), reason: `${d.reason}:sin_guard`, guarded: true };
@@ -527,4 +539,4 @@ export function decide(v, level = "standard", rng = Math.random, tune = DEFAULT_
   return d;
 }
 
-export const LEVELS = ["easy", "standard", "expert"];
+export const LEVELS = ["easy", "standard", "expert", "extreme"];

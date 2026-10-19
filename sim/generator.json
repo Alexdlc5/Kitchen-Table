@@ -413,8 +413,10 @@
   "nilMaxRisk": {
    "easy": 0.3,
    "standard": 0.22,
-   "expert": 0.22
+   "expert": 0.22,
+   "extreme": 0.22
   },
-  "bidBias": 0.25
+  "bidBias": 0.25,
+  "extremeSamples": 60
  }
 }
