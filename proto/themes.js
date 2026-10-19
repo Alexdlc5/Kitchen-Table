@@ -91,18 +91,31 @@ function staves() { // charred oak barrel staves, an iron hoop with rivets acros
   const hoop = (y) => `<rect y="${y}" width="${W}" height="16" fill="#2b2a28"/><rect y="${y}" width="${W}" height="2" fill="#5d5b57"/><rect y="${y + 14}" width="${W}" height="2" fill="#141312"/>` + [20, 60, 100, 140, 180, 220].map((x) => `<circle cx="${x}" cy="${y + 8}" r="2.6" fill="#77736b"/><circle cx="${x - .6}" cy="${y + 7.4}" r="1" fill="#b9b3a8"/>`).join("");
   return svgURL(W, H, `${grain}${s}<rect width="${W}" height="${H}" filter="url(#g)"/>${hoop(260)}`);
 }
-function casings() { // shotgun shells standing in a row: red ribbed hull, star-crimped top, brass head with a rim
-  let s = "";
-  for (let i = 0; i < 5; i++) {
-    const x = i * 26 + 3;
-    s += `<rect x="${x}" y="4" width="20" height="34" rx="2" fill="url(#hull)"/>` +
-      [10, 16, 22, 28].map((y) => `<rect x="${x}" y="${y}" width="20" height="1.2" fill="#5e1010" opacity=".45"/>`).join("") +
-      `<path d="M${x + 2} 4 L${x + 10} 9 L${x + 18} 4" fill="none" stroke="#5e1010" stroke-width="1.2" opacity=".7"/><path d="M${x + 10} 4 L${x + 10} 9" stroke="#5e1010" stroke-width="1.2" opacity=".7"/>` +
-      `<rect x="${x}" y="38" width="20" height="14" fill="url(#head)"/><rect x="${x - 1.5}" y="51" width="23" height="4" rx="1.5" fill="#9a6d24"/>` +
-      `<rect x="${x + 3}" y="6" width="3" height="30" rx="1.5" fill="#fff" opacity=".22"/><rect x="${x + 3}" y="39" width="3" height="12" rx="1" fill="#fff4cf" opacity=".5"/>`;
+// shotgun shells and 9mm casings lying where they rolled, mostly toward the edges so the cards keep the middle.
+// One picture stretched over the whole table (no tiling), so nothing repeats.
+function scatteredShells(seed = 12) {
+  const r = rng(seed), W = 400, H = 860, items = [];
+  const clear = (x, y) => x > 70 && x < 330 && y > 170 && y < 690; // where the cards play
+  for (let n = 0, tries = 0; n < 34 && tries < 400; tries++) {
+    const x = r() * W, y = r() * H;
+    if (clear(x, y)) continue;
+    if (items.some((p) => Math.hypot(p.x - x, p.y - y) < 34)) continue;
+    items.push({ x, y, rot: r() * 360, shot: n % 3 === 0 });
+    n++;
   }
-  return svgURL(132, 58, `<defs><linearGradient id="hull" x1="0" x2="1"><stop offset="0" stop-color="#6e1414"/><stop offset=".35" stop-color="#c22a2a"/><stop offset=".65" stop-color="#9c1d1d"/><stop offset="1" stop-color="#5a0f0f"/></linearGradient>
-    <linearGradient id="head" x1="0" x2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>${s}`);
+  const shell = ({ x, y, rot }) => `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse cx="3" cy="6" rx="30" ry="9" fill="#000" opacity=".35" filter="url(#sh)"/>
+    <rect x="-26" y="-8" width="38" height="16" rx="2" fill="url(#hull)"/>${[-18, -10, -2, 6].map((v) => `<rect x="${v}" y="-8" width="1.2" height="16" fill="#5e1010" opacity=".4"/>`).join("")}
+    <path d="M-26 -7 L-22 0 L-26 7" fill="none" stroke="#5e1010" stroke-width="1.2" opacity=".7"/>
+    <rect x="12" y="-8" width="11" height="16" fill="url(#brassV)"/><rect x="22" y="-9.5" width="3.5" height="19" rx="1" fill="#9a6d24"/>
+    <rect x="-24" y="-6" width="34" height="3" rx="1.5" fill="#fff" opacity=".2"/></g>`;
+  const nine = ({ x, y, rot }) => `<g transform="translate(${x} ${y}) rotate(${rot})"><ellipse cx="2" cy="4" rx="11" ry="5" fill="#000" opacity=".35" filter="url(#sh)"/>
+    <rect x="-9" y="-4.5" width="16" height="9" rx="1" fill="url(#brassV)"/><rect x="6" y="-5" width="3" height="10" rx="1" fill="#9a6d24"/>
+    <ellipse cx="-9" cy="0" rx="1.6" ry="4.2" fill="#3a2608"/><rect x="-7" y="-3.5" width="12" height="1.6" rx=".8" fill="#fff4cf" opacity=".55"/></g>`;
+  const defs = `<defs><filter id="sh" x="-50%" y="-80%" width="200%" height="260%"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e1414"/><stop offset=".35" stop-color="#c22a2a"/><stop offset=".65" stop-color="#9c1d1d"/><stop offset="1" stop-color="#5a0f0f"/></linearGradient>
+    <linearGradient id="brassV" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>`;
+  const body = items.map((p) => (p.shot ? shell(p) : nine(p))).join("");
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">${defs}${body}</svg>`)}")`;
 }
 const gingham = (c) => `repeating-linear-gradient(0deg, ${c}66 0 26px, transparent 26px 52px), repeating-linear-gradient(90deg, ${c}66 0 26px, transparent 26px 52px), #f7efe2`;
 const plaid = `repeating-linear-gradient(0deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), #9e2a24`;
@@ -128,8 +141,8 @@ export const THEMES = {
   parlor: { name: "Antique parlor", tier: "signature", blurb: "Green leather, mahogany and gold tooling.", table: leather("#2e4a36"), frame: frame("#c9a45c", "#4a1f14", 14), back: { base: "#3a1d14", ink: "#c9a45c", motif: "damask" }, accent: { paper: "#f6efdf", brass: "#b8924c", line: "#d6c49c" } },
   leopard: { name: "Leopard lounge", tier: "signature", blurb: "A little wild, black lacquer edge.", table: `${lamp(0.14)}, ${vignette(0.45)}, ${leopard()}`, frame: frame("#c9a45c", "#111111", 12), back: { base: "#141414", ink: "#d9a86a", motif: "leopard" }, accent: { paper: "#fbf3e6", brass: "#c9a45c", line: "#dccdb0" } },
   midcentury: { name: "Mid-century", tier: "signature", blurb: "Teak, mustard and atomic stars.", table: `${lamp(0.16)}, ${vignette(0.4)}, ${atomic()}`, back: { base: "#4f8c86", ink: "#d9a43a", motif: "starburst" }, accent: { paper: "#fbf4e4", brass: "#d9a43a", line: "#dccaa2" } },
-  whiskey: { name: "Whiskey & shells", tier: "signature", blurb: "Charred barrel staves, amber light and a row of shotgun shells.",
-    table: `${casings()} top / 132px 58px repeat-x, ${casings()} bottom / 132px 58px repeat-x, radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255,170,70,.28), transparent 70%), ${vignette(0.5)}, ${staves()}`,
+  whiskey: { name: "Whiskey & shells", tier: "signature", blurb: "Barrel staves, amber light, shotgun shells and 9mm brass scattered about.",
+    table: `${scatteredShells()} center / cover no-repeat, radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255,170,70,.28), transparent 70%), ${vignette(0.5)}, ${staves()}`,
     frame: frame("#c8963e", "#1c0f06", 6), back: { base: "#3b2010", ink: "#d9a54a", motif: "headstamp" }, accent: { paper: "#f6ecd9", brass: "#c8963e", line: "#dcc59c" } },
   leather: { name: "Leather & brass", tier: "signature", blurb: "Oxblood leather and brass studs, a quiet club.", table: leather("#5a1d1d"), frame: frame("#d8b56a", "#2b1410", 10), back: { base: "#4a1414", ink: "#d8b56a", motif: "studs" }, accent: { paper: "#f7efe1", brass: "#c9a45c", line: "#d8c7a4" } },
 

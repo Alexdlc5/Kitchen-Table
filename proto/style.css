@@ -271,13 +271,13 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 }
 
 /* the card-back fan in the shop: a hand of the backs you own; the chosen one stands up */
-.backfan { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 26px 6px 10px; margin: 0 -6px; }
-.backpick { flex: none; width: 82px; display: grid; gap: 6px; justify-items: center; padding: 0; border: 0; background: none; scroll-snap-align: center;
+.backfan { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px 10px; padding: 22px 0 6px; } /* every back in view: no hidden sideways scroll */
+.backpick { flex: none; width: 72px; display: grid; gap: 6px; justify-items: center; padding: 0; border: 0; background: none; scroll-snap-align: center;
   transform: rotate(calc((var(--i) % 2 * 2 - 1) * 3deg)); transition: transform .2s; min-height: var(--tap); }
-.backpick svg { width: 82px; height: auto; display: block; border-radius: 8px; box-shadow: var(--lift-2); }
+.backpick svg { width: 72px; height: auto; display: block; border-radius: 8px; box-shadow: var(--lift-2); }
 .backpick small { font-size: calc(var(--fs-s) * .9); color: #5a4a38; text-align: center; line-height: 1.15; }
 .backpick.on { transform: translateY(-16px) rotate(0); }
 .backpick.on svg { outline: 3px solid var(--brass); outline-offset: 3px; }
 .backpick:focus-visible svg { outline: 3px solid var(--brass-d); outline-offset: 3px; }
-html.comfort .backpick, html.comfort .backpick svg { width: 112px; }
+html.comfort .backpick, html.comfort .backpick svg { width: 100px; }
 @media (prefers-reduced-motion: reduce) { .backpick { transition: none; } }

@@ -616,7 +616,6 @@ function renderShop() {
     <button class="btn" data-act="restore">Restore purchases</button>
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
   paintPreviews($("#shop"));
-  $("#shop .backpick.on")?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 
 // Game Center is the only identity (no accounts, no server). Scores count for solo games against the bots only.
