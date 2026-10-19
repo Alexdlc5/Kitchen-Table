@@ -12,28 +12,36 @@ export const PIP = {
   H: "M50 90 C24 70 6 52 6 32 C6 17 17 7 30 7 C40 7 47 13 50 21 C53 13 60 7 70 7 C83 7 94 17 94 32 C94 52 76 70 50 90Z",
   D: "M50 4 C60 20 74 36 90 50 C74 64 60 80 50 96 C40 80 26 64 10 50 C26 36 40 20 50 4Z",
   S: "M50 5 C58 22 92 38 92 60 C92 74 81 82 69 82 C61 82 56 78 53 73 C54 82 58 89 67 95 L33 95 C42 89 46 82 47 73 C44 78 39 82 31 82 C19 82 8 74 8 60 C8 38 42 22 50 5Z",
-  C: "M50 6 C61 6 70 15 70 26 C70 33 67 38 63 42 C67 40 71 39 75 39 C86 39 95 48 95 59 C95 70 86 79 75 79 C66 79 59 74 55 67 C56 80 60 88 67 95 L33 95 C40 88 44 80 45 67 C41 74 34 79 25 79 C14 79 5 70 5 59 C5 48 14 39 25 39 C29 39 33 40 37 42 C33 38 30 33 30 26 C30 15 39 6 50 6Z",
+  // three round lobes and a flared stem (round arcs, so the club never looks pinched at any size)
+  C: "M50 8 a19 19 0 1 1 0 38 a19 19 0 1 1 0 -38Z M27 37 a19 19 0 1 1 0 38 a19 19 0 1 1 0 -38Z M73 37 a19 19 0 1 1 0 38 a19 19 0 1 1 0 -38Z M50 40 a12 12 0 1 1 0 24 a12 12 0 1 1 0 -24Z M46 56 L54 56 C55 74 59 86 68 95 L32 95 C41 86 45 74 46 56Z",
 };
 const pip = (s, x, y, size, col) => `<path d="${PIP[s]}" fill="${col}" transform="translate(${x - size / 2} ${y - size / 2}) scale(${size / 100})"/>`;
 const label = (c) => (c[0] === "T" ? "10" : c[0]);
 
-// face: 100 x 140. Big corner index (rank over suit) for reading at a glance; a large centre pip; courts get a painted panel
+// face: 100 x 140. Big corner index (rank over suit) for reading at a glance. Everything else stays in the clear centre
+// column (x 32-68) between the two indices, so nothing ever sits on a rank or suit (scripts/check-cards.mjs)
 export function face(c, { four = false } = {}) {
   const W = 100, H = 140, cream = "#fffdf7";
   const base = `<rect x="1" y="1" width="98" height="138" rx="9" fill="${cream}" stroke="#c9bfa8" stroke-width="1.5"/>`;
   if (c === "BJ" || c === "LJ") {
     const col = c === "BJ" ? "#d0182f" : "#16181d", star = curve(ring(50, 70, 26, 26, 10, 0, 3).map(([x, y], i) => (i % 2 ? [50 + (x - 50) * 0.45, 70 + (y - 70) * 0.45] : [x, y])));
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}<path d="${star}" fill="${col}"/>` +
-      `<text x="8" y="30" font-family="Alegreya, Georgia, serif" font-weight="700" font-size="20" fill="${col}" writing-mode="tb" letter-spacing="1">JOKER</text>` +
+      `<g data-idx>${[..."JOKER"].map((ch, i) => `<text x="14" y="${24 + i * 16}" text-anchor="middle" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="16" fill="${col}">${ch}</text>`).join("")}</g>` +
       `<text x="50" y="128" text-anchor="middle" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="13" fill="${col}">${c === "BJ" ? "BIG" : "LITTLE"}</text></svg>`;
   }
   const s = c[1], col = (four ? COLORS.four : COLORS.two)[s], r = label(c);
-  const idx = (flip) => `<g ${flip ? `transform="rotate(180 50 70)"` : ""}><text x="${r === "10" ? 5 : 9}" y="33" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="${r === "10" ? 28 : 31}" fill="${col}" letter-spacing="${r === "10" ? -2 : 0}">${r}</text>${pip(s, 20, 47, 22, col)}</g>`;
+  const idx = (flip) => `<g data-idx ${flip ? `transform="rotate(180 50 70)"` : ""}><text x="${r === "10" ? 5 : 9}" y="33" font-family="Alegreya Sans, system-ui, sans-serif" font-weight="700" font-size="${r === "10" ? 28 : 31}" fill="${col}" letter-spacing="${r === "10" ? -2 : 0}">${r}</text>${pip(s, 20, 47, 22, col)}</g>`;
   let mid;
   if ("JQK".includes(c[0])) {
-    const panel = mix(col, "#ffffff", 0.82), d = curve(ring(56, 76, 30, 42, 14, 0.06, c.charCodeAt(0) + c.charCodeAt(1)));
-    mid = shape(d, panel, mix(col, "#ffffff", 0.55)) + `<text x="56" y="92" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="700" font-size="46" fill="${col}">${c[0]}</text>` + pip(s, 56, 108, 18, col);
-  } else mid = pip(s, 57, 80, c[0] === "A" ? 52 : 40, col);
+    // a framed court portrait: cream panel, brass rule, a crown (K), a tiara (Q) or a feathered cap (J), the letter, the suit
+    const brass = "#b8903f", hat = {
+      K: `<path d="M38 45 L36 29 L43 36 L50 25 L57 36 L64 29 L62 45Z" fill="${brass}"/><rect x="38" y="43" width="24" height="4" rx="1" fill="${mix(brass, "#000000", 0.25)}"/><circle cx="50" cy="38" r="2.4" fill="${col}"/>`,
+      Q: `<path d="M38 45 C38 37 41 33 44 31 C45 35 47 36 50 30 C53 36 55 35 56 31 C59 33 62 37 62 45Z" fill="${brass}"/>` + [40, 44.5, 50, 55.5, 60].map((x, i) => `<circle cx="${x}" cy="${[33, 30, 27, 30, 33][i]}" r="1.8" fill="#fbf3dc"/>`).join("") + `<circle cx="50" cy="40" r="2.4" fill="${col}"/>`,
+      J: `<path d="M38 46 C38 37 43 33 50 33 C57 33 62 37 62 46Z" fill="${col}"/><path d="M38 46 L62 46" stroke="${brass}" stroke-width="3"/><path d="M53 34 C56 28 59 25 62 23 C60 27 58 31 55 35Z" fill="${brass}"/>`,
+    }[c[0]];
+    mid = `<rect x="34" y="16" width="32" height="108" rx="5" fill="#f6ecd4" stroke="${brass}" stroke-width="1.5"/><rect x="37" y="19" width="26" height="102" rx="3" fill="none" stroke="${mix(col, "#ffffff", 0.45)}" stroke-width="1"/>` +
+      hat + `<text x="50" y="82" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="700" font-size="30" fill="${col}">${c[0]}</text>` + pip(s, 50, 100, 15, col);
+  } else mid = pip(s, 50, 70, c[0] === "A" ? 38 : 34, col);
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}${mid}${idx(false)}${idx(true)}</svg>`;
 }
 

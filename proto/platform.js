@@ -2,7 +2,11 @@
 // No ad SDK, ever (scripts/store-check.mjs fails the build if one appears). In the Capacitor app the native plugins are
 // reached through window.Capacitor.Plugins; in a browser everything is a harmless stand-in.
 const cap = window.Capacitor, native = !!cap?.isNativePlatform?.(), os = cap?.getPlatform?.() || "web";
-const { Purchases, FirebaseAnalytics, FirebaseCrashlytics, Preferences, GameCenter, Haptics } = cap?.Plugins || {};
+// Firebase stays untouched until its config file is in the app (docs/SETUP.md A9): without GoogleService-Info.plist the
+// Crashlytics calls would crash the app. Flip this in the PR that adds the file.
+const FIREBASE = false;
+const { Purchases, Preferences, GameCenter, Haptics, FamilyTable } = cap?.Plugins || {};
+const { FirebaseAnalytics, FirebaseCrashlytics } = FIREBASE ? cap?.Plugins || {} : {};
 export const VERSION = "dev"; // scripts/build-web.mjs writes "1.0 (build)" here
 export const SITE = "https://alexdlc5.github.io/kitchen-table";
 const KEYS = { revenuecat: { ios: "", android: "" } }; // public SDK key from RevenueCat (docs/SETUP.md A11); empty = purchases off
@@ -31,6 +35,42 @@ export function track(name, params = {}) {
 }
 
 let leaderboards = false;
+
+// Family tables (DESIGN.md §9; the protocol is family.js): Game Center invite-only matches in the app. In a browser, other
+// tabs of this page stand in for the other phones over BroadcastChannel, so two tabs play the whole protocol.
+// Events: invited { from }, matched { players: [{ id, name }], host, me }, data { from, data }, playerState { player, state }.
+function webTable() {
+  const ch = new BroadcastChannel("kt-table"), id = "tab-" + Math.random().toString(36).slice(2, 8), name = "Tab " + id.slice(4, 8);
+  const on = {}, at = new Map(), emit = (e, d) => (on[e] || []).forEach((f) => f(d));
+  let size = 0; // people wanted at the table; 0 = not at a table
+  const matched = () => {
+    if (!size || at.size < size) return;
+    const players = [...at].map(([id, name]) => ({ id, name })).sort((a, b) => (a.id < b.id ? -1 : 1));
+    emit("matched", { players, host: players[0].id, me: id });
+  };
+  ch.onmessage = ({ data: m }) => {
+    if (!size) return;
+    if ((m.t === "join" || (m.t === "here" && m.to === id)) && (at.has(m.id) || at.size < size)) {
+      at.set(m.id, m.name);
+      if (m.t === "join") ch.postMessage({ t: "here", id, name, to: m.id });
+      matched();
+    }
+    if (m.t === "data" && at.has(m.from)) emit("data", { from: m.from, data: m.data });
+    if (m.t === "bye" && at.delete(m.id)) emit("playerState", { player: m.id, state: "disconnected" });
+  };
+  const leave = async () => { if (size) ch.postMessage({ t: "bye", id }); size = 0; at.clear(); };
+  addEventListener("pagehide", leave);
+  return {
+    async authenticate() { // opening the table: any other tab that does the same sits down with this one
+      if (!size) { size = 2; at.set(id, name); ch.postMessage({ t: "join", id, name }); }
+      return { ok: true, player: { id, name } };
+    },
+    async invite({ min = 2 } = {}) { size = min; matched(); return { matched: at.size >= min }; },
+    async send(data) { ch.postMessage({ t: "data", from: id, data }); },
+    leave,
+    on(e, fn) { (on[e] ||= []).push(fn); },
+  };
+}
 export const platform = {
   native, os, log, version: VERSION, site: SITE,
   owns: (id) => webAll || owned.has(id),
@@ -82,6 +122,14 @@ export const platform = {
   get leaderboards() { return leaderboards; },
   submitScore(board, value) { if (leaderboards) GameCenter.submitScore({ board, value: Math.floor(value) }).catch(() => {}); },
   async showLeaderboards() { if (!leaderboards) return false; try { return !!(await GameCenter.showLeaderboards())?.shown; } catch { return false; } },
+
+  table: FamilyTable ? {
+    authenticate: () => platform.gameCenter.then(() => FamilyTable.authenticate()),
+    invite: (o) => FamilyTable.invite(o),
+    send: (data) => FamilyTable.send({ data }),
+    leave: () => FamilyTable.leave(),
+    on: (e, fn) => FamilyTable.addListener(e, fn),
+  } : native ? null : webTable(),
 
   haptic(kind = "light") { if (native && Haptics) Haptics.impact({ style: kind === "medium" ? "MEDIUM" : "LIGHT" }).catch(() => {}); },
   openUrl(url) { window.open(url, "_blank"); }, // only ever called after the grown-up gate (main.js gate())

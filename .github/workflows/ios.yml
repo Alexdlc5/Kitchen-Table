@@ -1,0 +1,94 @@
+name: ios
+# Simulator build on every relevant push to main and on PRs that touch the native side (proves it compiles, no Apple account needed).
+# Manual run with "upload" ticked: signed build straight to TestFlight via an App Store Connect API key:
+#   gh workflow run ios.yml --ref main -f upload=true
+# There is no ads switch (no ads, ever) and no sandbox switch: the App Store picks sandbox or real purchases by itself.
+# macOS minutes count 10x on private repos: keep pushes batched, and build on days the repo is public.
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Sign and upload to TestFlight"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["proto/**", "ios/**", "sim/generator.json", "scripts/build-web.mjs", "scripts/asc.py", "package*.json", "capacitor.config.json", ".github/workflows/ios.yml"]
+  pull_request: # only what can break the native build: PRs to the web game don't spend macOS minutes
+    paths: ["ios/**", "package*.json", "capacitor.config.json", ".github/workflows/ios.yml"]
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash # explicit bash adds -o pipefail, so a failing xcodebuild | tail fails the step
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Use the newest Xcode 26 (App Store Connect rejects older SDKs)
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$X" && xcodebuild -version
+      - run: npm ci
+      - name: Rules, bots and save mirror (only a build that passes goes to TestFlight)
+        if: ${{ inputs.upload }}
+        run: npm run check
+      # The build number is ios/BUILD, a file in the repo (not the run counter): bump it in the PR that needs a new build.
+      - name: Read the build number
+        id: ver
+        run: echo "build=$(tr -dc 0-9 < ios/BUILD)" >> "$GITHUB_OUTPUT"
+      - name: Build the web bundle (build ${{ steps.ver.outputs.build }})
+        env:
+          KT_BUILD: ${{ steps.ver.outputs.build }}
+        run: npm run build && npx cap sync ios
+      - name: Simulator build (unsigned)
+        if: ${{ !inputs.upload }}
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 30
+      - name: Archive and upload to TestFlight
+        if: ${{ inputs.upload }}
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          BUILD: ${{ steps.ver.outputs.build }}
+        run: |
+          for v in TEAM KEY_ID ISSUER KEY_P8; do [ -n "${!v}" ] || { echo "missing secret for $v (docs/SETUP.md, part A6)"; exit 1; }; done
+          export KEY="$RUNNER_TEMP/AuthKey_$KEY_ID.p8" KEY_ID ISSUER; printf '%s' "$KEY_P8" > "$KEY"
+          pip3 install --quiet --break-system-packages pyjwt cryptography
+          # Apple rejects a build number it has seen, after a 20-minute archive: check first
+          LAST=$(python3 scripts/asc.py last-build "$(node -p 'require("./capacitor.config.json").appId')")
+          echo "ios/BUILD=$BUILD, highest build in App Store Connect=$LAST"
+          [ "$BUILD" -gt "$LAST" ] || { echo "Bump ios/BUILD above $LAST in a commit, then run again"; exit 1; }
+          python3 scripts/asc.py revoke-dev-certs
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/KitchenTable.xcarchive" -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD" "${AUTH[@]}" archive | tail -n 30
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/KitchenTable.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/out" "${AUTH[@]}" | tail -n 30
+          rm -f "$KEY"
+          # Crashlytics needs the dSYMs to turn crash addresses into file and line; skipped until Firebase is set up (A9)
+          GSP=ios/App/App/GoogleService-Info.plist
+          if [ -f "$GSP" ]; then "$RUNNER_TEMP/spm/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols" -gsp "$GSP" \
+            -p ios "$RUNNER_TEMP/KitchenTable.xcarchive/dSYMs" || echo "::warning::Crashlytics dSYM upload failed; crash reports stay unsymbolicated"; fi
+          echo "Uploaded build $BUILD: it appears in App Store Connect > TestFlight after processing (~10-30 min)."
