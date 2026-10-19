@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a deal · Kitchen Table</title>
+<style>
+  :root { --paper: #fbf4e2; --ink: #2b2620; --red: #c0392b; }
+  body { margin: 0; background: #2f6b45; color: var(--ink); font: 17px/1.45 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .paper { background: var(--paper); border-radius: 14px; padding: 16px 18px; margin: 14px 0; }
+  h1 { color: #f6ead0; font-size: 30px; margin: 10px 0; }
+  label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  input, select, button { font: inherit; min-height: 44px; border-radius: 10px; border: 2px solid #d9cba8; padding: 4px 10px; background: #fff; }
+  input { width: 100%; box-sizing: border-box; font-family: ui-monospace, "Courier New", monospace; }
+  button { background: #f0b543; border-color: #b07a1e; font-weight: 700; margin-top: 12px; cursor: pointer; }
+  .hands { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .hand b { display: block; margin-bottom: 4px; }
+  .red { color: var(--red); } .err { color: var(--red); font-weight: 600; }
+  pre { white-space: pre-wrap; font-size: 14px; background: #fff; padding: 10px; border-radius: 8px; }
+</style>
+</head>
+<body><main>
+<h1>Verify a deal</h1>
+<div class="paper">
+  <p>Every hand in Kitchen Table is shuffled from a random 128-bit <b>seed</b> and nothing else. The seed is printed on the
+  score sheet after each hand. Paste it here and this page deals the same four hands, using the same code as the app.</p>
+  <label for="seed">Seed</label><input id="seed" placeholder="5W2Z-T7CS-V6A3-DHMG-7EED-NB7Q-BA" autocomplete="off" spellcheck="false">
+  <label for="deck">Game</label>
+  <select id="deck"><option value="52">Hearts, or Spades with a regular deck</option><option value="jokers">Spades with Jokers and deuces</option></select>
+  <label for="dealer">Dealer (shown on the score sheet)</label>
+  <select id="dealer"><option value="3">Right of you</option><option value="0">You</option><option value="1">Left of you</option><option value="2">Across from you</option></select>
+  <button id="go">Deal it</button>
+  <p id="out" class="err" role="alert"></p>
+</div>
+<div class="paper hands" id="hands" hidden></div>
+<div class="paper">
+  <h2>How the shuffle works</h2>
+  <p>The seed's 128 bits seed a <b>xoshiro128**</b> generator (each 32-bit word mixed through SplitMix32 first). A
+  <b>Fisher-Yates</b> shuffle then puts the 52 cards in order, using rejection sampling so no card is favoured.
+  Cards are dealt one at a time, starting left of the dealer. In Hearts, these are the hands before passing.</p>
+  <p>The deal function takes exactly two things: the seed and the number of cards. It can't see the score, your
+  purchases, your winning streak or who is human. The full source is below and on the app's open test suite.</p>
+  <pre id="src"></pre>
+</div>
+</main>
+<script type="module">
+import { deal } from "./dealer.js";
+const SUITS = "SHDC", RANKS = "23456789TJQKA", SYM = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const deck = (j) => { const d = []; for (const s of SUITS) for (const r of RANKS) d.push(r + s); return j ? d.filter((c) => c !== "2C" && c !== "2H").concat(["LJ", "BJ"]) : d; };
+const show = (c) => (c === "BJ" ? "Big Joker" : c === "LJ" ? "Little Joker" : `<span class="${"HD".includes(c[1]) ? "red" : ""}">${c[0] === "T" ? "10" : c[0]}${SYM[c[1]]}</span>`);
+const order = (c) => (c[1] === "J" ? -1 : SUITS.indexOf(c[1]) * 20 - RANKS.indexOf(c[0]));
+const SEATS = ["You", "Left of you", "Across from you", "Right of you"];
+const run = () => {
+  const out = document.getElementById("out"), box = document.getElementById("hands");
+  try {
+    const d = deck(document.getElementById("deck").value === "jokers"), dealer = +document.getElementById("dealer").value;
+    const p = deal(document.getElementById("seed").value, d.length), hands = [[], [], [], []];
+    p.forEach((ci, k) => hands[(dealer + 1 + k) % 4].push(d[ci]));
+    box.innerHTML = hands.map((h, s) => `<div class="hand"><b>${SEATS[s]}</b>${h.sort((a, b) => order(a) - order(b)).map(show).join(" ")}</div>`).join("");
+    box.hidden = false; out.textContent = "";
+  } catch (e) { out.textContent = e.message; box.hidden = true; }
+};
+document.getElementById("go").onclick = run;
+const q = new URLSearchParams(location.search);
+if (q.get("seed")) { document.getElementById("seed").value = q.get("seed"); if (q.get("deck")) document.getElementById("deck").value = q.get("deck"); if (q.get("dealer")) document.getElementById("dealer").value = q.get("dealer"); run(); }
+fetch("./dealer.js").then((r) => r.text()).then((t) => (document.getElementById("src").textContent = t));
+</script>
+</body>
+</html>

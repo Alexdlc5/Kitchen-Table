@@ -5,7 +5,29 @@
   "description": "Kitchen Table: Spades and Hearts, no ads ever (Capacitor app around proto/)",
   "type": "module",
   "scripts": {
-    "check": "node sim/test_sim.mjs && node sim/test_ai.mjs && node sim/sim.mjs --check --game spades --hands 20000 && node sim/sim.mjs --check --game hearts --hands 20000",
-    "sim": "node sim/sim.mjs --all --hands 100000 --games 4000"
+    "build": "node scripts/build-web.mjs",
+    "check": "node sim/test_sim.mjs && node sim/test_ai.mjs && node scripts/check-save-mirror.mjs && node sim/sim.mjs --check --game spades --hands 20000 && node sim/sim.mjs --check --game hearts --hands 20000",
+    "sim": "node sim/sim.mjs --all --hands 100000 --games 4000",
+    "play": "node scripts/play.mjs"
+  },
+  "dependencies": {
+    "@capacitor-firebase/analytics": "^8.5.2",
+    "@capacitor-firebase/crashlytics": "^8.5.2",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@fontsource/figtree": "^5.3.0",
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/fredoka": "^5.3.0",
+    "@fontsource/grandstander": "^5.3.0",
+    "@revenuecat/purchases-capacitor": "^13.7.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@resvg/resvg-js": "^2.6.2",
+    "playwright": "^1.56.1"
   }
 }

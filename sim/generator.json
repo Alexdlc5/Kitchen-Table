@@ -2,7 +2,8 @@
  "brand": {
   "name": "Kitchen Table",
   "storeName": "Kitchen Table: Spades, Hearts",
-  "bundleId": "io.github.alexdlc5.kitchentable"
+  "bundleId": "io.github.alexdlc5.kitchentable",
+  "wordmark": "The Kitchen Table"
  },
  "products": [
   {
@@ -17,21 +18,120 @@
    ]
   },
   {
-   "id": "backs_porch",
-   "type": "non-consumable",
-   "price": "1.99",
-   "familyShareable": true,
-   "unlocks": [
-    "backs:porch"
-   ]
-  },
-  {
-   "id": "felts_home",
+   "id": "theme_gingham",
    "type": "non-consumable",
    "price": "2.99",
    "familyShareable": true,
    "unlocks": [
-    "felts:home"
+    "theme:gingham"
+   ]
+  },
+  {
+   "id": "theme_cabin",
+   "type": "non-consumable",
+   "price": "2.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:cabin"
+   ]
+  },
+  {
+   "id": "theme_diner",
+   "type": "non-consumable",
+   "price": "2.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:diner"
+   ]
+  },
+  {
+   "id": "theme_garden",
+   "type": "non-consumable",
+   "price": "2.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:garden"
+   ]
+  },
+  {
+   "id": "theme_parlor",
+   "type": "non-consumable",
+   "price": "4.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:parlor"
+   ]
+  },
+  {
+   "id": "theme_leopard",
+   "type": "non-consumable",
+   "price": "4.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:leopard"
+   ]
+  },
+  {
+   "id": "theme_midcentury",
+   "type": "non-consumable",
+   "price": "4.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:midcentury"
+   ]
+  },
+  {
+   "id": "theme_leather",
+   "type": "non-consumable",
+   "price": "4.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:leather"
+   ]
+  },
+  {
+   "id": "theme_gilded",
+   "type": "non-consumable",
+   "price": "9.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:gilded"
+   ]
+  },
+  {
+   "id": "theme_sterling",
+   "type": "non-consumable",
+   "price": "9.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:sterling"
+   ]
+  },
+  {
+   "id": "theme_deco",
+   "type": "non-consumable",
+   "price": "9.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:deco"
+   ]
+  },
+  {
+   "id": "theme_memphis",
+   "type": "non-consumable",
+   "price": "9.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:memphis"
+   ]
+  },
+  {
+   "id": "theme_marble",
+   "type": "non-consumable",
+   "price": "9.99",
+   "familyShareable": true,
+   "unlocks": [
+    "theme:marble"
    ]
   }
  ],
@@ -411,12 +511,65 @@
   "easyMemory": 4,
   "expertSamples": 24,
   "nilMaxRisk": {
-   "easy": 0.3,
+   "easy": 0.25,
    "standard": 0.22,
    "expert": 0.22,
    "extreme": 0.22
   },
   "bidBias": 0.25,
   "extremeSamples": 60
- }
+ },
+ "shop": {
+  "tiers": {
+   "free": {
+    "price": "0"
+   },
+   "classic": {
+    "price": "2.99",
+    "name": "Classic"
+   },
+   "signature": {
+    "price": "4.99",
+    "name": "Signature"
+   },
+   "luxe": {
+    "price": "9.99",
+    "name": "Luxe collection"
+   }
+  }
+ },
+ "leaderboards": [
+  {
+   "id": "hearts_best",
+   "name": "Hearts: best game",
+   "explain": "Your lowest winning score in a game of Hearts",
+   "order": "low",
+   "unit": "points"
+  },
+  {
+   "id": "hearts_wins",
+   "name": "Hearts: games won",
+   "explain": "Every Hearts game you've won",
+   "order": "high"
+  },
+  {
+   "id": "spades_streak",
+   "name": "Spades: longest win streak",
+   "explain": "Spades games won in a row",
+   "order": "high",
+   "unit": "games"
+  },
+  {
+   "id": "spades_wins",
+   "name": "Spades: games won",
+   "explain": "Every Spades game you've won",
+   "order": "high"
+  },
+  {
+   "id": "extreme_wins",
+   "name": "Wins against Extreme",
+   "explain": "Games won with the computer at Extreme",
+   "order": "high"
+  }
+ ]
 }
