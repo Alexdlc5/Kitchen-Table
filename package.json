@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-web.mjs",
-    "check": "node sim/test_sim.mjs && node sim/test_ai.mjs && node scripts/check-save-mirror.mjs && node sim/sim.mjs --check --game spades --hands 20000 && node sim/sim.mjs --check --game hearts --hands 20000",
+    "check": "node sim/test_sim.mjs && node sim/test_ai.mjs && node sim/test_euchre.mjs && node sim/test_ai_euchre.mjs && node scripts/check-save-mirror.mjs && node sim/sim.mjs --check --game spades --hands 20000 && node sim/sim.mjs --check --game hearts --hands 20000 && node sim/sim.mjs --check --game euchre --hands 20000",
     "sim": "node sim/sim.mjs --all --hands 100000 --games 4000",
     "play": "node scripts/play.mjs"
   },

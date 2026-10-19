@@ -16,8 +16,14 @@ jobs:
         run: node sim/test_sim.mjs
       - name: every AI_SPEC sin as a scenario at every level; views show nothing hidden
         run: node sim/test_ai.mjs
+      - name: Euchre rules, bowers, every house rule, scoring tables; every Euchre sin at every level
+        run: |
+          node sim/test_euchre.mjs
+          node sim/test_ai_euchre.mjs
       - name: 20K hands per game at Standard meet the AI_SPEC targets, zero sins played
         run: |
           node sim/sim.mjs --check --game spades --hands 20000
           node sim/sim.mjs --check --game spades --preset kitchen --hands 20000
           node sim/sim.mjs --check --game hearts --hands 20000
+          node sim/sim.mjs --check --game euchre --hands 20000
+          node sim/sim.mjs --check --game euchre --preset kitchen --hands 20000
