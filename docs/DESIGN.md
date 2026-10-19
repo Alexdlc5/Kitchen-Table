@@ -246,7 +246,10 @@ previews and the store-shots script can stage any of them. Free: Walnut and five
 $4.99, Luxe collection $9.99 (SHOP_AND_ENGAGEMENT.md §2). Card faces never change. Never time-limited, never a loot box.
 
 **The look (owner, 2026-10-19):** warm, comforting, a little nostalgic, quietly luxurious, for people unwinding after work;
-modern enough for younger players. Walnut and ivory, brushed-brass accents, Fraunces for titles and Figtree for reading.
+modern enough for younger players. Walnut and ivory, brushed-brass accents. One type family: Alegreya for titles, Alegreya Sans
+for reading, with even (lining) figures. Every surface is a real material under one lamp: card stock with grain and a
+printed inner rule, letterpress buttons with a little thickness, an engraved brass plate for the main action, brass
+slider switches, tent-card seat plates, drawn icons (no emoji). Sounds are soft and airy: filtered breath, slow swells.
 The title reads "Play a game of cards at… The Kitchen Table" over a painted teacup, cookies and a score pad.
 
 ## 13. Sound and haptics

@@ -7,11 +7,12 @@ mkdirSync(`${out}/fonts`, { recursive: true });
 for (const f of readdirSync("proto").filter((f) => /\.(js|css)$/.test(f))) copyFileSync(`proto/${f}`, `${out}/${f}`);
 mkdirSync(`${out}/lang`); for (const f of readdirSync("proto/lang")) copyFileSync(`proto/lang/${f}`, `${out}/lang/${f}`); // translations (i18n.js)
 copyFileSync("sim/generator.json", `${out}/generator.json`);
-// Figtree for reading, Fraunces (a soft serif) for titles: calm and grown-up, still friendly
-const FONTS = [["figtree", 400, "normal"], ["figtree", 500, "normal"], ["figtree", 600, "normal"], ["figtree", 700, "normal"], ["fraunces", 600, "normal"], ["fraunces", 400, "italic"]];
-for (const [f, w, s] of FONTS) copyFileSync(`node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2`, `${out}/fonts/${f}-${w}-${s}.woff2`);
+// one family: Alegreya (a warm book serif) for titles and numbers, Alegreya Sans for reading. [package, family, weight, style]
+const FONTS = [["alegreya", "Alegreya", 500, "normal"], ["alegreya", "Alegreya", 700, "normal"], ["alegreya", "Alegreya", 400, "italic"],
+  ["alegreya-sans", "Alegreya Sans", 400, "normal"], ["alegreya-sans", "Alegreya Sans", 500, "normal"], ["alegreya-sans", "Alegreya Sans", 700, "normal"], ["alegreya-sans", "Alegreya Sans", 800, "normal"]];
+for (const [f, , w, s] of FONTS) copyFileSync(`node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2`, `${out}/fonts/${f}-${w}-${s}.woff2`);
 let html = readFileSync("proto/index.html", "utf8");
-const font = FONTS.map(([f, w, s]) => `@font-face { font-family: ${f[0].toUpperCase() + f.slice(1)}; font-weight: ${w}; font-style: ${s}; font-display: swap; src: url(fonts/${f}-${w}-${s}.woff2) format("woff2"); }`).join("\n");
+const font = FONTS.map(([f, fam, w, s]) => `@font-face { font-family: "${fam}"; font-weight: ${w}; font-style: ${s}; font-display: swap; src: url(fonts/${f}-${w}-${s}.woff2) format("woff2"); }`).join("\n");
 html = html.replace(/<link rel="preconnect"[^>]*>\s*<link href="https:\/\/fonts\.googleapis\.com[^>]*>/, `<style>${font}</style>`);
 if (html.includes("fonts.googleapis.com")) throw new Error("Google Fonts link not replaced");
 writeFileSync(`${out}/index.html`, html);

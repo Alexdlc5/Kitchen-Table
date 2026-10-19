@@ -30,7 +30,7 @@ export function tuckBox(game, name, { locked = false, soon = false } = {}) {
   const b = BOXES[game], dark = mix(b.body, "#000000", 0.35), light = mix(b.body, "#ffffff", 0.18);
   const label = `<ellipse cx="58" cy="92" rx="40" ry="30" fill="#f6ecd6" stroke="${b.trim}" stroke-width="2.4"/>
     <path d="${PIP[b.pip]}" transform="translate(48 66) scale(.2)" fill="${b.pipCol}"/>
-    <text x="58" y="110" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="15" fill="#2a2118">${name}</text>`;
+    <text x="58" y="110" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="15" fill="#2a2118">${name}</text>`;
   const ribbon = soon ? `<rect x="0" y="134" width="116" height="12" fill="#c9a45c"/><path d="M22 140 l-14 -10 v20z M22 140 l14 -10 v20z" fill="#b8924c"/><circle cx="22" cy="140" r="5" fill="#e8cf94"/>` : "";
   const lock = locked ? `<g transform="translate(86 128)"><path d="M4 0 a8 8 0 0 1 16 0 v6 h-4 v-6 a4 4 0 0 0 -8 0 v6 h-4z" fill="#c9a45c"/><rect x="0" y="6" width="24" height="18" rx="3" fill="#c9a45c" stroke="#8a6f3e"/><circle cx="12" cy="15" r="2.5" fill="#5a4320"/></g>` : "";
   return `<svg viewBox="-6 -40 140 214" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -54,7 +54,7 @@ export function rosette(text = "1st") {
   return `<svg viewBox="0 0 120 170" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="rosette">
     <path d="M44 80 L30 160 L46 148 L56 166 L62 86Z" fill="#2a5596"/><path d="M76 80 L90 160 L74 148 L64 166 L58 86Z" fill="#3a6fc0"/>
     ${petals}<circle cx="60" cy="56" r="26" fill="#f6ecd6" stroke="#c9a45c" stroke-width="3"/>
-    <text x="60" y="64" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="22" fill="#2a5596">${text}</text></svg>`;
+    <text x="60" y="64" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="22" fill="#2a5596">${text}</text></svg>`;
 }
 
 // a rubber stamp for the score sheet ("Made it!", "Set", "Moon!")

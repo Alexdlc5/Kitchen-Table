@@ -706,7 +706,13 @@ const ACT = {
     if (!owns(g)) return go("unlock");
     setupGame = g; go("setup");
   },
-  flip: (el) => { el.classList.toggle("flipped"); sound.card(); },
+  flip: async (el) => {
+    sound.card();
+    if (calm()) return el.classList.toggle("flipped");
+    await el.animate([{ scale: "1 1" }, { scale: "0 1" }], { duration: 140, easing: "ease-in" }).finished.catch(() => {});
+    el.classList.toggle("flipped");
+    el.animate([{ scale: "0 1" }, { scale: "1 1" }], { duration: 160, easing: "ease-out" });
+  },
   usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
   buytheme: async (el) => {
     const id = el.dataset.v;
