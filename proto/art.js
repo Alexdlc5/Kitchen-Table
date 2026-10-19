@@ -51,7 +51,7 @@ export function titleProps() {
     `<path d="M105 128 C121 127 122 148 102 150" fill="none" stroke="${china}" stroke-width="4" stroke-linecap="round"/>` +
     `<ellipse cx="70" cy="118" rx="36" ry="8" fill="#6b3f22"/><ellipse cx="66" cy="117" rx="20" ry="3" fill="#8a5a34" opacity=".7"/>` +
     `<path d="M36 118 L104 118" stroke="${rim}" stroke-width="2"/><path d="M42 140 C60 146 82 146 98 140" stroke="${rim}" stroke-width="1.4" fill="none" opacity=".8"/>` +
-    stroke(60, 104, -1.75, 26, 2.2, "#fff", 0.35, 0.35) + stroke(78, 102, -1.4, 22, 1.8, "#fff", 0.28, -0.4);
+    `<g class="steam">` + stroke(60, 104, -1.75, 26, 2.2, "#fff", 0.35, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 22, 1.8, "#fff", 0.28, -0.4) + `</g>`;
   // cookies on a plate (right)
   const r = rng(5);
   let cookies = "";

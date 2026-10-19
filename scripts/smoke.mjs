@@ -88,7 +88,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   for (const game of ["hearts", "spades"]) {
     await page.evaluate((g) => kt.newGame(g), game);
     // R10: the human's turn waits as long as they need
-    await page.waitForFunction(() => kt.G && kt.G.st.turn === 0 && ["pass", "bid", "play"].includes(kt.G.st.phase), null, { timeout: 20000 });
+    await page.waitForFunction(() => kt.G && kt.pending && kt.pending.seat === 0, null, { timeout: 20000 }); // the game is asking the player
     const before = await page.evaluate(() => JSON.stringify([kt.G.st.phase, kt.G.st.history.length, kt.G.st.bids]));
     await page.waitForTimeout(2500);
     const after = await page.evaluate(() => JSON.stringify([kt.G.st.phase, kt.G.st.history.length, kt.G.st.bids]));
