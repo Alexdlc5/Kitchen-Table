@@ -175,3 +175,73 @@ html.text-l { --fs: 20px; --fs-s: 17px; --fs-l: 26px; }
 html.text-xl { --fs: 24px; --fs-s: 20px; --fs-l: 30px; }
 html.comfort.text-l { --fs: 24px; --fs-s: 21px; --fs-l: 30px; }
 html.comfort.text-xl { --fs: 27px; --fs-s: 23px; --fs-l: 33px; }
+
+/* ---------------------------------------------------------------- scenes: the places the menus live (scenes.js) */
+#scene { position: fixed; inset: 0; opacity: 0; transition: opacity calc(.3s * var(--speed)); pointer-events: none; }
+#scene.on { opacity: 1; }
+/* a painted board hanging from two chains */
+h1.sign { justify-self: center; position: relative; margin: 34px auto 6px; padding: 10px 26px 12px; font-size: var(--fs-l); color: #f7eedc; border-radius: 10px;
+  background: linear-gradient(180deg, #8c5a31, #6b4224); border: 2px solid #3a2010; box-shadow: inset 0 1px 0 rgba(255,220,170,.35), 0 10px 22px rgba(0,0,0,.35); text-shadow: 0 1px 0 #3a2010; }
+h1.sign::before, h1.sign::after { content: ""; position: absolute; top: -30px; width: 2px; height: 30px; background: repeating-linear-gradient(180deg, #c9a45c 0 5px, #8a6f3e 5px 7px); }
+h1.sign::before { left: 22%; } h1.sign::after { right: 22%; }
+h1.dark { color: #3a2a1c; text-shadow: none; }
+/* the game cupboard */
+.shelf { position: relative; display: flex; justify-content: center; align-items: flex-end; gap: 18px; padding: 8px 8px 0; min-height: 40px; }
+.shelf::after { content: ""; position: absolute; left: -16px; right: -16px; bottom: -14px; height: 16px; border-radius: 3px;
+  background: linear-gradient(180deg, #c08a52, #8c5a31 40%, #3a2010); box-shadow: 0 8px 14px rgba(0,0,0,.4); }
+.shelf { margin-bottom: 4.4em; } /* room under the plank for the captions */
+.shelf + .shelf { margin-top: 10px; }
+.box { position: relative; display: grid; justify-items: center; gap: 4px; width: min(44%, 170px); padding: 0; background: none; border: 0; min-height: var(--tap); }
+.box svg { width: 100%; height: auto; overflow: visible; }
+.box .lid { transform-box: fill-box; transform-origin: 100% 100%; transition: transform calc(.35s * var(--speed)) cubic-bezier(.3,1.4,.5,1); }
+.box .peek { opacity: 0; transform: translateY(20px); transition: opacity calc(.3s * var(--speed)), transform calc(.35s * var(--speed)); }
+.box.open .lid, .box:active .lid { transform: rotate(-24deg) translate(-6px, -10px); }
+.box.open .peek { opacity: 1; transform: translateY(-6px); }
+.box:focus-visible { outline: 3px solid var(--brass); outline-offset: 4px; border-radius: 8px; }
+.boxcap { position: absolute; top: calc(100% + 20px); left: -10%; right: -10%; z-index: 1; color: var(--cream); font-size: var(--fs-s); text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-bottom: 4px; }
+.box.soon { opacity: .95; }
+/* score pad: spiral rings along the top, a rubber stamp for the hand */
+.pad.spiral { position: relative; padding-top: 30px; background-image: radial-gradient(circle at 50% 6px, #6b5a44 0 5px, transparent 5.5px), linear-gradient(var(--paper), var(--paper));
+  background-size: 28px 16px, auto; background-repeat: repeat-x, no-repeat; }
+.pad td, .pad th { border-bottom-color: #c9d4e3; }
+.stamp { position: absolute; right: 14px; top: 26px; transform: rotate(-12deg); padding: 4px 12px; border: 3px solid var(--ink); border-radius: 8px; color: var(--ink);
+  font: 700 calc(var(--fs) * 1.05) var(--serif); text-transform: uppercase; letter-spacing: .06em; opacity: .82; mix-blend-mode: multiply; animation: thunk calc(.35s * var(--speed)) cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes thunk { from { transform: rotate(-12deg) scale(1.8); opacity: 0; } to { transform: rotate(-12deg) scale(1); opacity: .82; } }
+/* results: a rosette for the winner; a few cards drift down */
+.ribbon { justify-self: center; width: 110px; animation: swing 2.4s ease-in-out infinite alternate; transform-origin: 50% 0; }
+@keyframes swing { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.confetti span { position: absolute; left: 0; top: 0; width: 46px; }
+.confetti svg { width: 100%; filter: drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
+/* how to play: recipe cards */
+.recipe h2 { border-bottom: 2px solid #d98585; padding-bottom: 6px; }
+.recipe .from { margin: 0; font: italic 400 var(--fs-s) var(--serif); color: #8a5a3a; }
+.recipe .serves { margin-top: -6px; font-size: var(--fs-s); color: #6a5f50; }
+/* caregiver: a note held to the fridge with a magnet */
+.note { position: relative; transform: rotate(-.6deg); box-shadow: 0 8px 18px rgba(0,0,0,.18); }
+.note::before { content: ""; position: absolute; top: -12px; left: calc(50% - 18px); width: 36px; height: 24px; border-radius: 12px; background: radial-gradient(circle at 40% 35%, #f08a7a, #c0392b); box-shadow: 0 3px 6px rgba(0,0,0,.3); }
+/* the fair-deal ledger: green-ruled bookkeeping paper */
+.ledger .paper { background-image: repeating-linear-gradient(180deg, transparent 0 27px, rgba(47,122,79,.18) 27px 28px), linear-gradient(var(--paper), var(--paper)); }
+/* the leaderboard: index cards pinned to cork */
+.pins { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pin { position: relative; transform: rotate(var(--tilt, 0deg)); padding: 22px 14px 14px; border-radius: 4px; }
+.pin::before { content: ""; position: absolute; top: 6px; left: calc(50% - 7px); width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9a8a, #b03a2e 60%, #6a1c14); box-shadow: 0 2px 3px rgba(0,0,0,.4); }
+.pin h3 { font-size: var(--fs); margin: 0 0 4px; } .pin .best { margin: 0; font: 600 calc(var(--fs-l) * 1.1) var(--serif); color: #2a5596; }
+.pin.small { font-size: var(--fs-s); margin: 0; }
+.minirib { position: absolute; right: -6px; top: -14px; width: 44px; }
+.corknote { color: #3a2a1c; text-align: center; }
+#boards .btn.ghost, #caregiver .btn.ghost { background: var(--paper); color: var(--ink); }
+/* title: the aces deal themselves in; tap one to flip it */
+.ace { position: relative; display: block; width: var(--cw); height: calc(var(--cw) * 1.4); margin: 0 calc(var(--cw) * -.32); transform-origin: 50% 120%; cursor: pointer;
+  animation: dealin calc(.6s * var(--speed)) cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i) * 90ms); }
+.ace > span { position: absolute; inset: 0; border-radius: 9px; box-shadow: 0 4px 10px rgba(0,0,0,.3); backface-visibility: hidden; -webkit-backface-visibility: hidden; transition: transform .5s; }
+.ace svg { width: 100%; height: 100%; display: block; }
+.ace .back { transform: rotateY(180deg); }
+.ace.flipped .face { transform: rotateY(180deg); } .ace.flipped .back { transform: rotateY(360deg); }
+@keyframes dealin { from { opacity: 0; translate: 0 60px; } to { opacity: 1; translate: 0 0; } }
+.steam { animation: steam 3.2s ease-in-out infinite; transform-box: fill-box; } .steam.s2 { animation-delay: 1.1s; }
+@keyframes steam { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ace, .stamp, .ribbon, .steam { animation: none !important; }
+  .box .lid, .box .peek, .ace > span { transition: none !important; }
+}

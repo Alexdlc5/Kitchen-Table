@@ -23,3 +23,5 @@ jobs:
         run: node scripts/smoke.mjs
       - name: the same on iPhone SE with Comfort mode on (64pt targets, 1.6x cards)
         run: node scripts/smoke.mjs --se --comfort
+      - name: the same on iPad (bigger cards and type)
+        run: node scripts/smoke.mjs --ipad

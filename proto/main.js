@@ -10,6 +10,7 @@ import { decide, nilRisk, nilForbidden } from "./ai.js";
 import { face, cardName, titleProps } from "./art.js";
 import { THEMES, themeBack, themeStyle } from "./themes.js";
 import { speech } from "./speech.js";
+import { SCENES, tuckBox, rosette, stamp } from "./scenes.js";
 import { sound } from "./sound.js";
 
 const cfg = await (await fetch("../sim/generator.json", { cache: "no-cache" })).json();
@@ -45,6 +46,9 @@ const toggle = (act, on, label) => `<div class="row"><span>${label}</span><butto
 let screen = null;
 function show(id) {
   screen = id;
+  const sc = $("#scene");
+  if (SCENES[id]) sc.style.background = SCENES[id];
+  sc.classList.toggle("on", !!SCENES[id]);
   document.querySelectorAll(".screen").forEach((e) => e.classList.toggle("on", e.id === id));
   document.querySelectorAll(".screen:not(.on)").forEach((e) => e.setAttribute("aria-hidden", "true"));
   $("#" + id).removeAttribute("aria-hidden");
@@ -64,6 +68,7 @@ function applyLook() {
 }
 const ownsTheme = (id) => THEMES[id] && (THEMES[id].tier === "free" || platform.owns("theme_" + id));
 const faces = new Map();
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches; // no motion, ever, when the phone asks
 const svgFor = (c) => { const k = c + S.opt.four; if (!faces.has(k)) faces.set(k, face(c, { four: S.opt.four })); return faces.get(k); };
 const cardEl = (c, attrs = "", cls = "", label = cardName(c)) => `<button class="card ${cls}" data-card="${c}" aria-label="${label}" ${attrs}>${svgFor(c)}</button>`;
 let backSvg = ""; // the chosen card back, drawn once per change of theme
@@ -111,7 +116,7 @@ const WHY = {
 // ---------------------------------------------------------------- title, picker, setup
 function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
-  const fan = ["AS", "AH", "AD", "AC"].map((c, i) => cardEl(c, `tabindex="-1" aria-hidden="true" style="transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px); margin: 0 calc(var(--cw) * -.32)"`)).join("");
+  const fan = ["AS", "AH", "AD", "AC"].map((c, i) => `<span class="ace" style="--i:${i}; transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px)" data-act="flip" aria-hidden="true"><span class="face">${svgFor(c)}</span><span class="back">${backSvg}</span></span>`).join("");
   $("#title").innerHTML = `<div class="stack title">
     <p class="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
     <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
@@ -130,15 +135,16 @@ function renderTitle() {
 
 function renderPicker() {
   const games = ["hearts", "spades", "euchre"].filter((g) => g === "euchre" || S.care.games.includes(g));
-  const rows = games.map((g) => {
+  const box = (g) => {
     const soon = !!cfg.games[g].release, locked = !owns(g);
-    const sub = soon ? "Free with Everything when it arrives" : g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Unlocked";
-    if (soon) return `<div class="gamecard soon"><span class="mini">${svgFor("JC")}</span><span>${GAME_NAME[g]}<small>${sub}</small></span><span class="tag">Coming next</span></div>`;
-    return `<button class="btn gamecard" data-act="${locked ? "go" : "setup"}" data-to="unlock" data-game="${g}">
-      <span class="mini">${svgFor(g === "hearts" ? "QH" : g === "spades" ? "AS" : "JC")}</span><span>${GAME_NAME[g]} ${locked && !soon ? '<span class="lock" aria-label="locked">🔒</span>' : ""}<small>${sub}</small></span></button>`;
-  }).join("");
+    const sub = soon ? "Coming soon, free with Everything" : g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Ready to play";
+    if (soon) return `<div class="box soon" role="img" aria-label="${GAME_NAME[g]}, ${sub}">${tuckBox(g, GAME_NAME[g], { soon })}<span class="boxcap">${sub}</span></div>`;
+    return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}</span></button>`;
+  };
+  const playable = games.filter((g) => !cfg.games[g].release), soonOnes = games.filter((g) => cfg.games[g].release);
+  const rows = `<div class="shelf">${playable.map(box).join("")}</div><div class="shelf">${soonOnes.map(box).join("")}</div>`;
   const unlockRow = !platform.owns("everything") && !S.opt.comfort && !S.care.lock ? `<button class="btn" data-act="go" data-to="unlock">Unlock everything · $6.99 once</button>` : "";
-  $("#picker").innerHTML = `<div class="stack"><h1>Games</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+  $("#picker").innerHTML = `<div class="stack"><h1 class="sign">The game cupboard</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 
 let setupGame = "hearts";
@@ -190,6 +196,7 @@ function startHand() {
   recordDeal(G.st.hands[0], G.game, G.rules);
   S.cur = G; save();
   sound.shuffle();
+  G.justDealt = true;
   announce(`Hand ${G.handNo + 1}. New cards are dealt.`, { interrupt: true });
   run();
 }
@@ -205,6 +212,7 @@ const humans = () => G.seats.filter((s) => s.kind === "human").length;
 async function run() {
   const my = ++runId, m = MOD[G.game], st = G.st;
   show("table"); handLive = st.phase !== "done"; drawTable();
+  if (G.justDealt) { G.justDealt = false; await dealIn(); }
   while (st.phase !== "done") {
     if (my !== runId) return;
     const s = st.turn, seat = G.seats[s];
@@ -250,6 +258,23 @@ async function played(seat, card) {
   sound.sweep();
   await Promise.all(els.map((el) => el.animate([{ transform: "none", opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(.6)`, opacity: 0 }], { duration: 320 * speed(), easing: "ease-in", fill: "forwards" }).finished.catch(() => {})));
   showTrick = null; drawTable();
+}
+
+async function dealIn() { // cards fly from the dealer to your hand, one by one
+  if (calm()) return;
+  const els = [...document.querySelectorAll("#hand .card")], [dx, dy] = offset(pos(G.st.dealer), 3), hand = $("#hand").getBoundingClientRect();
+  const fromY = window.innerHeight * 0.42 - hand.top + dy;
+  await Promise.all(els.map((el, i) => el.animate([{ transform: `translate(${dx + hand.width / 2 - parseFloat(el.style.left)}px, ${fromY}px) rotate(${-20 + i * 3}deg) scale(.6)`, opacity: 0 }, { transform: "none", opacity: 1 }],
+    { duration: 380 * speed(), delay: i * 45 * speed(), easing: "cubic-bezier(.2,.8,.3,1)", fill: "backwards" }).finished.catch(() => {})));
+}
+function confetti() { // a few cards drift down past the winner's name; decoration only
+  const box = document.createElement("div");
+  box.className = "confetti"; box.setAttribute("aria-hidden", "true");
+  box.innerHTML = ["AH", "KS", "QD", "JC", "AS", "10H".replace("10", "T"), "KD", "QH"].map((c) => `<span>${svgFor(c)}</span>`).join("");
+  $("#results").appendChild(box);
+  [...box.children].forEach((el, i) => el.animate([{ transform: `translate(${(i * 13) % 100}vw, -20vh) rotate(${i * 40}deg)` }, { transform: `translate(${((i * 13) % 100) + (i % 2 ? 12 : -12)}vw, 110vh) rotate(${i * 40 + 280}deg)` }],
+    { duration: 3200 + i * 260, delay: i * 140, easing: "ease-in", fill: "both" }));
+  setTimeout(() => box.remove(), 6500);
 }
 
 // where each seat sits relative to whoever is holding the phone: 0 bottom, 1 left, 2 top, 3 right
@@ -400,7 +425,10 @@ function renderSheet() {
   const table = groups.map((g) => `<h3>${esc(g.name)}</h3><table>${g.rows.map((l) => `<tr><td>${esc(label(l))}</td><td class="n ${l.pts < 0 ? "neg" : ""}">${l.pts > 0 ? "+" : ""}${l.pts}</td></tr>`).join("")}
     ${g.total !== null ? `<tr><th>Total${sp ? ` · ${g.bags} bag${g.bags === 1 ? "" : "s"}` : ""}</th><td class="n">${g.total}</td></tr>` : ""}</table>`).join("");
   const totals = sp ? "" : `<table>${G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${h.totals.score[i]}</td></tr>`).join("")}</table>`;
-  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad"><h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
+  const mine = sp ? h.lines.filter((l) => l.team === 0) : h.lines.filter((l) => l.seat === 0);
+  const st = sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
+    : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "";
+  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
     <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
     <button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
@@ -415,15 +443,17 @@ function renderResults() {
   if (!sp && won) rec.best = rec.best === null ? G.totals.score[0] : Math.min(rec.best, G.totals.score[0]);
   const solo = humans() === 1, extreme = G.seats.filter((x, s) => x.kind === "bot" && (!sp || s % 2 === 1)).every((x) => x.level === "extreme");
   const newBest = solo ? postScores(won, extreme) : [];
+  S.newBest = newBest;
   announce(`${who} Final score: ${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => G.totals.score[i]).join(" to ")}.`);
   track("game_end", { game: G.game, won: won ? 1 : 0, hands: G.handNo });
-  const consent = S.opt.analytics === null && !S.care.lock ? `<div class="paper" id="consentCard"><h2>Help make ${BRAND} better?</h2>
+  const consent = S.opt.analytics === null && !S.care.lock ? `<div class="paper" id="consentCard"><h2>Help make ${cfg.brand.wordmark} better?</h2>
     <p>Share anonymous numbers like how many hands you play and which rules you pick. No ads, no tracking, nothing about you. You can change this in Options.</p>
     <div class="row"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn big" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
   S.cur = null; save();
-  $("#results").innerHTML = `<div class="stack"><h1>${who}</h1>${newBest.length ? `<p class="say" style="justify-self:center">New personal best: ${esc(newBest.join(", "))}</p>` : ""}
+  if (won && !calm()) setTimeout(confetti, 300);
+  $("#results").innerHTML = `<div class="stack">${won ? `<div class="ribbon">${rosette(sp ? "Win!" : "1st")}</div>` : `<p class="kicker">Good game. There's always the next deal.</p>`}<h1>${who}</h1>${newBest.length ? `<p class="say" style="justify-self:center">New personal best: ${esc(newBest.join(", "))}</p>` : ""}
     <div class="paper pad"><table>${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => `<tr><td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
-    <p class="muted">${G.handNo} hands · ${PRESET_NAME[G.preset]} rules · ${rec.won} won of ${rec.played}</p></div>
+    <p class="muted">${G.handNo} hand${G.handNo === 1 ? "" : "s"} · ${PRESET_NAME[G.preset]} rules · ${rec.won} won of ${rec.played}</p></div>
     <button class="btn big" data-act="again">Deal again</button>
     ${consent}
     <div class="grid2"><button class="btn" data-act="go" data-to="boards">Leaderboards</button><button class="btn" data-act="go" data-to="stats">Fair deal</button></div>
@@ -449,7 +479,7 @@ function renderStats() {
     nilExpect = (100 * k) / 20000;
   }
   const rec = Object.entries(S.record).map(([g, r]) => `<tr><td>${GAME_NAME[g]}</td><td class="n">${r.won} of ${r.played}</td><td class="n">${g === "hearts" ? (r.best ?? "—") : "streak " + r.streak}</td></tr>`).join("");
-  $("#stats").innerHTML = `<div class="stack"><h1>Fair deal</h1>
+  $("#stats").innerHTML = `<div class="stack ledger"><h1>The fair deal ledger</h1>
     <div class="paper"><p>Every hand is shuffled from a random seed and nothing else: not your score, your streak, what you bought, or who is winning. The seed is on every score sheet, and our website re-deals any hand from it.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}
     <p class="muted">Your last ${n} deal${n === 1 ? "" : "s"}. The green bar is you; the black line is what a fair deck gives on average. Small samples wobble.</p></div>
     <div class="paper"><h2>High cards</h2><p>Aces, kings, queens and jacks per hand: <b>${hc.toFixed(2)}</b> (a fair deck averages <b>4.00</b>)</p></div>
@@ -489,8 +519,8 @@ function renderOptions() {
 
 function renderCaregiver() {
   const c = S.care;
-  $("#caregiver").innerHTML = `<div class="stack"><h1>Caregiver</h1>
-    <div class="paper">${toggle("care:lock", c.lock, "Lock settings and purchases behind the PIN")}${toggle("opt:comfort", S.opt.comfort, "Comfort mode")}
+  $("#caregiver").innerHTML = `<div class="stack"><h1 class="dark">Caregiver</h1>
+    <div class="paper note">${toggle("care:lock", c.lock, "Lock settings and purchases behind the PIN")}${toggle("opt:comfort", S.opt.comfort, "Comfort mode")}
       ${toggle("care:straight", c.straight, "Open straight into a game")}
       <div class="row"><span>Computer players</span><div class="seg">${["easy", "standard", "expert", "extreme"].map((v) => `<button data-act="carelevel" data-v="${v}" aria-pressed="${S.last.opps === v}">${LEVEL_NAME[v]}</button>`).join("")}</div></div>
       ${["hearts", "spades"].map((g) => toggle("care:game:" + g, c.games.includes(g), `Show ${GAME_NAME[g]}`)).join("")}</div>
@@ -541,10 +571,10 @@ const HOWTO = {
 };
 function renderHowto() {
   const g = setupGame === "spades" ? "spades" : S.last.game === "spades" ? "spades" : "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.custom);
-  $("#howto").innerHTML = `<div class="stack"><h1>How to play</h1>
+  $("#howto").innerHTML = `<div class="stack"><h1 class="sign">How to play</h1>
     <div class="seg">${["hearts", "spades"].map((x) => `<button data-act="howto" data-v="${x}" aria-pressed="${x === g}">${GAME_NAME[x]}</button>`).join("")}</div>
-    <div class="paper"><h2>${GAME_NAME[g]}</h2><p>${HOWTO[g]}</p></div>
-    <div class="paper"><h2>Your house rules: ${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, r[d.id])}</b></div>`).join("")}</div>
+    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${g === "hearts" ? "about 15 minutes a game" : "about 25 minutes a game"}</p><p>${HOWTO[g]}</p></div>
+    <div class="paper recipe"><p class="from">House rules</p><h2>${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, r[d.id])}</b></div>`).join("")}</div>
     <button class="btn ghost" data-act="${G && S.cur ? "resume" : "go"}" data-to="title">Back</button></div>`;
 }
 
@@ -564,7 +594,7 @@ function paintPreviews(root) { // backgrounds are set from JS: their SVG data UR
 function renderShop() {
   const ids = (tier) => Object.keys(THEMES).filter((k) => THEMES[k].tier === tier);
   const swatch = (id) => `<button class="swatch ${(S.opt.theme || "walnut") === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
-  $("#shop").innerHTML = `<div class="stack"><h1>Table shop</h1>
+  $("#shop").innerHTML = `<div class="stack"><h1 class="sign">The table shop</h1>
     <div class="paper thanks"><h2>Thank you for being here</h2>
       <p>${cfg.brand.wordmark} has no ads and never will. It's made by one small team, and every theme you pick up is what keeps the cards coming: new games, new rules, and a table that stays calm. We're truly grateful. Thank you for supporting us.</p>
       <p class="muted">Every theme is yours to keep, on every device in your Family Sharing group. Nothing renews.</p></div>
@@ -579,11 +609,11 @@ function renderShop() {
 // Game Center is the only identity (no accounts, no server). Scores count for solo games against the bots only.
 function renderBoards() {
   const fmt = (b, v) => (v == null ? "—" : b.unit ? `${v} ${b.unit}` : v);
-  $("#boards").innerHTML = `<div class="stack"><h1>Leaderboards</h1>
-    <div class="paper pad"><h2>Your bests</h2><table>${cfg.leaderboards.map((b) => `<tr><td>${esc(b.name)}<br><small class="muted">${esc(b.explain)}</small></td><td class="n">${fmt(b, S.best[b.id])}</td></tr>`).join("")}</table>
-      <p class="muted">Scores count for games you play alone against the computer. Pass-and-play games don't post scores.</p></div>
+  $("#boards").innerHTML = `<div class="stack"><h1 class="sign">The leaderboard</h1>
+    <div class="pins">${cfg.leaderboards.map((b, i) => `<div class="paper pin" style="--tilt:${[-2, 1.5, -1, 2, -1.5][i % 5]}deg"><h3>${esc(b.name)}</h3><p class="best">${fmt(b, S.best[b.id])}</p><small class="muted">${esc(b.explain)}</small>${(S.newBest || []).includes(b.name) ? `<span class="minirib">${rosette("New!")}</span>` : ""}</div>`).join("")}</div>
+    <p class="paper pin small" style="--tilt:1deg">Scores count for games you play alone against the computer. Pass-and-play games don't post scores.</p>
     ${platform.leaderboards ? `<button class="btn big" data-act="gc">See the Game Center leaderboards</button>`
-      : `<p class="onfelt muted" style="color:var(--cream)">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
+      : `<p class="corknote">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 // after a solo game: update the bests and post them (best = lowest for Hearts, highest elsewhere)
@@ -666,6 +696,14 @@ const ACT = {
   verify: () => gate(platform.site + "/verify.html", "our verify-a-deal page"),
   link: (el) => gate(platform.site + "/" + el.dataset.url, "our website"),
   consent: (el) => { S.opt.analytics = el.dataset.v === "yes"; setTelemetry(S.opt.analytics, { first: true }); save(); $("#consentCard")?.remove(); },
+  openbox: async (el) => {
+    const g = el.dataset.game;
+    el.classList.add("open"); sound.card();
+    if (!calm()) await wait(420);
+    if (!owns(g)) return go("unlock");
+    setupGame = g; go("setup");
+  },
+  flip: (el) => { el.classList.toggle("flipped"); sound.card(); },
   usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
   buytheme: async (el) => {
     const id = el.dataset.v;
