@@ -91,14 +91,18 @@ function staves() { // charred oak barrel staves, an iron hoop with rivets acros
   const hoop = (y) => `<rect y="${y}" width="${W}" height="16" fill="#2b2a28"/><rect y="${y}" width="${W}" height="2" fill="#5d5b57"/><rect y="${y + 14}" width="${W}" height="2" fill="#141312"/>` + [20, 60, 100, 140, 180, 220].map((x) => `<circle cx="${x}" cy="${y + 8}" r="2.6" fill="#77736b"/><circle cx="${x - .6}" cy="${y + 7.4}" r="1" fill="#b9b3a8"/>`).join("");
   return svgURL(W, H, `${grain}${s}<rect width="${W}" height="${H}" filter="url(#g)"/>${hoop(260)}`);
 }
-function casings() { // polished brass casings lying side by side, for the top and bottom edges
+function casings() { // shotgun shells standing in a row: red ribbed hull, star-crimped top, brass head with a rim
   let s = "";
-  for (let i = 0; i < 6; i++) {
-    const x = i * 22 + 3;
-    s += `<rect x="${x}" y="6" width="16" height="44" rx="2" fill="url(#br)"/><rect x="${x - 1}" y="46" width="18" height="6" rx="1.5" fill="#9a6d24"/>
-      <rect x="${x + 3}" y="8" width="3" height="38" rx="1.5" fill="#fff4cf" opacity=".45"/><path d="M${x} 10 L${x + 3} 6 L${x + 13} 6 L${x + 16} 10Z" fill="#7a5418" opacity=".55"/>`;
+  for (let i = 0; i < 5; i++) {
+    const x = i * 26 + 3;
+    s += `<rect x="${x}" y="4" width="20" height="34" rx="2" fill="url(#hull)"/>` +
+      [10, 16, 22, 28].map((y) => `<rect x="${x}" y="${y}" width="20" height="1.2" fill="#5e1010" opacity=".45"/>`).join("") +
+      `<path d="M${x + 2} 4 L${x + 10} 9 L${x + 18} 4" fill="none" stroke="#5e1010" stroke-width="1.2" opacity=".7"/><path d="M${x + 10} 4 L${x + 10} 9" stroke="#5e1010" stroke-width="1.2" opacity=".7"/>` +
+      `<rect x="${x}" y="38" width="20" height="14" fill="url(#head)"/><rect x="${x - 1.5}" y="51" width="23" height="4" rx="1.5" fill="#9a6d24"/>` +
+      `<rect x="${x + 3}" y="6" width="3" height="30" rx="1.5" fill="#fff" opacity=".22"/><rect x="${x + 3}" y="39" width="3" height="12" rx="1" fill="#fff4cf" opacity=".5"/>`;
   }
-  return svgURL(132, 58, `<defs><linearGradient id="br" x1="0" x2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>${s}`);
+  return svgURL(132, 58, `<defs><linearGradient id="hull" x1="0" x2="1"><stop offset="0" stop-color="#6e1414"/><stop offset=".35" stop-color="#c22a2a"/><stop offset=".65" stop-color="#9c1d1d"/><stop offset="1" stop-color="#5a0f0f"/></linearGradient>
+    <linearGradient id="head" x1="0" x2="1"><stop offset="0" stop-color="#8a5f1c"/><stop offset=".35" stop-color="#f2cf7a"/><stop offset=".6" stop-color="#c8963e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient></defs>${s}`);
 }
 const gingham = (c) => `repeating-linear-gradient(0deg, ${c}66 0 26px, transparent 26px 52px), repeating-linear-gradient(90deg, ${c}66 0 26px, transparent 26px 52px), #f7efe2`;
 const plaid = `repeating-linear-gradient(0deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 30px, transparent 30px 60px), #9e2a24`;
@@ -124,7 +128,7 @@ export const THEMES = {
   parlor: { name: "Antique parlor", tier: "signature", blurb: "Green leather, mahogany and gold tooling.", table: leather("#2e4a36"), frame: frame("#c9a45c", "#4a1f14", 14), back: { base: "#3a1d14", ink: "#c9a45c", motif: "damask" }, accent: { paper: "#f6efdf", brass: "#b8924c", line: "#d6c49c" } },
   leopard: { name: "Leopard lounge", tier: "signature", blurb: "A little wild, black lacquer edge.", table: `${lamp(0.14)}, ${vignette(0.45)}, ${leopard()}`, frame: frame("#c9a45c", "#111111", 12), back: { base: "#141414", ink: "#d9a86a", motif: "leopard" }, accent: { paper: "#fbf3e6", brass: "#c9a45c", line: "#dccdb0" } },
   midcentury: { name: "Mid-century", tier: "signature", blurb: "Teak, mustard and atomic stars.", table: `${lamp(0.16)}, ${vignette(0.4)}, ${atomic()}`, back: { base: "#4f8c86", ink: "#d9a43a", motif: "starburst" }, accent: { paper: "#fbf4e4", brass: "#d9a43a", line: "#dccaa2" } },
-  whiskey: { name: "Whiskey & casings", tier: "signature", blurb: "Charred barrel staves, amber light and a row of brass casings.",
+  whiskey: { name: "Whiskey & shells", tier: "signature", blurb: "Charred barrel staves, amber light and a row of shotgun shells.",
     table: `${casings()} top / 132px 58px repeat-x, ${casings()} bottom / 132px 58px repeat-x, radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255,170,70,.28), transparent 70%), ${vignette(0.5)}, ${staves()}`,
     frame: frame("#c8963e", "#1c0f06", 6), back: { base: "#3b2010", ink: "#d9a54a", motif: "headstamp" }, accent: { paper: "#f6ecd9", brass: "#c8963e", line: "#dcc59c" } },
   leather: { name: "Leather & brass", tier: "signature", blurb: "Oxblood leather and brass studs, a quiet club.", table: leather("#5a1d1d"), frame: frame("#d8b56a", "#2b1410", 10), back: { base: "#4a1414", ink: "#d8b56a", motif: "studs" }, accent: { paper: "#f7efe1", brass: "#c9a45c", line: "#d8c7a4" } },
@@ -153,7 +157,7 @@ export function themeBack(id) {
   if (motif === "fan") for (const y of [40, 80, 120]) { m += `<path d="M20 ${y} a30 30 0 0 1 60 0" fill="none" stroke="${ink}" stroke-width="1.6"/>`; for (let k = 1; k < 8; k++) { const a = Math.PI + (k * Math.PI) / 8; m += `<line x1="50" y1="${y}" x2="${50 + Math.cos(a) * 28}" y2="${y + Math.sin(a) * 28}" stroke="${ink}" stroke-width="1"/>`; } }
   if (motif === "headstamp") m += `<circle cx="50" cy="70" r="30" fill="#c8963e"/><circle cx="50" cy="70" r="30" fill="none" stroke="#8a5f1c" stroke-width="3"/><circle cx="50" cy="70" r="24" fill="none" stroke="#f2cf7a" stroke-width="1" opacity=".7"/>
     <circle cx="50" cy="70" r="9" fill="#a7a39a"/><circle cx="50" cy="70" r="9" fill="none" stroke="#6b675f" stroke-width="2"/><circle cx="47.5" cy="67.5" r="2.5" fill="#e6e2da" opacity=".7"/>
-    <text x="50" y="52" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">KT · 45</text>
+    <text x="50" y="52" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">12 GAUGE</text>
     <text x="50" y="94" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">1952</text>
     ${[22, 118].map((y) => `<rect x="14" y="${y - 2}" width="72" height="4" fill="${ink}" opacity=".6"/>`).join("")}`;
   if (motif === "memphis") m += `<path d="M18 30 q8 -10 16 0 t16 0 t16 0" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/><path d="M60 60 l16 28 h-32z" fill="#f6a5b4"/><circle cx="30" cy="100" r="9" fill="#5b8de0"/><rect x="58" y="100" width="16" height="16" fill="#2fa79a"/>`;
