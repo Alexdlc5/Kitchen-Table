@@ -19,6 +19,7 @@ html.comfort { --cw: 106px; --tap: 64px; --fs: 22px; --fs-s: 19px; --fs-l: 28px;
 /* iPad: bigger cards and type, so the table does not look empty */
 @media (min-width: 700px) { :root { --cw: 118px; --tcw: 112px; --fs: 20px; --fs-s: 17px; --fs-l: 26px; } html.comfort { --cw: 168px; --tcw: 130px; --fs: 26px; --fs-s: 22px; --fs-l: 32px; } }
 [hidden] { display: none !important; }
+* { font-variant-numeric: lining-nums tabular-nums !important; } /* even figures everywhere; the font shorthand would reset them otherwise */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #3a2414; color: var(--ink);
   font: 400 var(--fs)/1.4 var(--sans); font-variant-numeric: lining-nums tabular-nums; /* even figures: scores and bids line up and read easily */ -webkit-user-select: none; user-select: none; touch-action: manipulation; }
