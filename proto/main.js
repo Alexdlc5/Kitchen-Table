@@ -12,6 +12,7 @@ import { THEMES, themeBack, themeStyle } from "./themes.js";
 import { speech } from "./speech.js";
 import { SCENES, tuckBox, rosette, stamp } from "./scenes.js";
 import { sound } from "./sound.js";
+import { joinTable } from "./family.js";
 
 const cfg = await (await fetch("../sim/generator.json", { cache: "no-cache" })).json();
 const BRAND = cfg.brand.name, MOD = { spades, hearts }, qs = new URLSearchParams(location.search), DEBUG = qs.has("debug");
@@ -118,7 +119,7 @@ function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
   const fan = ["AS", "AH", "AD", "AC"].map((c, i) => `<span class="ace" style="--i:${i}; transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px)" data-act="flip" aria-hidden="true"><span class="face">${svgFor(c)}</span><span class="back">${backSvg}</span></span>`).join("");
   $("#title").innerHTML = `<div class="stack title">
-    <p class="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
+    <p class="kicker" data-act="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
     <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
     <button class="btn big" data-act="deal" data-game="${game}">${S.cur ? "Back to the table" : `Deal: ${GAME_NAME[game]}`}</button>
     <div class="grid2">
@@ -130,6 +131,7 @@ function renderTitle() {
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
     </div>
     <div class="row" style="justify-content:center"><button class="link" data-act="restore">Restore purchases</button><button class="link" data-act="care" aria-label="Caregiver settings">Caregiver</button></div>
+    ${familyTest ? `<button class="btn ghost" data-act="family">Family table test</button>` : ""}
   </div>`;
 }
 
@@ -176,11 +178,11 @@ const fmt = (d, v) => (d.type === "toggle" ? (v ? "On" : "Off") : d.id === "moon
 
 // ---------------------------------------------------------------- the game
 let G = null, runId = 0, pending = null, showTrick = null, why = {};
-function newGame(game) {
+function newGame(game, fixed = null) {
   const L = S.last;
   L.game = game;
   const rules = rulesFor(cfg, game, L.preset, L.preset === "custom" ? L.custom : {});
-  const seats = [0, 1, 2, 3].map((s) => {
+  const seats = fixed || [0, 1, 2, 3].map((s) => {
     const kind = s === 0 || L.seats[s] === "human" ? "human" : "bot", level = game === "spades" && s === 2 ? L.partner : L.opps;
     return { kind, level, name: kind === "human" ? (s === 0 ? "You" : `Player ${s + 1}`) : BOTS[level][s - 1] };
   });
@@ -190,8 +192,10 @@ function newGame(game) {
   startHand();
 }
 function startHand() {
+  if (net && !net.host) return guestHand();
   const m = MOD[G.game];
   G.st = m.newHand(G.rules, newSeed(), G.dealer, G.totals, G.handNo);
+  if (net) net.send({ t: "start", seed: G.st.seed, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
   G.reasons = {}; why = {};
   recordDeal(G.st.hands[0], G.game, G.rules);
   S.cur = G; save();
@@ -208,7 +212,7 @@ function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals 
   if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
 }
 
-const humans = () => G.seats.filter((s) => s.kind === "human").length;
+const humans = () => G.seats.filter((s) => s.kind !== "bot").length; // "remote": a person at another device
 async function run() {
   const my = ++runId, m = MOD[G.game], st = G.st;
   show("table"); handLive = st.phase !== "done"; drawTable();
@@ -216,13 +220,18 @@ async function run() {
   while (st.phase !== "done") {
     if (my !== runId) return;
     const s = st.turn, seat = G.seats[s];
-    let action;
+    let action = null;
     if (seat.kind === "human") {
       if (s !== G.viewer && humans() > 1) await handoff(s);
       if (my !== runId) return;
       action = await ask(s);
       if (my !== runId) return;
-    } else {
+      if (net && !net.host) { net.send({ t: "act", seat: s, a: action }); action = (await net.did(s)) ?? action; }
+    } else if (seat.kind === "remote" && net?.alive(seat.player)) { // the host hears the guest; a guest hears the host
+      action = net.host ? await net.intent(s, seat.player, (a) => (st.phase === "pass" ? Array.isArray(a) && new Set(a).size === 3 && a.every((c) => st.hands[s].includes(c)) : m.legal(st).includes(a))) : await net.did(s);
+      if (my !== runId) return;
+    }
+    if (action === null) { // a bot, or the seat of someone who left
       await wait((st.phase === "play" ? 520 : 380) * speed());
       await speech.idle(); // when the table is read aloud, the bots wait for the voice to finish
       if (my !== runId) return;
@@ -231,6 +240,7 @@ async function run() {
     }
     const before = st.history.length, phase = st.phase;
     m.apply(st, action);
+    if (net) await net.applied(st, s, action);
     if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? "nil" : action.bid}.`);
     if (phase === "pass" && st.phase === "play") announce(`Cards passed. You received ${(st.received[G.viewer] || []).map(cardName).join(", ")}.`);
     if (st.history.length > before) await played(s, action);
@@ -402,6 +412,7 @@ function finishHand() {
   G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
+  if (G.over !== null && net) { net.leave(); net = null; }
   track("hand_end", { game: G.game, preset: G.preset, level: S.last.opps, hands_this_session: ++sessionHands });
   save(); renderSheet(); show("sheet");
 }
@@ -696,12 +707,14 @@ const ACT = {
     if (v === "howto") { runId++; renderHowto(); show("howto"); }
     if (v === "leave" || v === "quit") {
       if (S.opt.comfort && !(await dialog(`<h2>Leave the table?</h2><div class="stack"><button class="btn big" data-dlg="yes">Yes, leave</button><button class="btn" data-dlg="">No, keep playing</button></div>`, { user: true }))) return;
-      runId++; pending = null; handLive = false;
+      runId++; pending = null; handLive = false; net?.leave(); net = null;
       if (v === "quit") { S.cur = null; G = null; }
       save(); go("title");
     }
   },
   resume: () => run(),
+  kicker: () => { if (++kickerTaps === 7) { familyTest = true; renderTitle(); } },
+  family: () => familyTable(),
   next: () => { if (G.over !== null) { renderResults(); show("results"); } else startHand(); },
   again: () => newGame(G.game),
   seedinfo: () => dialog(`<h2>The seed</h2><p>Each hand is shuffled from this code and nothing else. Type it into the "verify a deal" page on our website and you'll see exactly the same four hands. Nobody, including us, can steer a deal.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
@@ -782,6 +795,35 @@ document.addEventListener("pointerdown", (e) => {
 });
 addEventListener("resize", () => { if (screen === "table") drawTable(); });
 
+// ---------------------------------------------------------------- family table test (DESIGN.md §9 spike): Hearts with two people on two
+// devices and two bots. Hidden: ?debug, or tap "Play a game of cards at…" seven times. The protocol is family.js.
+let net = null, familyTest = DEBUG, kickerTaps = 0;
+async function familyTable() {
+  const n = await joinTable(platform.table, (n) => {
+    dialog.done?.(null);
+    net = n;
+    if (!n.host) return guestHand();
+    const guest = n.players.find((p) => p.id !== n.me), bot = (i) => ({ kind: "bot", level: S.last.opps, name: BOTS[S.last.opps][i] });
+    newGame("hearts", [{ kind: "human", level: "standard", name: n.name, player: n.me }, bot(0), { kind: "remote", level: "standard", name: guest.name, player: guest.id }, bot(2)]);
+  });
+  if (!n) return dialog(`<h2>Family table</h2><p>Sign in to Game Center in Settings first.</p><button class="btn big" data-dlg="">OK</button>`, { user: true });
+  const v = await dialog(`<h2>Family table test</h2><p>Two people on two devices, two computer players. One of you invites; the other waits for the invitation.</p>
+    <div class="stack"><button class="btn big" data-dlg="invite">Invite someone</button><button class="btn" data-dlg="wait">Wait for an invitation</button><button class="btn ghost" data-dlg="">Cancel</button></div>`, { user: true });
+  if (v === "invite") platform.table.invite({ min: 2, max: 2 }).catch(() => {});
+  if (v === "wait") await dialog(`<h2>Waiting for an invitation…</h2><button class="btn" data-dlg="">Cancel</button>`, { user: true });
+  if (!net && v !== "invite") n.leave();
+}
+async function guestHand() { // a guest plays the host's deal from its own seat; every other seat is the host's to move
+  const h = await net?.take((x) => x.t === "start", net.hostId);
+  if (!h) { net = null; return go("title"); }
+  const mine = h.seats.findIndex((x) => x.player === net.me);
+  G = { game: h.game, rules: h.rules, preset: h.preset, totals: h.totals, handNo: h.handNo, dealer: h.dealer, history: h.handNo && G ? G.history : [], viewer: mine, reasons: {}, over: null,
+    seats: h.seats.map((x, i) => (i === mine ? { ...x, kind: "human" } : { ...x, kind: "remote", player: net.hostId })) };
+  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo);
+  S.cur = G; save(); sound.shuffle(); G.justDealt = true;
+  run();
+}
+
 // ---------------------------------------------------------------- boot
 applyLook();
 setTelemetry(S.opt.analytics === true);
@@ -791,6 +833,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };
