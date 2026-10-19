@@ -44,7 +44,7 @@ partner and the same house rules. Nothing else on screen.
 |---|---|---|---|---|
 | **Hearts** | v1.0 | Free forever | 4, no partners | Full game, all presets, all AI levels, stats, leaderboards. Never nagged. |
 | **Spades** | v1.0 | Everything | 4, two teams | Nil, blind nil, bags, Jokers/deuces, 10-for-200, minimum bid presets |
-| **Euchre** | v1.1 | Everything | 4, two teams | Stick the dealer, Canadian loner, farmer's hand, 10/11 points. Rules + AI scenarios are in `generator.json`/AI_SPEC from day one so the sim can run early. |
+| **Euchre** | v1.1 | Everything | 4, two teams | 24 cards, bowers, order up / name trump, the dealer picks up and discards, going alone, stick the dealer, Canadian loner, farmer's hand, defend alone, loner's left leads, 10/11 points. Engine `proto/euchre.js`, bots `proto/ai-euchre.js` (E01-E09, AI_SPEC §5), tests `sim/test_euchre.mjs` + `sim/test_ai_euchre.mjs`, `sim.mjs --game euchre`. At the table: the kitty with its upcard on the felt during the calls, a calling pad in the middle (order up / pick up, the three other suits, Go alone, Pass; nothing pops up), the trump suit on the score chip and the maker's plate, score sheet lines for points, euchres, marches and loners. |
 | Canasta / Hand and Foot | v2 | Everything | 4, two teams | Partner asks "May I go out?" (the #1 complaint) |
 
 Every mode: solo vs 3 bots, pass-and-play (any mix of humans and bots on one device), family table (Game Center, §9).
@@ -56,7 +56,7 @@ cold launch ──► resume? ──yes──► Table (hand restored exactly, s
                   │no
                   ▼
                Title ── [Deal: <last game>] (big, top) ──────────────► Table
-                  ├── Game picker ── Hearts / Spades / (Euchre: "coming") / [Unlock everything] row
+                  ├── Game picker ── Hearts / Spades / Euchre / [Unlock everything] row
                   ├── Family table (Game Center; hidden if not signed in or the gate failed)
                   ├── Stats (fair-deal proof) ── Options ── Caregiver (PIN) ── How to play
                   └── Restore purchases (small text button, always visible)
@@ -75,7 +75,7 @@ Table ── last trick ──► Score sheet (line-by-line scoring, seed, "Next
 | **Stats** | Fair-deal proof for the last 1,000 deals (§7); win/loss per game and level; bid accuracy; moons; nils | Plain charts drawn in SVG; "what to expect" line on each. |
 | **Options** | Sound, sound on silent, haptics, card size, four-color deck, Comfort mode, animation speed, language, analytics on/off, card back and felt (owned cosmetics), Restore purchases, About (privacy, terms, support: gated links) | |
 | **Caregiver** (PIN) | §6.2 | |
-| **Unlock** | What Everything opens (Spades now, Euchre next, every future game), "$6.99 once. Yours on every device in your Family Sharing group." Buy / Restore / Not now | Opened only by a tap on a locked game or the unlock row. Never on a timer, never after a loss. |
+| **Unlock** | What Everything opens (Spades and Euchre now, every future game), "$6.99 once. Yours on every device in your Family Sharing group." Buy / Restore / Not now | Opened only by a tap on a locked game or the unlock row. Never on a timer, never after a loss. |
 | **Cosmetics shelf** | Card backs and felts, owned ones selectable, packs with price | In Options › Look. |
 | **How to play** | Per game: rules for the current preset, generated from `generator.json` explanations; a 5-card "try a trick" walkthrough | |
 | **Family table lobby** | §9 | |
@@ -187,7 +187,12 @@ Every rule: `{ "id", "name", "explain", "type": "toggle|number|choice", "range",
 | Canadian loner (dealer's partner orders up → must go alone) | off | off | off |
 | Farmer's hand (all 9s and 10s → swap three with the kitty) | off | on | off |
 | Going alone, all 5 tricks | 4 | 4 | 4 |
-| Defend alone | off | off | off |
+| Defend alone (a defender may go alone against a loner; a euchre scores 4) | off | off | off |
+| Loner's left leads (against a loner, the opponent on the loner's left leads instead of the dealer's left) | off | off | on |
+
+Scoring, every preset: makers take 3 or 4 tricks: 1; all 5: 2 (a march); alone, 3 or 4: 1; alone, all 5: the
+"going alone" value; makers take 2 or fewer: the defenders score 2 (euchred), 4 if a defender went alone. A hand
+everyone passes twice is thrown in and the deal moves on (unless stick the dealer is on).
 
 The sim plays every preset (balance check: no preset makes a seat or a strategy dominate; reported in RELEASE_REVIEW.md).
 
