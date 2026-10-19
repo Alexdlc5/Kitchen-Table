@@ -106,7 +106,7 @@ sc("H06", "I passed the queen: don't lead my ace or king of spades into it", hv(
   }
   n++; console.log("ok", "views never show another hand, the seed, or who is human");
   const src = readFileSync(new URL("../proto/ai.js", import.meta.url), "utf8");
-  assert.deepEqual([...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort(), ["./cards.js", "./hearts.js", "./spades.js"]);
+  assert.deepEqual([...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort(), ["./ai-euchre.js", "./cards.js", "./hearts.js", "./spades.js"]);
   assert.doesNotMatch(src.replace(/\/\/.*$/gm, ""), /seed|human|purchase|streak|platform|localStorage/i);
   n++; console.log("ok", "ai.js reads nothing but the view (no seed, no human flag, no purchases)");
 }
