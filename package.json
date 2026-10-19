@@ -1,0 +1,11 @@
+{
+  "name": "kitchen-table",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kitchen Table: Spades and Hearts, no ads ever (Capacitor app around proto/)",
+  "type": "module",
+  "scripts": {
+    "check": "node sim/test_sim.mjs && node sim/test_ai.mjs && node sim/sim.mjs --check --game spades --hands 20000 && node sim/sim.mjs --check --game hearts --hands 20000",
+    "sim": "node sim/sim.mjs --all --hands 100000 --games 4000"
+  }
+}

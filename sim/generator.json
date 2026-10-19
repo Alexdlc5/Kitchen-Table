@@ -1,0 +1,422 @@
+{
+ "brand": {
+  "name": "Kitchen Table",
+  "storeName": "Kitchen Table: Spades, Hearts",
+  "bundleId": "io.github.alexdlc5.kitchentable"
+ },
+ "products": [
+  {
+   "id": "everything",
+   "type": "non-consumable",
+   "price": "6.99",
+   "familyShareable": true,
+   "unlocks": [
+    "spades",
+    "euchre",
+    "future"
+   ]
+  },
+  {
+   "id": "backs_porch",
+   "type": "non-consumable",
+   "price": "1.99",
+   "familyShareable": true,
+   "unlocks": [
+    "backs:porch"
+   ]
+  },
+  {
+   "id": "felts_home",
+   "type": "non-consumable",
+   "price": "2.99",
+   "familyShareable": true,
+   "unlocks": [
+    "felts:home"
+   ]
+  }
+ ],
+ "games": {
+  "hearts": {
+   "free": true,
+   "seats": 4,
+   "teams": false
+  },
+  "spades": {
+   "free": false,
+   "seats": 4,
+   "teams": true
+  },
+  "euchre": {
+   "free": false,
+   "seats": 4,
+   "teams": true,
+   "release": "1.1"
+  }
+ },
+ "presets": [
+  "standard",
+  "kitchen",
+  "tournament"
+ ],
+ "rules": {
+  "spades": [
+   {
+    "id": "target",
+    "name": "Points to win",
+    "explain": "The first team to reach this score at the end of a hand wins.",
+    "type": "number",
+    "range": [
+     100,
+     1000
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 500,
+     "kitchen": 300,
+     "tournament": 500
+    }
+   },
+   {
+    "id": "nil",
+    "name": "Nil value",
+    "explain": "Bid zero and take no tricks to score this; take one and lose it.",
+    "type": "number",
+    "range": [
+     50,
+     200
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 100,
+     "kitchen": 100,
+     "tournament": 100
+    }
+   },
+   {
+    "id": "blindNil",
+    "name": "Blind nil",
+    "explain": "Bid nil before looking at your cards, for double. 0 turns it off.",
+    "type": "number",
+    "range": [
+     0,
+     400
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 0,
+     "kitchen": 200,
+     "tournament": 0
+    }
+   },
+   {
+    "id": "blindNilDown",
+    "name": "Blind nil only when behind by",
+    "explain": "A team may bid blind nil only when it trails by at least this much.",
+    "type": "number",
+    "range": [
+     0,
+     300
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 100,
+     "kitchen": 100,
+     "tournament": 100
+    }
+   },
+   {
+    "id": "nilTricksCount",
+    "name": "A broken nil's tricks help the partner",
+    "explain": "When a nil bidder takes tricks, they count toward the partner's bid.",
+    "type": "toggle",
+    "presets": {
+     "standard": true,
+     "kitchen": true,
+     "tournament": false
+    }
+   },
+   {
+    "id": "bagLimit",
+    "name": "Bags before a penalty",
+    "explain": "Each trick over the bid is a bag worth 1 point. Collect this many and lose the penalty.",
+    "type": "number",
+    "range": [
+     5,
+     10
+    ],
+    "step": 1,
+    "presets": {
+     "standard": 10,
+     "kitchen": 10,
+     "tournament": 10
+    }
+   },
+   {
+    "id": "bagPenalty",
+    "name": "Bag penalty",
+    "explain": "Points lost each time a team's bags reach the limit.",
+    "type": "number",
+    "range": [
+     50,
+     200
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 100,
+     "kitchen": 100,
+     "tournament": 100
+    }
+   },
+   {
+    "id": "spadesBroken",
+    "name": "Spades must be broken to lead",
+    "explain": "Nobody may lead a spade until a spade has been played on another suit, unless they hold only spades.",
+    "type": "toggle",
+    "presets": {
+     "standard": true,
+     "kitchen": true,
+     "tournament": true
+    }
+   },
+   {
+    "id": "tenFor200",
+    "name": "10 for 200",
+    "explain": "A team that bids 10 or more and makes it scores double.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": false
+    }
+   },
+   {
+    "id": "jokers",
+    "name": "Jokers and deuces",
+    "explain": "Big Joker, Little Joker, 2 of diamonds and 2 of spades are the four highest spades. The 2 of clubs and 2 of hearts are taken out.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": false
+    }
+   },
+   {
+    "id": "minBid",
+    "name": "Minimum team bid",
+    "explain": "A team's two bids must add up to at least this, unless one partner bids nil. 0 means no minimum.",
+    "type": "number",
+    "range": [
+     0,
+     5
+    ],
+    "step": 1,
+    "presets": {
+     "standard": 0,
+     "kitchen": 4,
+     "tournament": 0
+    }
+   },
+   {
+    "id": "boston",
+    "name": "Boston bonus",
+    "explain": "Extra points for a team that takes all 13 tricks. 0 turns it off.",
+    "type": "number",
+    "range": [
+     0,
+     500
+    ],
+    "step": 50,
+    "presets": {
+     "standard": 0,
+     "kitchen": 250,
+     "tournament": 0
+    }
+   }
+  ],
+  "hearts": [
+   {
+    "id": "endScore",
+    "name": "Game ends at",
+    "explain": "The game ends when someone reaches this score. The lowest score wins.",
+    "type": "choice",
+    "choices": [
+     50,
+     100,
+     150
+    ],
+    "presets": {
+     "standard": 100,
+     "kitchen": 100,
+     "tournament": 100
+    }
+   },
+   {
+    "id": "moon",
+    "name": "Shoot the moon",
+    "explain": "Take every heart and the queen of spades: everyone else gets 26 (add), the shooter picks add or subtract 26 from their own score (choose), or no special scoring (off).",
+    "type": "choice",
+    "choices": [
+     "add",
+     "choose",
+     "off"
+    ],
+    "presets": {
+     "standard": "add",
+     "kitchen": "choose",
+     "tournament": "add"
+    }
+   },
+   {
+    "id": "jackDiamonds",
+    "name": "Jack of diamonds is -10",
+    "explain": "Whoever takes the jack of diamonds subtracts 10 points.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": false
+    }
+   },
+   {
+    "id": "passing",
+    "name": "Passing",
+    "explain": "Which way three cards are passed before each hand, in turn.",
+    "type": "choice",
+    "choices": [
+     "left,right,across,hold",
+     "left,right,hold",
+     "left",
+     "none"
+    ],
+    "presets": {
+     "standard": "left,right,across,hold",
+     "kitchen": "left,right,across,hold",
+     "tournament": "left,right,across,hold"
+    }
+   },
+   {
+    "id": "heartsBroken",
+    "name": "Hearts must be broken to lead",
+    "explain": "Nobody may lead a heart until a heart (or the queen of spades) has been played, unless they hold only hearts.",
+    "type": "toggle",
+    "presets": {
+     "standard": true,
+     "kitchen": true,
+     "tournament": true
+    }
+   },
+   {
+    "id": "firstTrickPoints",
+    "name": "Points allowed on the first trick",
+    "explain": "Whether hearts or the queen of spades may be played on the opening trick.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": false
+    }
+   },
+   {
+    "id": "queenBreaks",
+    "name": "Queen of spades breaks hearts",
+    "explain": "Playing the queen of spades counts as breaking hearts.",
+    "type": "toggle",
+    "presets": {
+     "standard": true,
+     "kitchen": true,
+     "tournament": true
+    }
+   }
+  ],
+  "euchre": [
+   {
+    "id": "target",
+    "name": "Points to win",
+    "explain": "Play to 10, or to 11 as some families do.",
+    "type": "choice",
+    "choices": [
+     10,
+     11
+    ],
+    "presets": {
+     "standard": 10,
+     "kitchen": 10,
+     "tournament": 10
+    }
+   },
+   {
+    "id": "stickDealer",
+    "name": "Stick the dealer",
+    "explain": "If everyone passes twice, the dealer must name trump.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": true
+    }
+   },
+   {
+    "id": "canadianLoner",
+    "name": "Canadian loner",
+    "explain": "If the dealer's partner orders the dealer up, they must go alone.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": false
+    }
+   },
+   {
+    "id": "farmersHand",
+    "name": "Farmer's hand",
+    "explain": "A hand of only nines and tens may swap three cards with the kitty.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": false
+    }
+   },
+   {
+    "id": "aloneScore",
+    "name": "Going alone, all five tricks",
+    "explain": "Points for a player who goes alone and takes every trick.",
+    "type": "number",
+    "range": [
+     4,
+     5
+    ],
+    "step": 1,
+    "presets": {
+     "standard": 4,
+     "kitchen": 4,
+     "tournament": 4
+    }
+   },
+   {
+    "id": "defendAlone",
+    "name": "Defend alone",
+    "explain": "A defender may also go alone against a loner, for 4 points on a euchre.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": false
+    }
+   }
+  ]
+ },
+ "ai": {
+  "easyNoise": 0.25,
+  "easyMemory": 4,
+  "expertSamples": 24,
+  "nilMaxRisk": {
+   "easy": 0.3,
+   "standard": 0.22,
+   "expert": 0.22,
+   "extreme": 0.22
+  },
+  "bidBias": 0.25,
+  "extremeSamples": 60
+ }
+}

@@ -2,8 +2,8 @@
 
 *Phase 0, 2026-10-19.* Every sin below was named by a real player in a 1-3 star review (Apple review RSS, last 200 per app,
 pulled 2026-10-19; see PLAYER_RESEARCH.md) or in the market research (Mobile-Market-Research `research/games-strategy-sim-idle.md`
-#1-2, `research/games-casual-puzzle.md` #1, #3, #5). Each sin is a **scenario test** in `sim/test_ai.py` (and mirrored in
-`proto/check.mjs` for the JS AI) that the AI must pass at **every level**, Easy included.
+#1-2, `research/games-casual-puzzle.md` #1, #3, #5). Each sin is a **scenario test** in `sim/test_ai.mjs`, run against the
+same `proto/ai.js` the app ships, that the AI must pass at **every level**, Easy included.
 
 ## 1. Principles
 
@@ -28,9 +28,10 @@ pulled 2026-10-19; see PLAYER_RESEARCH.md) or in the market research (Mobile-Mar
 |---|---|---|---|
 | **Easy** | Rule-based heuristics, counts only the last trick, bids from a simple point count | Bids ±1 off; forgets which suits are void after 4+ tricks; plays a middle card where the lowest would do; doesn't count spades left | Any §3-§4 sin; an illegal play |
 | **Standard** | Heuristics + full card counting (cards played, known voids), bag awareness, nil cover, moon detection | Occasionally misjudges a finesse; conservative bids | Any sin |
-| **Expert** | Standard + Monte Carlo determinization: samples 200 deals consistent with everything public (bids, voids, plays), plays each candidate out with the Standard policy, picks the best average | — | Any sin; peeking (samples never use hidden cards) |
+| **Expert** | Standard + Monte Carlo look-ahead: samples 24 deals consistent with everything public (voids, plays, passed cards), plays each candidate out with the Standard policy, picks the best average | — | Any sin; peeking (samples never use hidden cards) |
+| **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
 
-Partner and opponents are picked separately at table setup (e.g. Expert partner, Standard opponents). Bots have names and
+Extreme is offered from Table setup like the others (four pips on the seat card). Partner and opponents are picked separately at table setup (e.g. Expert partner, Standard opponents). Bots have names and
 a fixed style; the player can swap partners ("can't get a new partner" was a complaint).
 
 ## 3. Spades sins (v1.0)
@@ -99,7 +100,7 @@ decision of every seat (bots and a random-legal "human"); the game runs it on bo
 
 ## 8. Sim report (filled in `docs/RELEASE_REVIEW.md`)
 
-`python sim/sim.py --game spades --hands 100000 --level easy|standard|expert` (and hearts, and euchre once it exists),
+`node sim/sim.mjs --game spades --hands 100000 --level easy|standard|expert` (and hearts, and euchre once it exists),
 each preset, partner and opponents at the same level, plus "Expert partner vs Standard opponents" and "Easy partner vs
 Expert opponents":
 
@@ -110,7 +111,7 @@ Expert opponents":
 | Nil success | nil bids made | ≥ 70% |
 | Bags per hand | per team | ≤ 1.5 |
 | Moon rate (Hearts) | hands where someone shot the moon | 1-4% |
-| Moon stops | moon attempts (≥ 16 pts taken by one seat by trick 10) that failed | ≥ 60% |
+| Moon stops | runs where one seat holds every point taken so far, at least 10, after trick 6, that end without a moon | ≥ 60% |
 | Partner-blame events | §7 detector firings | 0 |
-| Level ladder | win rate of Expert team vs Standard team, Standard vs Easy | ≥ 58% each |
+| Level ladder | win rate of Extreme vs Expert, Expert vs Standard, Standard vs Easy | ≥ 58% each (Extreme vs Expert: > 50%) |
 | Fairness | win rate per seat with equal levels | 50% ± 1 pt |

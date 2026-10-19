@@ -1,4 +1,4 @@
-# Kitchen Table (working title)
+# Kitchen Table
 
 Classic American card games for iPhone and iPad: Spades and Hearts at launch, Euchre next. Hearts free forever, one $6.99
 unlock for the rest, no ads ever, no subscriptions, no accounts, no server. A provably fair deal, partners built from real

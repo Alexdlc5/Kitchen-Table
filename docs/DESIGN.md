@@ -1,7 +1,7 @@
 # Kitchen Table: design
 
-*Phase 0, 2026-10-19. "Kitchen Table" is a working title; the final name is chosen at the name check (SETUP.md A13) and lives
-in one place: `sim/generator.json` → `brand` (the game, the listing scripts and the site read it from there).*
+*Phase 0, 2026-10-19. Name decided 2026-10-19: **Kitchen Table** (store: "Kitchen Table: Spades, Hearts"). It lives in one place:
+`sim/generator.json` → `brand` (the game, the listing scripts and the site read it from there).*
 
 Classic American card games for iPhone and iPad. Spades and Hearts at launch, Euchre next, Canasta / Hand and Foot later.
 Hearts free forever; one $6.99 **Everything** unlock for the rest; cosmetic packs. **No ads ever, no subscriptions, no
@@ -27,11 +27,11 @@ partner and the same house rules. Nothing else on screen.
 
 | # | Rule | Enforced by |
 |---|---|---|
-| R1 | **Fair deal.** Fisher-Yates over a CSPRNG seed. The seed is printed on the score sheet. `deal(seed, deckSize)` takes nothing else. | `test_sim`: same seed → same deal (JS and Python agree); `dealer.js` imports nothing; stats screen; `site/verify.html` |
+| R1 | **Fair deal.** Fisher-Yates over a CSPRNG seed. The seed is printed on the score sheet. `deal(seed, deckSize)` takes nothing else. | `test_sim`: same seed → same deal; golden deals cross-checked by an independent implementation; `dealer.js` imports nothing; stats screen; `site/verify.html` |
 | R2 | **Never interrupt a hand.** No modal, toast, rating prompt, purchase prompt or consent card between the deal and the last trick. | `smoke.mjs` plays a full hand per game and fails on any overlay; `ui.overlay()` refuses while `handInProgress` |
 | R3 | **Comfort mode** (§6). | `smoke.mjs --comfort`: target sizes measured on and off |
 | R4 | **House rules are presets, not constants.** Every rule lives in `sim/generator.json` with a name and an explanation. | Rules tests read only the JSON; a rule with no `explain` fails `npm run check` |
-| R5 | **AI quality bar** (AI_SPEC.md). Every named sin is a scenario test at every level; the AI sees only what a player at the table could see. | `test_ai` scenarios; `view()` isolation test; 100K-hand sim per level |
+| R5 | **AI quality bar** (AI_SPEC.md). Four levels: Easy, Standard, Expert, Extreme (for very experienced players). Every named sin is a scenario test at every level; the AI sees only what a player at the table could see. | `test_ai` scenarios; `view()` isolation test; 100K-hand sim per level |
 | R6 | **Save on device, no accounts.** localStorage mirrored to Capacitor Preferences. Game Center is the only identity. | `check-save-mirror.mjs` |
 | R7 | **No ad SDK in the binary, ever.** No AdMob, UMP, ATT, `app-ads.txt`. `NSPrivacyTracking` false, no tracking domains. | `store-check.mjs` fails on an ad SDK in package.json / SPM graph / Podfile |
 | R8 | **Purchases are permanent.** Only non-consumables. No subscriptions, rentals, coins, energy, hand limits. Restore on the title screen. Family Sharing on. | `store-check.mjs` checks `generator.json → products` (all `non-consumable`, `familyShareable: true`) |
@@ -127,7 +127,9 @@ Table ── last trick ──► Score sheet (line-by-line scoring, seed, "Next
 - `proto/dealer.js` (pure, imports nothing): `newSeed()` = 128 bits from `crypto.getRandomValues`, shown as 26 base-32
   characters in groups (`K7QF-2MZ9-…`); `deal(seed, deckSize)` → a permutation. The PRNG is **xoshiro128\*\*** seeded by
   SplitMix32 over the four seed words; Fisher-Yates with rejection sampling (no modulo bias). The algorithm is ~40 lines,
-  published on verify.html, and reimplemented in `sim/sim.py`; a test checks both give the same permutation for 1,000 seeds.
+  published on verify.html. Golden deals in `sim/test_sim.mjs` were cross-checked against an independent re-implementation,
+  so the algorithm can never drift from what the page publishes. The sim (`sim/sim.mjs`) runs the game's own JS modules: the
+  numbers it reports are for the exact code that ships.
 - The game maps the permutation onto its deck (built from the rule preset: 52, 54 with Jokers minus 2♣ 2♥, 24 for Euchre)
   and deals round-robin from the dealer's left. **Nothing else enters the deal**: not purchases, streaks, scores, level,
   which seats are human. A test asserts `dealer.js` has no imports and `deal.length === 2`.
@@ -157,7 +159,6 @@ Every rule: `{ "id", "name", "explain", "type": "toggle|number|choice", "range",
 | Jokers and deuces (Big Joker, Little Joker, 2♠, 2♦ high; 2♣ 2♥ out) | off | on | off |
 | Minimum team bid | none | 4 | none |
 | Boston (13 tricks) bonus | off | +250 | off |
-| First lead | left of dealer | 2♣ | left of dealer |
 
 **Hearts**
 
