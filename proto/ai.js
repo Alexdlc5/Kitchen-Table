@@ -4,9 +4,14 @@
 // list from docs/AI_SPEC.md (sins()); a level may make human mistakes but never a sin.
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
+import * as ohhell from "./ohhell.js";
+import * as whist from "./whist.js";
+import * as ohhellBot from "./ai-ohhell.js";
+import * as whistBot from "./ai-whist.js";
 import { newDeck, partner, team, next } from "./cards.js";
 
-const GAMES = { spades, hearts };
+const GAMES = { spades, hearts, ohhell, whist };
+const BOTS = { ohhell: ohhellBot, whist: whistBot }; // games whose bots live in their own module (ai-<game>.js)
 const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 } };
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
@@ -39,10 +44,10 @@ export function know(v, memory = Infinity) {
 }
 
 // the trick so far: who is winning, with what, and whether card c would take over
-function trickInfo(v, K) {
+export function trickInfo(v, K) {
   const t = v.trick;
   if (!t.length) return { led: null, winSeat: -1, winCard: null, last: false, beats: () => true };
-  const trump = v.game === "spades" ? "S" : null, led = K.eff(t[0].card);
+  const trump = v.game === "spades" ? "S" : v.trump ?? null, led = K.eff(t[0].card);
   let w = t[0];
   for (const p of t.slice(1)) {
     const a = K.eff(w.card), b = K.eff(p.card);
@@ -55,8 +60,8 @@ function trickInfo(v, K) {
   return { led, winSeat: w.seat, winCard: w.card, last: t.length === 3, beats, seatsAfter: [1, 2, 3].slice(0, 3 - t.length).map((k) => (v.seat + k) % 4) };
 }
 
-const lowest = (cards, K) => cards.reduce((a, b) => (K.pow(b) < K.pow(a) ? b : a));
-const highest = (cards, K) => cards.reduce((a, b) => (K.pow(b) > K.pow(a) ? b : a));
+export const lowest = (cards, K) => cards.reduce((a, b) => (K.pow(b) < K.pow(a) ? b : a));
+export const highest = (cards, K) => cards.reduce((a, b) => (K.pow(b) > K.pow(a) ? b : a));
 
 // ---------------------------------------------------------------- Spades
 
@@ -365,6 +370,7 @@ function heartsPlay(v, K, level, rng) {
 
 // ids of the sins an action would commit in this view; [] is clean. Shared by tests, the sim and the in-game detector.
 export function sins(v, action) {
+  if (BOTS[v.game]) return BOTS[v.game].sins(v, action);
   const out = [];
   if (v.game === "spades") {
     const s = v.seat, p = partner(s), r = v.rules;
@@ -522,6 +528,7 @@ function outcome(st, seat) { // higher is better for seat's side, in points
 
 export function decide(v, level = "standard", rng = Math.random, tune = DEFAULT_TUNE) {
   tune = { ...DEFAULT_TUNE, ...tune };
+  if (BOTS[v.game]) return BOTS[v.game].decide(v, level, rng, tune);
   const easy = level === "easy";
   if (v.game === "spades" && v.phase === "bid") {
     const d = spadesBid(v, level, rng, tune);

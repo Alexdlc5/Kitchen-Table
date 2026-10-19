@@ -14,6 +14,8 @@
    "unlocks": [
     "spades",
     "euchre",
+    "ohhell",
+    "whist",
     "future"
    ]
   },
@@ -160,6 +162,16 @@
    "seats": 4,
    "teams": true,
    "release": "1.1"
+  },
+  "ohhell": {
+   "free": false,
+   "seats": 4,
+   "teams": false
+  },
+  "whist": {
+   "free": false,
+   "seats": 4,
+   "teams": true
   }
  },
  "presets": [
@@ -513,6 +525,90 @@
      "tournament": false
     }
    }
+  ],
+  "ohhell": [
+   {
+    "id": "sequence",
+    "name": "Hand sizes",
+    "explain": "How many cards each player gets, hand by hand: down to one card and back up, or just climbing. Your score after the last hand decides the game.",
+    "type": "choice",
+    "choices": [
+     "13 → 1 → 13",
+     "7 → 1 → 7",
+     "1 → 7"
+    ],
+    "presets": {
+     "standard": "7 → 1 → 7",
+     "kitchen": "1 → 7",
+     "tournament": "13 → 1 → 13"
+    }
+   },
+   {
+    "id": "hook",
+    "name": "The dealer's hook",
+    "explain": "The dealer bids last and may not bid the number that would make all the bids add up to the tricks in the hand, so somebody has to miss.",
+    "type": "toggle",
+    "presets": {
+     "standard": true,
+     "kitchen": false,
+     "tournament": true
+    }
+   },
+   {
+    "id": "scoring",
+    "name": "Scoring",
+    "explain": "10 + tricks: take exactly your bid for 10 plus your bid, miss and get nothing. 1 a trick + 10: every trick is a point, and an exact bid adds 10. Minus misses: exact is 10 plus your bid, and you lose 10 for every trick you were off.",
+    "type": "choice",
+    "choices": [
+     "10 + tricks",
+     "1 a trick + 10",
+     "minus misses"
+    ],
+    "presets": {
+     "standard": "10 + tricks",
+     "kitchen": "1 a trick + 10",
+     "tournament": "10 + tricks"
+    }
+   },
+   {
+    "id": "trumpBroken",
+    "name": "Trump must be broken to lead",
+    "explain": "Nobody may lead trump until a trump has been played on another suit, unless they hold only trump.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": false
+    }
+   }
+  ],
+  "whist": [
+   {
+    "id": "target",
+    "name": "Points to win",
+    "explain": "Short whist is played to 5, American whist to 7. Each trick over six (the book) is a point.",
+    "type": "choice",
+    "choices": [
+     5,
+     7
+    ],
+    "presets": {
+     "standard": 7,
+     "kitchen": 5,
+     "tournament": 7
+    }
+   },
+   {
+    "id": "honours",
+    "name": "Honours",
+    "explain": "A side holding all four of the ace, king, queen and jack of trump between the partners scores 4; three of them scores 2. Tricks count first, and a side one point from game can't score honours.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": true,
+     "tournament": false
+    }
+   }
   ]
  },
  "ai": {
@@ -572,6 +668,18 @@
    "id": "spades_wins",
    "name": "Spades: games won",
    "explain": "Every Spades game you've won",
+   "order": "high"
+  },
+  {
+   "id": "ohhell_wins",
+   "name": "Oh Hell: games won",
+   "explain": "Every Oh Hell game you've won",
+   "order": "high"
+  },
+  {
+   "id": "whist_wins",
+   "name": "Whist: games won",
+   "explain": "Every Whist game you and your partner have won",
    "order": "high"
   },
   {

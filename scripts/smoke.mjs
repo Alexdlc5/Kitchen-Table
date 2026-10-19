@@ -85,7 +85,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     const shown = await page.evaluate((id) => document.getElementById(id).classList.contains("on") && document.getElementById(id).innerHTML.length > 50, id);
     await report(id, [!shown && "not shown", ...(await page.evaluate(AUDIT, id))]);
   }
-  for (const game of ["hearts", "spades"]) {
+  for (const game of ["hearts", "spades", "ohhell", "whist"]) {
     await page.evaluate((g) => kt.newGame(g), game);
     // R10: the human's turn waits as long as they need
     await page.waitForFunction(() => kt.G && kt.pending && kt.pending.seat === 0, null, { timeout: 20000 }); // the game is asking the player

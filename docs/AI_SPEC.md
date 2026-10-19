@@ -20,13 +20,13 @@ same `proto/ai.js` the app ships, that the AI must pass at **every level**, Easy
 4. **Every decision has a reason code** (`cover_nil_lowest_winner`, `duck_partner_winning`, `stop_moon`, …). Tests assert
    reason codes; the table's **"Why?"** button (tap the partner's last card) shows the reason in plain words. Players
    asked to "tell your partner they are messing up"; we let them ask instead.
-5. **Levels differ in skill, not in honesty.** All levels pass every scenario in §3-§4.
+5. **Levels differ in skill, not in honesty.** All levels pass every scenario in §3-§7.
 
 ## 2. Levels
 
 | Level | How it plays | Human-like mistakes it may make | Never |
 |---|---|---|---|
-| **Easy** | Rule-based heuristics, counts only the last trick, bids from a simple point count | Bids ±1 off; forgets which suits are void after 4+ tricks; plays a middle card where the lowest would do; doesn't count spades left | Any §3-§4 sin; an illegal play |
+| **Easy** | Rule-based heuristics, counts only the last trick, bids from a simple point count | Bids ±1 off; forgets which suits are void after 4+ tricks; plays a middle card where the lowest would do; doesn't count spades left | Any §3-§7 sin; an illegal play |
 | **Standard** | Heuristics + full card counting (cards played, known voids), bag awareness, nil cover, moon detection | Occasionally misjudges a finesse; conservative bids | Any sin |
 | **Expert** | Standard + Monte Carlo look-ahead: samples 24 deals consistent with everything public (voids, plays, passed cards), plays each candidate out with the Standard policy, picks the best average | — | Any sin; peeking (samples never use hidden cards) |
 | **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
@@ -86,19 +86,60 @@ a fixed style; the player can swap partners ("can't get a new partner" was a com
 | E08 | **Signals with hidden information.** "Seem to know exactly when to throw off because their partner has the winning card." | §1.1 view test. |
 | E09 | **Farmer's hand / stick the dealer applied wrongly.** | Engine tests per preset. |
 
-## 6. Canasta / Hand and Foot (v2 note)
+## 6. Oh Hell sins (v1.1)
+
+Bots in `proto/ai-ohhell.js`; scenarios in `sim/test_ai_family.mjs`. Every seat plays for itself, so "partner" sins become
+sins against your own bid: the player at the table should never watch a bot throw away a bid it had made, or bid like it
+didn't look at its cards. The turned trump card is public; the undealt cards are not (a bot never learns which they are).
+
+| ID | Sin | Scenario test (must hold at every level) |
+|---|---|---|
+| O01 | **Busts its own exact bid needlessly.** Sitting exactly on its bid, it takes a trick it could have lost, including overtaking an opponent who is sitting on *their* bid (which saves them and sinks the bot). | Exactly on the bid and last to play with a losing card available → play a losing card (on-suit when following; never trump in when void). |
+| O02 | **Wild bid / bidding to hit the hook.** Bids two or more off what its own cards count to; as a hooked dealer jumps far from its count instead of moving one trick. | Every bid is within 1 of the bot's own count (`count(view)`: the hand, the hand size, the trump, the bids so far). A hooked dealer whose count is the barred number bids one either side. A hand of nothing bids 0-1. |
+| O03 | **Gives away a sure trick it needs.** Still short of its bid (and the bid still makeable), last to play, holding a winner, it plays a loser. | Short of the bid, last to play, can win → wins (trumping in when void). |
+| O04 | **Throws its high card on a trick it can't win.** Short of its bid, can't beat the trick, plays a high card of the suit. | Can't win and still needs tricks → lowest card of the suit led. |
+| O05 | **Hook or scoring applied wrongly.** | `sim/test_family.mjs`: the hook bars exactly the number that makes the bids equal the tricks, only for the dealer; every scoring preset (10 + tricks, 1 a trick + 10, minus misses) as a table of line items; a tie for first after the last hand plays one more hand. |
+
+Sim (`node sim/sim.mjs --game ohhell --check`, Standard, 20K hands): exact bids ≥ 50% (Standard preset 57.6%, Kitchen
+60.5%, Tournament 53.3% where 10-13 card hands make it harder), average miss ≤ 0.6 tricks, zero sins shipped. Level ladder
+(one stronger seat against three weaker, so even is 25%): Expert vs Standard 40%, Standard vs Easy 41%, Extreme vs Expert
+29% (600 games each). Expert samples hidden hands consistent with voids and plays each clean card out; Extreme keeps only
+worlds where each seat's hand as dealt counts to within 1.5 of its bid.
+
+## 7. Whist sins (v1.1)
+
+Bots in `proto/ai-whist.js`; scenarios in `sim/test_ai_family.mjs`. Classic partnership manners, the ones a Whist player
+learned at the kitchen table: second hand low, third hand high, cover an honour with an honour, return partner's lead.
+The turned trump card stays in the dealer's hand until played; every bot knows that (it was turned in front of everyone),
+and Expert's sampled worlds put it there.
+
+| ID | Sin | Scenario test (must hold at every level) |
+|---|---|---|
+| W01 | **Takes a trick off partner.** Last to play, partner winning, it overtakes or trumps. | Last to play and partner winning → a card that loses (lowest of the suit, or a discard; never trump). |
+| W02 | **Doesn't return partner's lead.** Partner opened a suit; the bot gets in and leads something else. | On lead, partner's opening suit (not trump) still held and not yet returned → lead it, unless leading a sure winner, drawing trump with 5+ trumps, or an opponent is known out of that suit and may still hold trump (no leading into a ruff). |
+| W03 | **Doesn't cover an honour.** Second to play on an opponent's J, Q or K, holding a higher card of the suit, it ducks. | Second hand on a led honour with a higher card of the suit → beat it (lowest card that does). |
+| W04 | **Throws its high card on a trick it can't win.** | Opponents winning, nothing beats it, following suit → the lowest card of the suit. |
+| W05 | **Trumps partner's sure trick.** Partner's card is the best left in the suit and the last opponent hasn't shown out, and the bot trumps it anyway. | Not last, partner winning with the boss card, last opponent not known void in the suit led, a non-trump discard available → no trump. |
+| W06 | **Book, honours or game end scored wrongly.** | `sim/test_family.mjs`: tricks over six score 1 each; honours 4 for all four, 2 for three, off in Standard; tricks score before honours; a side one point from game can't count honours; honours can reach game but not pass it; first side to 5 or 7 wins. |
+
+Sim (`node sim/sim.mjs --game whist --check`, Standard, 20K hands): tricks per team within 0.15 a hand with equal bots
+(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%): see the table below
+the Euchre runs in `docs/RELEASE_REVIEW.md`; on 100-game smoke runs Expert beat Standard 71% and Standard beat Easy 69%.
+Extreme keeps worlds where each seat's first lead came from a suit it held 3+ of.
+
+## 8. Canasta / Hand and Foot (v2 note)
 
 C01 "My partner will go out without asking me" → AI asks "May I go out?" and waits. C02 "Doesn't pick up a card that
 would have given us a canasta" → pick up the pile when it completes or extends a team meld. C03 "Partner plays for the
 other team" → never discard a card the opponents' melds show they want when another discard exists.
 
-## 7. The sin detector (runtime and sim)
+## 9. The sin detector (runtime and sim)
 
 `proto/ai.js` exports `checkSins(view, action)` built from the same predicates as the tests. The sim runs it on every
 decision of every seat (bots and a random-legal "human"); the game runs it on bot plays only and logs `blame {game, sin}`
 (opt-in analytics) if one ever fires. Target: **zero** firings at any level in 100K hands.
 
-## 8. Sim report (filled in `docs/RELEASE_REVIEW.md`)
+## 10. Sim report (filled in `docs/RELEASE_REVIEW.md`)
 
 `node sim/sim.mjs --game spades --hands 100000 --level easy|standard|expert` (and hearts, and euchre once it exists),
 each preset, partner and opponents at the same level, plus "Expert partner vs Standard opponents" and "Easy partner vs
@@ -112,6 +153,6 @@ Expert opponents":
 | Bags per hand | per team | ≤ 1.5 |
 | Moon rate (Hearts) | hands where someone shot the moon | 1-4% |
 | Moon stops | runs where one seat holds every point taken so far, at least 10, after trick 6, that end without a moon | ≥ 60% |
-| Partner-blame events | §7 detector firings | 0 |
+| Partner-blame events | §9 detector firings | 0 |
 | Level ladder | win rate of Extreme vs Expert, Expert vs Standard, Standard vs Easy | ≥ 58% each (Extreme vs Expert: > 50%) |
 | Fairness | win rate per seat with equal levels | 50% ± 1 pt |
