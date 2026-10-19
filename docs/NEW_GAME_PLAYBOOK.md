@@ -264,6 +264,11 @@ These are the things the owner changed by hand on Glimmerwood. Apply them from t
 - Saving a textarea with `form_input` didn't register for Description; click into it, `ctrl+End`, type.
 - "Add for Review" on a version or an IAP opens a chooser: pick the existing **Draft Submission** so the version and all IAPs go as
   **one** submission (a first consumable IAP must ship with a version; 5 IAPs sat alone in a draft and blocked "Submit").
+- **Order matters:** with no draft open, "Add for Review" on the version submits it straight away, alone. Put the IAPs in a draft first
+  (IAP page → Add for Review → Create New Submission, then the others → that draft), then the version → that draft → Submit (6 items).
+- Product-page assets lock while the version is Waiting for Review; to change one, cancel the submission, change it, resubmit.
+- Check every generated store asset **at full size** (shrink the real PNG to look at it). The 3840×2560 search asset went to Apple
+  with black bands and no wordmark while its 1x preview looked fine (2x capture over the running game; fixed in search-asset.mjs).
 - A rejected submission must be **cancelled** (submission page → Cancel Submission → Confirm) before the version can rejoin a draft.
 - Validation at "Add for Review" asked for: a screenshot in the Dynamic Island (medium) slot (1206×2622), a price tier (Add Pricing →
   $0.00 → Next → Next → Confirm; Set Up Availability → All countries → Confirm), and "Sign-in required" unticked (it was ticked by
