@@ -8,17 +8,18 @@ import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
 import * as ohhell from "./ohhell.js";
 import * as whist from "./whist.js";
-import * as family from "./family-ui.js";
+import * as more from "./more-games.js";
 import { decide, nilRisk, nilForbidden } from "./ai.js";
 import { face, cardName, titleProps } from "./art.js";
 import { THEMES, themeBack, themeStyle } from "./themes.js";
 import { speech } from "./speech.js";
 import { SCENES, tuckBox, rosette, stamp } from "./scenes.js";
 import { sound } from "./sound.js";
+import { joinTable } from "./family.js";
 
 const cfg = await (await fetch("../sim/generator.json", { cache: "no-cache" })).json();
 const BRAND = cfg.brand.name, MOD = { spades, hearts, ohhell, whist }, qs = new URLSearchParams(location.search), DEBUG = qs.has("debug");
-const GAME_NAME = { hearts: "Hearts", spades: "Spades", euchre: "Euchre", ...family.NAMES };
+const GAME_NAME = { hearts: "Hearts", spades: "Spades", euchre: "Euchre", ...more.NAMES };
 const LEVEL_NAME = { easy: "Easy", standard: "Standard", expert: "Expert", extreme: "Extreme" };
 const PRESET_NAME = { standard: "Standard", kitchen: "Kitchen table", tournament: "Tournament", custom: "Custom" };
 const BOTS = { easy: ["Dot", "Gus", "Pearl"], standard: ["June", "Earl", "Rosa"], expert: ["Mabel", "Walt", "Hank"], extreme: ["Vera", "Otis", "Dell"] };
@@ -36,7 +37,7 @@ let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); if (S.reset !== RESET) S = fresh(); } catch { S = fresh(); }
 const F = fresh();
 S = { ...F, ...S, opt: { ...F.opt, ...S.opt }, last: { ...F.last, ...S.last }, care: { ...F.care, ...S.care } };
-if (!S.care.family) S.care = { ...S.care, family: 1, games: [...new Set([...S.care.games, "ohhell", "whist"])] }; // saves from before Oh Hell and Whist
+if (!S.care.moreGames) S.care = { ...S.care, moreGames: 1, games: [...new Set([...S.care.games, "ohhell", "whist"])] }; // saves from before Oh Hell and Whist
 function save() { const j = JSON.stringify(S); try { localStorage.setItem(KEY, j); } catch {} platform.backup(KEY, j); }
 
 // ---------------------------------------------------------------- small helpers
@@ -97,7 +98,7 @@ async function gate(url, what) {
 
 // ---------------------------------------------------------------- what a bot's play means, for the "Why?" button
 const WHY = {
-  ...family.WHY,
+  ...more.WHY,
   cover_nil_lowest_winner: "I covered your nil with my lowest card that beats yours.", cover_nil_ruff: "I trumped so you can stay under me.",
   cover_nil_unblock_high: "I played high so you can duck under it.", cover_nil_lead_boss: "I led a sure winner so you can throw off safely.",
   cover_nil_lead_partner_void: "I led a suit you're out of, so you can throw away a high card.", cover_nil_lead_high: "I led high to keep you under me.",
@@ -124,7 +125,7 @@ function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
   const fan = ["AS", "AH", "AD", "AC"].map((c, i) => `<span class="ace" style="--i:${i}; transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px)" data-act="flip" aria-hidden="true"><span class="face">${svgFor(c)}</span><span class="back">${backSvg}</span></span>`).join("");
   $("#title").innerHTML = `<div class="stack title">
-    <p class="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
+    <p class="kicker" data-act="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
     <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
     <button class="btn big" data-act="deal" data-game="${game}">${S.cur ? "Back to the table" : `Deal: ${GAME_NAME[game]}`}</button>
     <div class="grid2">
@@ -136,13 +137,14 @@ function renderTitle() {
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
     </div>
     <div class="row" style="justify-content:center"><button class="link" data-act="restore">Restore purchases</button><button class="link" data-act="care" aria-label="Caregiver settings">Caregiver</button></div>
+    ${familyTest ? `<button class="btn ghost" data-act="family">Family table test</button>` : ""}
   </div>`;
 }
 
 function renderPicker() { // playable games two to a shelf, then the closed boxes of what's coming
   const playable = Object.keys(cfg.games).filter((g) => !cfg.games[g].release && S.care.games.includes(g));
   const coming = [...Object.keys(cfg.games).filter((g) => cfg.games[g].release).map((g) => [g, GAME_NAME[g], `${GAME_NAME[g]}, coming soon, free with Everything`]),
-    ...Object.entries(family.ROADMAP).map(([g, [name, said]]) => [g, name, `${said}, coming soon`])];
+    ...Object.entries(more.ROADMAP).map(([g, [name, said]]) => [g, name, `${said}, coming soon`])];
   const box = (g) => {
     const locked = !owns(g), sub = g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Ready to play";
     return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}</span></button>`;
@@ -183,11 +185,11 @@ const fmt = (d, v) => (d.type === "toggle" ? (v ? "On" : "Off") : d.id === "moon
 
 // ---------------------------------------------------------------- the game
 let G = null, runId = 0, pending = null, showTrick = null, why = {};
-function newGame(game) {
+function newGame(game, fixed = null) {
   const L = S.last;
   L.game = game;
   const rules = rulesFor(cfg, game, L.preset, L.preset === "custom" ? L.custom : {});
-  const seats = [0, 1, 2, 3].map((s) => {
+  const seats = fixed || [0, 1, 2, 3].map((s) => {
     const kind = s === 0 || L.seats[s] === "human" ? "human" : "bot", level = TEAMS(game) && s === 2 ? L.partner : L.opps;
     return { kind, level, name: kind === "human" ? (s === 0 ? "You" : `Player ${s + 1}`) : BOTS[level][s - 1] };
   });
@@ -197,15 +199,17 @@ function newGame(game) {
   startHand();
 }
 function startHand() {
+  if (net && !net.host) return guestHand();
   const m = MOD[G.game];
   G.st = m.newHand(G.rules, newSeed(), G.dealer, G.totals, G.handNo);
   G.totals ??= structuredClone(G.st.totals);
+  if (net) net.send({ t: "start", seed: G.st.seed, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
   G.reasons = {}; why = {};
   if (G.st.hands[0].length === 13) recordDeal(G.st.hands[0], G.game, G.rules); // the ledger compares full 13-card hands
   S.cur = G; save();
   sound.shuffle();
   G.justDealt = true;
-  announce(`Hand ${G.handNo + 1}. New cards are dealt. ${family.handIntro(G.game, G.st, G.seats.map((x) => x.name))}`, { interrupt: true });
+  announce(`Hand ${G.handNo + 1}. New cards are dealt. ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}`, { interrupt: true });
   run();
 }
 function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals (seat 0 only, as dealt)
@@ -216,7 +220,7 @@ function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals 
   if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
 }
 
-const humans = () => G.seats.filter((s) => s.kind === "human").length;
+const humans = () => G.seats.filter((s) => s.kind !== "bot").length; // "remote": a person at another device
 async function run() {
   const my = ++runId, m = MOD[G.game], st = G.st;
   show("table"); handLive = st.phase !== "done"; drawTable();
@@ -224,13 +228,18 @@ async function run() {
   while (st.phase !== "done") {
     if (my !== runId) return;
     const s = st.turn, seat = G.seats[s];
-    let action;
+    let action = null;
     if (seat.kind === "human") {
       if (s !== G.viewer && humans() > 1) await handoff(s);
       if (my !== runId) return;
       action = await ask(s);
       if (my !== runId) return;
-    } else {
+      if (net && !net.host) { net.send({ t: "act", seat: s, a: action }); action = (await net.did(s)) ?? action; }
+    } else if (seat.kind === "remote" && net?.alive(seat.player)) { // the host hears the guest; a guest hears the host
+      action = net.host ? await net.intent(s, seat.player, (a) => (st.phase === "pass" ? Array.isArray(a) && new Set(a).size === 3 && a.every((c) => st.hands[s].includes(c)) : m.legal(st).includes(a))) : await net.did(s);
+      if (my !== runId) return;
+    }
+    if (action === null) { // a bot, or the seat of someone who left
       await wait((st.phase === "play" ? 520 : 380) * speed());
       await speech.idle(); // when the table is read aloud, the bots wait for the voice to finish
       if (my !== runId) return;
@@ -239,7 +248,8 @@ async function run() {
     }
     const before = st.history.length, phase = st.phase;
     m.apply(st, action);
-    if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? (G.game === "spades" ? "nil" : "zero") : action.bid}.${family.bidsDone(G.game, st)}`);
+    if (net) await net.applied(st, s, action);
+    if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? (G.game === "spades" ? "nil" : "zero") : action.bid}.${more.bidsDone(G.game, st)}`);
     if (phase === "pass" && st.phase === "play") announce(`Cards passed. You received ${(st.received[G.viewer] || []).map(cardName).join(", ")}.`);
     if (st.history.length > before) await played(s, action);
     else drawTable();
@@ -299,7 +309,7 @@ function drawTable(justPlayed = -1) {
   const plate = (s) => {
     const p = pos(s), seat = G.seats[s], cls = ["s-me", "s-left", "s-top", "s-right"][p];
     const bid = isSp ? (st.bids[s] === null ? "" : st.bids[s] === 0 ? (st.blind[s] ? "Blind nil" : "Nil") : `Bid ${st.bids[s]}`) : "";
-    const status = family.plateStatus(G.game, st, s) ?? (isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`);
+    const status = more.plateStatus(G.game, st, s) ?? (isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`);
     const pips = seat.kind === "bot" ? `<span class="pips" aria-label="${LEVEL_NAME[seat.level]}">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : "";
     const tag = TEAMS(G.game) && s === partner(me) && !S.opt.comfort ? "<span>Partner</span>" : "";
     const whyLine = why[s] && G.reasons[s] ? `<span class="why">${WHY[G.reasons[s].split(":")[0]] || ""}</span>` : "";
@@ -325,7 +335,7 @@ function drawTable(justPlayed = -1) {
   const hh = layoutHand();
   const mePlate = document.querySelector(".s-me");
   mePlate.style.bottom = `calc(var(--safe-b) + ${hh + 18}px)`;
-  $("#trump").innerHTML = family.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
+  $("#trump").innerHTML = more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
   // the trick and the side seats sit in the middle of whatever room the top seat and the hand leave
   const free0 = Math.max(...[".s-top", ...(S.opt.comfort ? [".s-left", ".s-right"] : [])].map((q) => document.querySelector(q).getBoundingClientRect().bottom)), free1 = mePlate.getBoundingClientRect().top;
   $("#table").style.setProperty("--free0", free0 + "px"); $("#table").style.setProperty("--mid", (free0 + free1) / 2 + "px");
@@ -361,7 +371,7 @@ function layoutHand() { // rows so every card's visible strip is at least one ta
 
 function centre(mine) {
   const st = G.st, seatName = (s) => G.seats[s].name;
-  if (mine?.kind === "bid" && G.game === "ohhell") return family.bidPanel(mine, st);
+  if (mine?.kind === "bid" && G.game === "ohhell") return more.bidPanel(mine, st);
   if (mine?.kind === "bid") {
     const nums = mine.legal.filter((a) => !a.blind), blind = mine.legal.some((a) => a.blind) ? `<button class="btn" data-act="bid" data-v="blind">Blind nil (before looking)</button>` : "";
     if (S.opt.comfort) { // a stepper keeps the big hand in view: one row instead of fourteen buttons; below 1 is nil
@@ -394,7 +404,7 @@ function ask(seat) { // resolves with the human's action
     pending = { seat, legal, kind: st.phase === "play" ? "play" : st.phase, sel: [], resolve: (a) => { pending = null; resolve(a); } };
     drawTable();
     if (S.opt.haptics) platform.haptic("medium");
-    announce({ play: "Your turn.", bid: family.bidPrompt(G.game, st) || "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?" }[pending.kind]);
+    announce({ play: "Your turn.", bid: more.bidPrompt(G.game, st) || "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?" }[pending.kind]);
   });
 }
 async function handoff(s) {
@@ -409,10 +419,11 @@ function finishHand() {
   const m = MOD[G.game], st = G.st, sc = m.score(st), me = 0;
   const lines = sc.lines;
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
-  else if (family.NAMES[G.game]) family.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
+  else if (more.NAMES[G.game]) more.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
   G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
+  if (G.over !== null && net) { net.leave(); net = null; }
   track("hand_end", { game: G.game, preset: G.preset, level: S.last.opps, hands_this_session: ++sessionHands });
   save(); renderSheet(); show("sheet");
 }
@@ -431,7 +442,7 @@ function renderSheet() {
       case "boston": return "Boston: all 13 tricks";
       case "bagPenalty": return "Too many bags: penalty";
       case "moon": return `${who(l)} shot the moon (${l.choice === "sub" ? "took 26 off" : "everyone else +26"})`;
-      default: return family.sheetLabel(l, who) ?? who(l);
+      default: return more.sheetLabel(l, who) ?? who(l);
     }
   };
   const groups = sp ? [0, 1].map((t) => ({ name: t === 0 ? `You and ${G.seats[2].name}` : `${G.seats[1].name} and ${G.seats[3].name}`, rows: h.lines.filter((l) => l.team === t), total: h.totals.score[t], bags: h.totals.bags?.[t] }))
@@ -440,7 +451,7 @@ function renderSheet() {
     ${g.total !== null ? `<tr><th>Total${g.bags !== undefined ? ` · ${g.bags} bag${g.bags === 1 ? "" : "s"}` : ""}</th><td class="n">${g.total}</td></tr>` : ""}</table>`).join("");
   const totals = sp ? "" : `<table>${G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${h.totals.score[i]}</td></tr>`).join("")}</table>`;
   const mine = sp ? h.lines.filter((l) => l.team === 0) : h.lines.filter((l) => l.seat === 0);
-  const st = family.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
+  const st = more.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
     <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
@@ -581,14 +592,14 @@ async function renderUnlock() {
 
 const HOWTO = {
   hearts: "Avoid points. Each heart is 1 point and the queen of spades is 13. Follow the suit that was led if you can; otherwise play anything. The highest card of the suit led wins the trick. Before most hands you pass three cards. The two of clubs leads the first trick. Take every heart and the queen to shoot the moon.",
-  ...family.HOWTO,
+  ...more.HOWTO,
   spades: "Partners sit across. Everyone bids how many tricks they'll take; nil means none. Follow suit if you can; spades are trump and beat any other suit. Make your team's bid for 10 points a trick; each extra trick is a bag, and too many bags cost points. Miss the bid and you lose 10 a trick.",
 };
 function renderHowto() {
   const g = [setupGame, S.last.game].find((x) => HOWTO[x]) || "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.custom);
   $("#howto").innerHTML = `<div class="stack"><h1 class="sign">How to play</h1>
     <div class="seg">${Object.keys(HOWTO).map((x) => `<button data-act="howto" data-v="${x}" aria-pressed="${x === g}">${GAME_NAME[x]}</button>`).join("")}</div>
-    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${family.SERVES[g] || (g === "hearts" ? "about 15 minutes a game" : "about 25 minutes a game")}</p><p>${HOWTO[g]}</p></div>
+    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${more.SERVES[g] || (g === "hearts" ? "about 15 minutes a game" : "about 25 minutes a game")}</p><p>${HOWTO[g]}</p></div>
     <div class="paper recipe"><p class="from">House rules</p><h2>${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, r[d.id])}</b></div>`).join("")}</div>
     <button class="btn ghost" data-act="${G && S.cur ? "resume" : "go"}" data-to="title">Back</button></div>`;
 }
@@ -650,7 +661,7 @@ function postScores(won, extreme) {
   const newBest = [];
   if (g === "hearts") { if (won) set("hearts_best", G.totals.score[0]); set("hearts_wins", rec.won); }
   if (g === "spades") { set("spades_streak", rec.bestStreak || 0); set("spades_wins", rec.won); }
-  if (family.NAMES[g]) set(`${g}_wins`, rec.won);
+  if (more.NAMES[g]) set(`${g}_wins`, rec.won);
   if (won && extreme) set("extreme_wins", (S.best.extreme_wins || 0) + 1);
   return newBest;
 }
@@ -710,12 +721,14 @@ const ACT = {
     if (v === "howto") { runId++; renderHowto(); show("howto"); }
     if (v === "leave" || v === "quit") {
       if (S.opt.comfort && !(await dialog(`<h2>Leave the table?</h2><div class="stack"><button class="btn big" data-dlg="yes">Yes, leave</button><button class="btn" data-dlg="">No, keep playing</button></div>`, { user: true }))) return;
-      runId++; pending = null; handLive = false;
+      runId++; pending = null; handLive = false; net?.leave(); net = null;
       if (v === "quit") { S.cur = null; G = null; }
       save(); go("title");
     }
   },
   resume: () => run(),
+  kicker: () => { if (++kickerTaps === 7) { familyTest = true; renderTitle(); } },
+  family: () => familyTable(),
   next: () => { if (G.over !== null) { renderResults(); show("results"); } else startHand(); },
   again: () => newGame(G.game),
   seedinfo: () => dialog(`<h2>The seed</h2><p>Each hand is shuffled from this code and nothing else. Type it into the "verify a deal" page on our website and you'll see exactly the same four hands. Nobody, including us, can steer a deal.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
@@ -796,6 +809,35 @@ document.addEventListener("pointerdown", (e) => {
 });
 addEventListener("resize", () => { if (screen === "table") drawTable(); });
 
+// ---------------------------------------------------------------- family table test (DESIGN.md §9 spike): Hearts with two people on two
+// devices and two bots. Hidden: ?debug, or tap "Play a game of cards at…" seven times. The protocol is family.js.
+let net = null, familyTest = DEBUG, kickerTaps = 0;
+async function familyTable() {
+  const n = await joinTable(platform.table, (n) => {
+    dialog.done?.(null);
+    net = n;
+    if (!n.host) return guestHand();
+    const guest = n.players.find((p) => p.id !== n.me), bot = (i) => ({ kind: "bot", level: S.last.opps, name: BOTS[S.last.opps][i] });
+    newGame("hearts", [{ kind: "human", level: "standard", name: n.name, player: n.me }, bot(0), { kind: "remote", level: "standard", name: guest.name, player: guest.id }, bot(2)]);
+  });
+  if (!n) return dialog(`<h2>Family table</h2><p>Sign in to Game Center in Settings first.</p><button class="btn big" data-dlg="">OK</button>`, { user: true });
+  const v = await dialog(`<h2>Family table test</h2><p>Two people on two devices, two computer players. One of you invites; the other waits for the invitation.</p>
+    <div class="stack"><button class="btn big" data-dlg="invite">Invite someone</button><button class="btn" data-dlg="wait">Wait for an invitation</button><button class="btn ghost" data-dlg="">Cancel</button></div>`, { user: true });
+  if (v === "invite") platform.table.invite({ min: 2, max: 2 }).catch(() => {});
+  if (v === "wait") await dialog(`<h2>Waiting for an invitation…</h2><button class="btn" data-dlg="">Cancel</button>`, { user: true });
+  if (!net && v !== "invite") n.leave();
+}
+async function guestHand() { // a guest plays the host's deal from its own seat; every other seat is the host's to move
+  const h = await net?.take((x) => x.t === "start", net.hostId);
+  if (!h) { net = null; return go("title"); }
+  const mine = h.seats.findIndex((x) => x.player === net.me);
+  G = { game: h.game, rules: h.rules, preset: h.preset, totals: h.totals, handNo: h.handNo, dealer: h.dealer, history: h.handNo && G ? G.history : [], viewer: mine, reasons: {}, over: null,
+    seats: h.seats.map((x, i) => (i === mine ? { ...x, kind: "human" } : { ...x, kind: "remote", player: net.hostId })) };
+  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo);
+  S.cur = G; save(); sound.shuffle(); G.justDealt = true;
+  run();
+}
+
 // ---------------------------------------------------------------- boot
 applyLook();
 setTelemetry(S.opt.analytics === true);
@@ -805,6 +847,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };

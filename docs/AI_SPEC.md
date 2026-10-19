@@ -102,8 +102,8 @@ didn't look at its cards. The turned trump card is public; the undealt cards are
 
 Sim (`node sim/sim.mjs --game ohhell --check`, Standard, 20K hands): exact bids ≥ 50% (Standard preset 57.6%, Kitchen
 60.5%, Tournament 53.3% where 10-13 card hands make it harder), average miss ≤ 0.6 tricks, zero sins shipped. Level ladder
-(one stronger seat against three weaker, so even is 25%): Expert vs Standard 40%, Standard vs Easy 41%, Extreme vs Expert
-29% (600 games each). Expert samples hidden hands consistent with voids and plays each clean card out; Extreme keeps only
+(one stronger seat against three weaker, so even is 25%): Standard vs Easy 46.5%, Expert vs Standard 35.0%, Extreme vs
+Expert 25.9% (572 games each, 2026-10-19). Extreme is not yet measurably stronger than Expert: open item. Expert samples hidden hands consistent with voids and plays each clean card out; Extreme keeps only
 worlds where each seat's hand as dealt counts to within 1.5 of its bid.
 
 ## 7. Whist sins (v1.1)
@@ -123,8 +123,9 @@ and Expert's sampled worlds put it there.
 | W06 | **Book, honours or game end scored wrongly.** | `sim/test_family.mjs`: tricks over six score 1 each; honours 4 for all four, 2 for three, off in Standard; tricks score before honours; a side one point from game can't count honours; honours can reach game but not pass it; first side to 5 or 7 wins. |
 
 Sim (`node sim/sim.mjs --game whist --check`, Standard, 20K hands): tricks per team within 0.15 a hand with equal bots
-(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%): see the table below
-the Euchre runs in `docs/RELEASE_REVIEW.md`; on 100-game smoke runs Expert beat Standard 71% and Standard beat Easy 69%.
+(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%; 577-651 games each, 2026-10-19): Standard vs Easy
+69.3%, Expert vs Standard 71.9%, Extreme vs Expert 49.3% (measured with an earlier lead-reading Extreme, since removed;
+Extreme is not yet measurably stronger than Expert: open item).
 Extreme is Expert with 60 samples instead of 24 (a bid-reading filter has nothing to read in Whist: there is no bidding).
 
 ## 8. Canasta / Hand and Foot (v2 note)

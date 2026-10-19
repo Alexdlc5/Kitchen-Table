@@ -5,7 +5,7 @@ import { newSeed, deal } from "../proto/dealer.js";
 import { newDeck, rulesFor, dealHands } from "../proto/cards.js";
 import * as ohhell from "../proto/ohhell.js";
 import * as whist from "../proto/whist.js";
-import { bidPanel } from "../proto/family-ui.js";
+import { bidPanel } from "../proto/more-games.js";
 
 const cfg = JSON.parse(readFileSync(new URL("generator.json", import.meta.url)));
 let n = 0, r = 3;
