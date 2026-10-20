@@ -68,9 +68,9 @@ function sc(id, what, view, check, levels = LEVELS) {
       assert.deepEqual(sins(view, d.action), [], `${id} ${level}: ${JSON.stringify(d)} commits a sin`);
       assert.ok(check(d.action, view), `${id} ${level}: ${what}; played ${JSON.stringify(d.action)} (${d.reason})`);
       const looks = view.phase === "play" || (view.game === "spades" && view.phase === "bid") || (view.phase === "pass" && level === "extreme");
-      if ((level === "expert" || level === "extreme") && looks && legalFor(view).filter((a) => !sins(view, a).length).length > 1) {
-        assert.ok(d.samples > 0, `${id} ${level}: the look-ahead never sampled a world (${d.reason})`);
-        looked++;
+      if ((level === "expert" || level === "extreme") && looks) { // undefined: no look-ahead needed (one clean choice, or all alike)
+        assert.notEqual(d.samples, 0, `${id} ${level}: the look-ahead never sampled a world (${d.reason})`);
+        if (d.samples > 0) looked++;
       }
     }
   }

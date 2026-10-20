@@ -559,7 +559,13 @@ function lookahead(v, base, options, n, rng, read, run) {
 }
 
 function expertPlay(v, base, rng, tune, extreme = false) {
-  const g = GAMES[v.game], legal = legalFor(v).filter((c) => !sins(v, c).length);
+  const g = GAMES[v.game], clean = legalFor(v).filter((c) => !sins(v, c).length), K = know(v);
+  // cards of one suit and the same points with no unseen card between them play alike: try one of each run
+  const pts = (c) => (v.game === "hearts" ? hearts.points(c, v.rules) : 0);
+  const alike = (a, b) => K.eff(a) === K.eff(b) && pts(a) === pts(b) &&
+    !K.unseen.some((u) => K.eff(u) === K.eff(a) && K.pow(u) > Math.min(K.pow(a), K.pow(b)) && K.pow(u) < Math.max(K.pow(a), K.pow(b)));
+  const legal = [];
+  for (const c of clean.includes(base.action) ? [base.action, ...clean] : clean) if (!legal.some((x) => alike(x, c))) legal.push(c);
   if (legal.length <= 1) return base;
   const root = { ...structuredClone(v), turn: v.seat, lastTrick: null, passes: [null, null, null, null], moonChoice: null };
   root.passes[v.seat] = v.passed;

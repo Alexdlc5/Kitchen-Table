@@ -122,8 +122,8 @@ function merge(ms) {
   return out;
 }
 
-// T2: fixed chunks (500 hands, or 25 whole games), chunk k always seeded (seed * 100003 + k), dealt round-robin to workers
-const CHUNK = { hands: 500, games: 25 };
+// T2: fixed chunks (500 hands, or 10 whole games), chunk k always seeded (seed * 100003 + k), dealt round-robin to workers
+const CHUNK = { hands: 500, games: 10 };
 function chunks(job) {
   const by = job.games ? "games" : "hands", total = job[by];
   return Array.from({ length: Math.ceil(total / CHUNK[by]) }, (_, k) => ({ ...job, [by]: Math.min(CHUNK[by], total - k * CHUNK[by]), seed: (job.seed || 1) * 100003 + k }));

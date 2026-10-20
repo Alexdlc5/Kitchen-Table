@@ -184,5 +184,5 @@ Expert opponents":
 | Moon rate per level (Hearts) | as above, all four seats at that level | Easy and Standard 1-4% (the check); Expert and Extreme 1-7% (strong players shoot more often, review AI-L4) |
 | Fairness | win rate per seat with equal levels | 50% ± 1 pt |
 
-Every run is cut into chunks (500 hands, or 25 whole games for the ladder), each with a seed of its own, so CI and a
+Every run is cut into chunks (500 hands, or 10 whole games for the ladder), each with a seed of its own, so CI and a
 laptop play exactly the same hands whatever `--workers` is (review T2).
