@@ -564,15 +564,15 @@ function playOut(st, rng, tune) {
 
 // the best of `options` by its outcome over sampled worlds; run(world, option) plays one out and returns the final state.
 // Every option sees the same worlds, and the heuristic's choice is kept unless another option beats it in those worlds
-// by more than its own standard error: a look-ahead overrules the heuristic only when it is sure.
-function lookahead(v, base, options, n, rng, read, run) {
+// by more than its own standard error: a look-ahead overrules the heuristic only when it is sure. x: score like Extreme.
+function lookahead(v, base, options, n, rng, read, run, x = read) {
   const K = know(v), b = options.findIndex((o) => same(o, base.action)), sum = options.map(() => 0), sq = options.map(() => 0);
   let samples = 0;
   for (let i = 0; i < n; i++) {
     const hands = sampleWorld(v, K, rng, read);
     if (!hands) continue;
     samples++;
-    const val = options.map((o) => outcome(run(hands, o), v.seat));
+    const val = options.map((o) => outcome(run(hands, o), v.seat, x));
     val.forEach((x, k) => { const d = b < 0 ? x : x - val[b]; sum[k] += d; sq[k] += d * d; });
   }
   if (!samples) return { ...base, samples };
@@ -639,12 +639,14 @@ function extremePass(v, base, rng, tune) {
       hearts.apply(st, s === v.seat ? pass : heartsPass(hearts.view(st, s), "standard", rng).action);
     }
     return playOut(st, rng, tune);
-  });
+  }, true);
 }
 
-// higher is better for seat's side, in points; a hand that ends the game is worth ±1000 on top (AI-L2)
+// higher is better for seat's side, in points; a hand that ends the game is worth ±1000 on top (AI-L2). Extreme Hearts
+// reads the scoreboard: points it gives away count more the closer that player is to winning (the weight falls by e for
+// every 10 points above the lowest rival), so it hits the leader the way a strong player does.
 const GAME_END = 1000;
-function outcome(st, seat) {
+function outcome(st, seat, extreme = false) {
   if (st.game === "spades") {
     const sc = spades.score(st), t = team(seat), w = spades.winner(sc.totals, st.rules);
     const bagCost = (b) => b * (st.rules.bagPenalty / st.rules.bagLimit) * 0.5;
@@ -653,7 +655,9 @@ function outcome(st, seat) {
   }
   if (st.phase === "moon") st.moonChoice = "add";
   const sc = hearts.score(st), d = sc.totals.score.map((x, s) => x - st.totals.score[s]), w = hearts.winner(sc.totals, st.rules);
-  return (d.reduce((a, b) => a + b, 0) - d[seat]) / 3 - d[seat] + (w === null ? 0 : w === seat ? GAME_END : -GAME_END);
+  const T = st.totals.score, lo = Math.min(...T.filter((_, s) => s !== seat));
+  const wt = T.map((x, s) => (s === seat ? 0 : extreme ? Math.exp(-(x - lo) / 10) : 1)), W = wt.reduce((a, b) => a + b, 0);
+  return d.reduce((a, x, s) => a + (wt[s] / W) * x, 0) - d[seat] + (w === null ? 0 : w === seat ? GAME_END : -GAME_END);
 }
 
 // ---------------------------------------------------------------- entry point
