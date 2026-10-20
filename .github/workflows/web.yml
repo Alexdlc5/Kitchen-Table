@@ -29,6 +29,10 @@ jobs:
         run: node scripts/smoke.mjs --ipad
       - name: cards razor sharp at 3x, edges and corner index 2 device px or less (WebKit + Chromium, Comfort off and on)
         run: node scripts/crisp.mjs --check 2
+      - name: every card face, nothing in the middle touches a corner index (two- and four-colour decks)
+        run: node scripts/check-cards.mjs && node scripts/check-cards.mjs --four
+      - name: family table, two tabs over BroadcastChannel, same score, no desync, the guest leaving mid-hand
+        run: node scripts/family-check.mjs
   soak:
     # 10 minutes of auto-played Hearts and Spades: no page error, frame work p95 under the 120 Hz budget (8.3 ms), heap growth under 25%
     runs-on: ubuntu-latest
