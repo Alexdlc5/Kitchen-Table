@@ -332,11 +332,12 @@ function heartsPlay(v, K, level, rng) {
   // the scoreboard: points that push the trick's winner to the end score finish the game, so give them only when I'm lowest
   const now = v.totals.score.map((x, s) => x + v.taken[s].reduce((n, c) => n + pts(c), 0));
   const iLead = now[me] < Math.min(...now.filter((_, s) => s !== me));
+  const noQueenLead = legal.filter((c) => !((c === "AS" || c === "KS") && v.passed?.includes("QS") && qsOut)); // H06
   const endsLosing = (c) => !iLead && T.winSeat >= 0 && T.winSeat !== me && pts(c) > 0 && now[T.winSeat] + trickVal + pts(c) >= v.rules.endScore;
 
   if (shooting) {
     if (!v.trick.length) { // lead winners, but not the A/K of spades into the queen I passed (H06)
-      const lead = legal.filter((c) => !((c === "AS" || c === "KS") && v.passed?.includes("QS") && qsOut)), pool = lead.length ? lead : legal;
+      const pool = noQueenLead.length ? noQueenLead : legal;
       return R(highest(pool.filter(K.boss).length ? pool.filter(K.boss) : pool, K), "moon_lead_boss");
     }
     if (winners.length) return R(highest(winners, K), "moon_take");
@@ -346,7 +347,7 @@ function heartsPlay(v, K, level, rng) {
     if (!v.trick.length) {
       const hs = legal.filter((c) => c[1] === "H");
       if (hs.length) return R(highest(hs, K), "stop_moon_lead_heart");
-      return R(highest(legal, K), "stop_moon_take_lead");
+      return R(highest(noQueenLead.length ? noQueenLead : legal, K), "stop_moon_take_lead");
     }
     if (winners.length && (trickPts || T.winSeat === threat)) return R(T.last ? lowest(winners, K) : highest(winners, K), "stop_moon");
     if (!legal.some((c) => K.eff(c) === T.led)) {

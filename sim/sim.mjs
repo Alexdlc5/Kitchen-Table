@@ -184,6 +184,7 @@ function check(game, m) {
     need(m.set / m.contracts <= 0.12, `set rate ${pct(m.set, m.contracts)} > 12%`);
     need(m.nilMade / m.nilBids >= 0.7, `nil success ${pct(m.nilMade, m.nilBids)} < 70%`);
     need(m.bags / m.contracts <= 1.5, "bags per hand > 1.5");
+    need(!m.blindBids || m.blindMade / m.blindBids >= 0.45, `blind nil made ${pct(m.blindMade, m.blindBids)} < 45%`); // R3: with the exchange
   } else if (game === "euchre") {
     need(m.euchred / m.calls <= 0.2, `maker euchre rate ${pct(m.euchred, m.calls)} > 20%`);
     need(m.lonerMarch / Math.max(1, m.loners) >= 0.6, `loner success ${pct(m.lonerMarch, m.loners)} < 60%`);

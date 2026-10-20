@@ -104,7 +104,8 @@ for (const [name, g] of [["spades", spades], ["hearts", hearts]])
     test(`${name}/${preset}: 3,000 random hands never break a rule and every card is played once`, () => {
       const rules = rulesFor(cfg, name, preset);
       for (let i = 0; i < 3000; i++) {
-        const st = randomHand(g, rules, newSeed(), rng, undefined, i);
+        const behind = name === "spades" && i % 2 ? { score: [0, 200], bags: [0, 0] } : undefined; // blind nil (and its exchange) open to team 0
+        const st = randomHand(g, rules, newSeed(), rng, behind, i);
         assert.equal(st.history.length, 52);
         assert.equal(new Set(st.history.map((h) => h.card)).size, 52);
         assert.equal(st.tricks.reduce((a, b) => a + b), 13);
