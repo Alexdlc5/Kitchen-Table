@@ -57,7 +57,7 @@ Three findings would be noticed by a first-time player:
 Three findings would be noticed by a strong player: the Euchre partner never goes alone (E07 forbids it), Standard
 trumps in with the right bower, and the Oh Hell bot at its bid keeps the trump that later busts it.
 
-**Ladder.** Euchre, Oh Hell and Spades meet every target. Whist Extreme vs Expert misses (53.6% against 55%). Hearts: HEARTS_VERDICT
+**Ladder.** Euchre, Oh Hell and Spades meet every target. Whist Extreme vs Expert misses (53.6% against 55%). The Hearts Extreme vs Expert run had not finished when this was published. W1 measured it at 26.7% against a 28% target before its last change, so treat it as open until #16 posts the 2,000-game number.
 
 ## 1. Passover 1, item by item
 
@@ -347,7 +347,7 @@ note): team games Extreme vs Expert ≥ 55%, other steps ≥ 58%; Hearts and Oh 
 | Spades | Extreme vs Expert | 2000 | 66.2% | ≥ 55% | pass (W1's run, same seeds and Spades code; not re-run) |
 | Spades | Expert vs Standard | 2000 | 84.9% | ≥ 58% | pass (W1) |
 | Spades | Standard vs Easy | 2000 | 73.4% | ≥ 58% | pass (W1) |
-HEARTS_ROWS
+| Hearts | one Extreme vs three Expert | 2000 | *running* | ≥ 28% | not settled: W1's last figure was 26.7% (600 games) before its scoreboard change (12744be); #16's body still has a placeholder |
 
 **Whist Extreme vs Expert is the one miss (P1, AI-L-W).** Extreme's edge is its sample count (60 per card, plus 200
 on the best two), and #15's author found more samples didn't help. Fixing AI-W1/AI-W2 in the shared `play()` policy
