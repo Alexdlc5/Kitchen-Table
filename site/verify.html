@@ -5,66 +5,104 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify a deal · Kitchen Table</title>
 <style>
-  :root { --paper: #fbf4e2; --ink: #2b2620; --red: #c0392b; }
+  :root { --paper: #fbf4e2; --ink: #2b2620; --red: #c0392b; --green: #1f6b3a; }
   body { margin: 0; background: #2f6b45; color: var(--ink); font: 17px/1.45 system-ui, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 16px; }
   .paper { background: var(--paper); border-radius: 14px; padding: 16px 18px; margin: 14px 0; }
   h1 { color: #f6ead0; font-size: 30px; margin: 10px 0; }
   label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  label small { font-weight: 400; }
   input, select, button { font: inherit; min-height: 44px; border-radius: 10px; border: 2px solid #d9cba8; padding: 4px 10px; background: #fff; }
   input { width: 100%; box-sizing: border-box; font-family: ui-monospace, "Courier New", monospace; }
   button { background: #f0b543; border-color: #b07a1e; font-weight: 700; margin-top: 12px; cursor: pointer; }
   .hands { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
   .hand b { display: block; margin-bottom: 4px; }
-  .red { color: var(--red); } .err { color: var(--red); font-weight: 600; }
+  .red { color: var(--red); } .err { color: var(--red); font-weight: 600; } .ok { color: var(--green); font-weight: 600; }
+  .proof { font-size: 14px; overflow-wrap: anywhere; } .proof code { font-size: 13px; }
   pre { white-space: pre-wrap; font-size: 14px; background: #fff; padding: 10px; border-radius: 8px; }
 </style>
 </head>
 <body><main>
 <h1>Verify a deal</h1>
 <div class="paper">
-  <p>Every hand in Kitchen Table is shuffled from a random 128-bit <b>seed</b> and nothing else. The seed is printed on the
-  score sheet after each hand. Paste it here and this page deals the same four hands, using the same code as the app.</p>
+  <p>Every hand in Kitchen Table comes from a random 128-bit <b>seed</b> and your <b>cut</b>, and nothing else. Before
+  the deal the app shows the seed's <b>fingerprint</b>; then you cut the deck. The score sheet prints all three. Type
+  them here and this page deals the same four hands, using the same code as the app.</p>
   <label for="seed">Seed</label><input id="seed" placeholder="5W2Z-T7CS-V6A3-DHMG-7EED-NB7Q-BA" autocomplete="off" spellcheck="false">
-  <label for="deck">Game</label>
-  <select id="deck"><option value="52">Hearts, or Spades with a regular deck</option><option value="jokers">Spades with Jokers and deuces</option></select>
+  <label for="cut">Cut <small>(0 if the score sheet shows none)</small></label><input id="cut" type="number" inputmode="numeric" min="0" max="51" value="0">
+  <label for="fp">Fingerprint <small>(optional: the 8 characters shown before the deal)</small></label><input id="fp" placeholder="A1B2C3D4" autocomplete="off" spellcheck="false" maxlength="9">
+  <label for="game">Game</label>
+  <select id="game"><option value="hearts">Hearts</option><option value="spades">Spades</option><option value="jokers">Spades with Jokers and deuces</option><option value="euchre">Euchre</option><option value="ohhell">Oh Hell</option><option value="whist">Whist</option></select>
+  <div id="sizeRow"><label for="size">Cards in each hand (Oh Hell)</label>
+  <select id="size"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option></select></div>
   <label for="dealer">Dealer (shown on the score sheet)</label>
   <select id="dealer"><option value="3">Right of you</option><option value="0">You</option><option value="1">Left of you</option><option value="2">Across from you</option></select>
   <button id="go">Deal it</button>
   <p id="out" class="err" role="alert"></p>
+  <p id="check" role="status"></p>
 </div>
-<div class="paper hands" id="hands" hidden></div>
+<div class="paper" id="dealt" hidden><div class="hands" id="hands"></div><p id="more"></p><p class="proof" id="proof"></p></div>
 <div class="paper">
   <h2>How the shuffle works</h2>
   <p>The seed's 128 bits seed a <b>xoshiro128**</b> generator (each 32-bit word mixed through SplitMix32 first). A
-  <b>Fisher-Yates</b> shuffle then puts the 52 cards in order, using rejection sampling so no card is favoured.
-  Cards are dealt one at a time, starting left of the dealer. In Hearts, these are the hands before passing.</p>
-  <p>The deal function takes exactly two things: the seed and the number of cards. It can't see the score, your
-  purchases, your winning streak or who is human. The full source is below and on the app's open test suite.</p>
-  <pre id="src"></pre>
+  <b>Fisher-Yates</b> shuffle then puts the cards in order, using rejection sampling so no card is favoured.</p>
+  <p><b>The cut</b> works as it does at a real table: the top cards, as many as you cut, go to the bottom. The
+  <b>fingerprint</b> is the first 8 characters of the SHA-256 of the seed's 16 bytes. The app shows it before you cut,
+  so the seed is fixed before anyone knows the cut: the app can't pick a seed to suit it. Any SHA-256 tool gives the
+  same fingerprint; this page shows the seed's bytes so you can check.</p>
+  <p>Cards are dealt one at a time, starting left of the dealer. In Hearts, these are the hands before passing. In
+  Euchre, each player gets five and the last four are the kitty, its top card turned up. In Oh Hell, the next card
+  after the hands is turned for trump. In Whist, the dealer's last card is trump.</p>
+  <p>The shuffle takes exactly two things: the seed and the number of cards. It can't see the score, your purchases,
+  your winning streak or who is human. The full source is below and in the app's open test suite.</p>
+  <p><b>Can every order of the deck come up?</b> No, and that's fine. A seed is one of 2<sup>128</sup> (about
+  3.4×10<sup>38</sup>) numbers, and a deck can be ordered about 8×10<sup>67</sup> ways, so most orders can never be
+  dealt. Every seed is equally likely, and every card is equally likely to land in every seat.</p>
+  <h3>dealer.js</h3><pre id="src"></pre>
+  <h3>cards.js</h3><pre id="src2"></pre>
 </div>
 </main>
 <script type="module">
-import { deal } from "./dealer.js";
-const SUITS = "SHDC", RANKS = "23456789TJQKA", SYM = { S: "♠", H: "♥", D: "♦", C: "♣" };
-const deck = (j) => { const d = []; for (const s of SUITS) for (const r of RANKS) d.push(r + s); return j ? d.filter((c) => c !== "2C" && c !== "2H").concat(["LJ", "BJ"]) : d; };
+import { fingerprint, seedBytes, sha256 } from "./dealer.js";
+import { SUITS, RANKS, newDeck, dealOut } from "./cards.js";
+const $ = (id) => document.getElementById(id), SYM = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const SEATS = ["You", "Left of you", "Across from you", "Right of you"];
+// each game's deck and cards per hand, exactly as the app deals them
+const DECK = { jokers: () => newDeck(true), euchre: () => [...SUITS].flatMap((s) => [..."9TJQKA"].map((r) => r + s)) };
+const SIZE = { euchre: 5, ohhell: () => +$("size").value };
 const show = (c) => (c === "BJ" ? "Big Joker" : c === "LJ" ? "Little Joker" : `<span class="${"HD".includes(c[1]) ? "red" : ""}">${c[0] === "T" ? "10" : c[0]}${SYM[c[1]]}</span>`);
 const order = (c) => (c[1] === "J" ? -1 : SUITS.indexOf(c[1]) * 20 - RANKS.indexOf(c[0]));
-const SEATS = ["You", "Left of you", "Across from you", "Right of you"];
 const run = () => {
-  const out = document.getElementById("out"), box = document.getElementById("hands");
+  const out = $("out"), check = $("check"), box = $("dealt");
   try {
-    const d = deck(document.getElementById("deck").value === "jokers"), dealer = +document.getElementById("dealer").value;
-    const p = deal(document.getElementById("seed").value, d.length), hands = [[], [], [], []];
-    p.forEach((ci, k) => hands[(dealer + 1 + k) % 4].push(d[ci]));
-    box.innerHTML = hands.map((h, s) => `<div class="hand"><b>${SEATS[s]}</b>${h.sort((a, b) => order(a) - order(b)).map(show).join(" ")}</div>`).join("");
+    const seed = $("seed").value, game = $("game").value, dealer = +$("dealer").value, fp = fingerprint(seed);
+    const want = $("fp").value.toUpperCase().replace(/[\s-]/g, ""), cut = $("cut").value.trim() === "" ? 0 : Number($("cut").value);
+    if (want && !/^[0-9A-F]{8}$/.test(want)) throw new Error("A fingerprint is 8 characters, 0-9 and A-F");
+    if (want && want !== fp) throw new Error(`This seed's fingerprint is ${fp}, not ${want}: this is not the seed that was fixed before the cut.`);
+    const deck = (DECK[game] || newDeck)(), size = typeof SIZE[game] === "function" ? SIZE[game]() : SIZE[game] || 13;
+    const d = dealOut(seed, dealer, deck, size, cut);
+    $("hands").innerHTML = d.hands.map((h, s) => `<div class="hand"><b>${SEATS[s]}${s === dealer ? " (dealer)" : ""}</b>${[...h].sort((a, b) => order(a) - order(b)).map(show).join(" ")}</div>`).join("");
+    $("hands").dataset.deal = JSON.stringify(d); // the raw deal, in dealing order, for anyone checking by script
+    $("more").innerHTML = game === "euchre" ? `Kitty: ${d.rest.map(show).join(" ")}. Turned up: ${show(d.rest[0])}.`
+      : game === "ohhell" ? (d.rest.length ? `Turned for trump: ${show(d.rest[0])}.` : "All 52 cards are dealt: no trump this hand.")
+      : game === "whist" ? `Trump: the dealer's last card, ${show(d.hands[dealer][12])}.` : "";
+    const bytes = seedBytes(seed);
+    $("proof").innerHTML = `The seed as 16 bytes: <code>${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}</code><br>SHA-256 of those bytes: <code>${sha256(bytes)}</code>`;
+    check.className = want ? "ok" : "";
+    check.textContent = want ? `Fingerprint matches (${fp}): the seed was fixed before the cut.` : `This seed's fingerprint is ${fp}. If the app showed it before you cut, the seed was fixed before the cut.`;
     box.hidden = false; out.textContent = "";
-  } catch (e) { out.textContent = e.message; box.hidden = true; }
+  } catch (e) { out.textContent = e.message; check.textContent = ""; box.hidden = true; delete $("hands").dataset.deal; }
 };
-document.getElementById("go").onclick = run;
-const q = new URLSearchParams(location.search);
-if (q.get("seed")) { document.getElementById("seed").value = q.get("seed"); if (q.get("deck")) document.getElementById("deck").value = q.get("deck"); if (q.get("dealer")) document.getElementById("dealer").value = q.get("dealer"); run(); }
-fetch("./dealer.js").then((r) => r.text()).then((t) => (document.getElementById("src").textContent = t));
+const sizeRow = () => ($("sizeRow").hidden = $("game").value !== "ohhell");
+$("go").onclick = run;
+$("game").onchange = sizeRow;
+const q = new URLSearchParams(location.search), LEGACY = { 52: "hearts", jokers: "jokers" };
+for (const k of ["seed", "cut", "fp", "game", "dealer", "size"]) if (q.get(k)) $(k).value = q.get(k);
+if (!q.get("game") && LEGACY[q.get("deck")]) $("game").value = LEGACY[q.get("deck")];
+sizeRow();
+if (q.get("seed")) run();
+fetch("./dealer.js").then((r) => r.text()).then((t) => ($("src").textContent = t));
+fetch("./cards.js").then((r) => r.text()).then((t) => ($("src2").textContent = t));
 </script>
 </body>
 </html>
