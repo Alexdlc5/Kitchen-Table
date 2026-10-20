@@ -11,6 +11,11 @@
   --lift-1: 0 1px 1px rgba(40,20,6,.28), 0 3px 6px -2px rgba(40,20,6,.3);
   --lift-2: 0 1px 1px rgba(40,20,6,.25), 0 6px 12px -4px rgba(40,20,6,.4), 0 18px 32px -16px rgba(40,20,6,.55);
   --stock: #fbf5e6; --stock-edge: #d8c7a2; --press: #c8b48a;
+  /* a card on the table: a tight contact shadow, a short warm one and a soft ambient one, all from the lamp above; lifted, deeper.
+     The radius is the card's own (rx 9 of 100 x 140), so a shadow hugs the drawn corners at any size */
+  --card-r: 9% / 6.43%;
+  --card-shadow: 0 .5px .6px rgba(40,20,6,.34), 0 2px 3px -1px rgba(40,20,6,.3), 0 6px 12px -5px rgba(40,20,6,.34);
+  --card-lift: 0 1px 1.5px rgba(40,20,6,.3), 0 8px 12px -4px rgba(40,20,6,.34), 0 18px 26px -12px rgba(40,20,6,.48);
   --fs: 18px; --fs-s: 16px; --fs-l: 23px;
   --muted: #6a5f50;           /* small print on paper; Comfort darkens it to its 7:1 floor */
   --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
@@ -155,7 +160,7 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 7px; borde
 .tile { display: grid; gap: 6px; align-content: start; }
 .tile .tprev { aspect-ratio: 4 / 3; }
 .tile.luxe .tprev { aspect-ratio: 16 / 9; }
-.tile .tback, .tile .tface { position: absolute; top: 18%; width: 26%; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+.tile .tback, .tile .tface { position: absolute; top: 18%; width: 26%; border-radius: var(--card-r); box-shadow: var(--card-lift); }
 .tile .tback svg, .tile .tface svg { width: 100%; display: block; }
 .tile .tback { left: 22%; transform: rotate(-8deg); } .tile .tface { left: 44%; transform: rotate(6deg); }
 .tile.luxe .tback, .tile.luxe .tface { width: 17%; top: 14%; } .tile.luxe .tback { left: 32%; } .tile.luxe .tface { left: 48%; }
@@ -169,8 +174,8 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 7px; borde
 .tag { flex: none; justify-self: start; font-size: var(--fs-s); background: var(--gold); border-radius: 999px; padding: 2px 10px; }
 
 /* cards */
-.card { width: var(--cw); height: calc(var(--cw) * 1.4); padding: 0; border: 0; background: none; display: block; border-radius: 9px;
-  box-shadow: 0 2px 4px rgba(0,0,0,.28); transition: transform calc(.12s * var(--speed)); }
+.card { width: var(--cw); height: calc(var(--cw) * 1.4); padding: 0; border: 0; background: none; display: block; border-radius: var(--card-r);
+  box-shadow: var(--card-shadow); transition: transform calc(.12s * var(--speed)); }
 .card svg { width: 100%; height: 100%; display: block; }
 /* your hand is its own stacking context, so no card can rise over the pass-the-phone cover */
 #hand { position: absolute; left: 0; right: 0; bottom: calc(var(--safe-b) + 8px); z-index: 1; }
@@ -179,9 +184,9 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 7px; borde
 #hand .card { position: absolute; }
 #hand .card[disabled] { cursor: default; }
 #hand .card.dim { filter: brightness(.72) saturate(.7); }
-#hand .card.sel { transform: translateY(-22%); box-shadow: 0 0 0 4px var(--brass), 0 10px 18px rgba(0,0,0,.35); }
+#hand .card.sel { transform: translateY(-22%); box-shadow: 0 0 0 4px var(--brass), var(--card-lift); }
 /* Comfort: a chosen card stays put (lifting it hid the cards above); a thick brass outline and a tick beside its index */
-html.comfort #hand .card.sel { transform: none; outline: 5px solid var(--brass); outline-offset: -5px; box-shadow: 0 0 0 2px #6e5224, 0 2px 4px rgba(0,0,0,.28); }
+html.comfort #hand .card.sel { transform: none; outline: 5px solid var(--brass); outline-offset: -5px; box-shadow: 0 0 0 2px #6e5224, var(--card-shadow); }
 html.comfort #hand .card.sel::after { content: "✓"; position: absolute; left: 34%; top: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
   font: 700 17px/1 var(--sans); color: #3a2810; background: var(--brass); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
 /* the first few hands: the cards you may play rise and settle, slowly (never under Reduce Motion) */
@@ -189,7 +194,7 @@ html.comfort #hand .card.sel::after { content: "✓"; position: absolute; left: 
 @keyframes hint { 0%, 70%, 100% { translate: 0 0; } 35% { translate: 0 -7px; } }
 #trick { position: absolute; left: 50%; top: var(--mid, 48%); width: 0; height: 0; }
 #trick .card { position: absolute; width: var(--tw, var(--tcw)); height: calc(var(--tw, var(--tcw)) * 1.4); left: calc(var(--tw, var(--tcw)) * -.5); top: calc(var(--tw, var(--tcw)) * -.7); }
-#trick .card > svg { border-radius: 9px; }
+#trick .card > svg { border-radius: var(--card-r); }
 #trick .who { display: none; }
 /* Comfort and iPad: a small name tab under each card in the trick */
 #trick.named .who { display: block; position: absolute; left: 50%; top: calc(100% - 4px); transform: translateX(-50%); padding: 0 8px; border-radius: 4px; white-space: nowrap;
@@ -229,7 +234,7 @@ html.comfort #seats .seat.s-me .st:empty { display: none; }
 }
 .pips { letter-spacing: 2px; color: var(--brass-d); }
 .backs { display: flex; justify-content: center; height: 22px; }
-.backs img { width: 16px; height: 22px; margin: 0 -4px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+.backs img { position: relative; width: 16px; height: 22px; margin: 0 -4px; border-radius: var(--card-r); box-shadow: 0 .5px 1px rgba(40,20,6,.45), 0 1.5px 2px -.5px rgba(40,20,6,.3); }
 .backs img:nth-child(1) { transform: rotate(-10deg); } .backs img:nth-child(3) { transform: rotate(10deg); }
 #center { position: absolute; left: 12px; right: 12px; top: calc(var(--free0, 22%) + 10px); display: grid; justify-items: center; gap: 10px; z-index: 4; pointer-events: none; }
 #center > * { pointer-events: auto; }
@@ -244,7 +249,7 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--paper)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-1); }
 /* the cut: a squared-up deck, wide enough to tap where you'd cut it */
 .deck { display: flex; justify-content: center; align-items: center; width: 100%; min-height: calc(var(--tap) * 2.2); margin: 6px 0 4px; padding: 10px 0; border: 0; border-radius: 10px; background: none; }
-.deck img { flex: none; width: 15%; height: auto; aspect-ratio: 5 / 7; margin: 0 -2.6%; border-radius: 5px; box-shadow: 0 2px 4px rgba(40,20,6,.35); }
+.deck img { flex: none; width: 15%; height: auto; aspect-ratio: 5 / 7; margin: 0 -2.6%; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .fp { white-space: nowrap; }
 .deck:focus-visible { outline: 3px solid var(--brass-d); outline-offset: 2px; }
 .lasttrick { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
@@ -254,7 +259,7 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 .bidpad .btn { padding: 4px; }
 /* Euchre: the kitty with its upcard (turned sideways once it's turned down), and the pad for calling trump */
 .kitty { --kw: calc(var(--tcw) * .55); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
-.kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .kitty svg { display: block; width: 100%; height: 100%; }
 .kitty .kb:nth-child(1) { left: 0; transform: rotate(-5deg); } .kitty .kb:nth-child(2) { left: 4px; transform: rotate(3deg); }
 .kitty .up { left: 12px; }
@@ -272,7 +277,7 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 #trump { position: absolute; left: 12px; z-index: 3; }
 #trump:empty { display: none; }
 #trump .tt { display: grid; justify-items: center; gap: 2px; color: var(--cream); font-size: var(--fs-s); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-#trump .ttc { display: block; width: calc(var(--tcw) * .62); height: calc(var(--tcw) * .62 * 1.4); transform: rotate(-8deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+#trump .ttc { display: block; width: calc(var(--tcw) * .62); height: calc(var(--tcw) * .62 * 1.4); transform: rotate(-8deg); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 #trump .ttc svg { width: 100%; height: 100%; }
 #trump .tt.none b { padding: 6px 10px; border: 1px dashed currentColor; border-radius: 6px; }
 #handoff { position: absolute; inset: 0; z-index: 8; display: grid; place-content: center; gap: 16px; text-align: center; padding: 24px; background: #3a2414; }
@@ -360,7 +365,7 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 .minitrick .card { position: absolute; left: calc(50% - var(--mw) / 2); top: calc(50% - var(--mw) * .7); width: var(--mw); height: calc(var(--mw) * 1.4); }
 .minitrick .p0 { transform: translate(calc(var(--mw) * -.75), 0) rotate(-4deg); } .minitrick .p1 { transform: translate(0, calc(var(--mw) * -.62)) rotate(3deg); }
 .minitrick .p2 { transform: translate(calc(var(--mw) * .75), 0) rotate(5deg); } .minitrick .p3 { transform: translate(0, calc(var(--mw) * .62)) rotate(-2deg); }
-.minitrick .win { z-index: 1; box-shadow: 0 0 0 3px var(--brass), 0 4px 10px rgba(0,0,0,.3); }
+.minitrick .win { z-index: 1; box-shadow: 0 0 0 3px var(--brass), var(--card-lift); }
 /* unlock: the boxes it opens */
 .uboxes { display: flex; justify-content: center; gap: 8px; margin: -4px 0 8px; } .ubox { width: min(22%, 90px); } .ubox svg { width: 100%; height: auto; } .ubox .peek { display: none; }
 .recipe h2 { border-bottom: 2px solid #d98585; padding-bottom: 6px; }
@@ -387,7 +392,7 @@ html.comfort .recipe .from { color: var(--muted); }
 /* title: the aces deal themselves in; tap one to flip it */
 .ace { position: relative; display: block; width: var(--cw); height: calc(var(--cw) * 1.4); margin: 0 calc(var(--cw) * -.32); transform-origin: 50% 120%; cursor: pointer;
   animation: dealin calc(.6s * var(--speed)) cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i) * 90ms); }
-.ace > span { position: absolute; inset: 0; border-radius: 9px; box-shadow: 0 4px 10px rgba(0,0,0,.3); }
+.ace > span { position: absolute; inset: 0; border-radius: var(--card-r); box-shadow: var(--card-lift); }
 .ace svg { width: 100%; height: 100%; display: block; }
 .ace .back, .ace.flipped .face { display: none; } .ace.flipped .back { display: block; }
 @keyframes dealin { from { opacity: 0; translate: 0 60px; } to { opacity: 1; translate: 0 0; } }
@@ -402,7 +407,7 @@ html.comfort .recipe .from { color: var(--muted); }
 .backfan { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px 10px; padding: 22px 0 6px; } /* every back in view: no hidden sideways scroll */
 .backpick { flex: none; width: 72px; display: grid; gap: 6px; justify-items: center; padding: 0; border: 0; background: none; scroll-snap-align: center;
   transform: rotate(calc((var(--i) % 2 * 2 - 1) * 3deg)); transition: transform .2s; min-height: var(--tap); }
-.backpick svg { width: 72px; height: auto; display: block; border-radius: 8px; box-shadow: var(--lift-2); }
+.backpick svg { width: 72px; height: auto; display: block; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .backpick small { font-size: var(--fs-s); color: var(--muted); text-align: center; line-height: 1.15; }
 .backpick.on { transform: translateY(-16px) rotate(0); }
 .backpick.on svg { outline: 3px solid var(--brass); outline-offset: 3px; }

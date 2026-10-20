@@ -18,11 +18,22 @@ export const PIP = {
 const pip = (s, x, y, size, col) => `<path d="${PIP[s]}" fill="${col}" transform="translate(${x - size / 2} ${y - size / 2}) scale(${size / 100})"/>`;
 const label = (c) => (c[0] === "T" ? "10" : c[0]);
 
+// The card stock, 100 x 140, lit by the lamp from the top left: the bottom-right half of its rim falls into shade, with a
+// hairline of shadow just inside, so a card reads as a card with thickness. The halves meet at the corners' 45-degree points,
+// as light falls on a real card. light: an optional lit top-left half, for backs only; a face keeps its plain rim on the left,
+// which is the edge that tells one card from the next in a fanned hand (and where crisp.mjs measures). Edges only: the face
+// stays pure colour (TABLE.md rule 1). One group, first in the svg, which check-cards.mjs counts as the stock.
+const RIM = { lit: "M3.64 136.36A9 9 0 0 1 1 130V10A9 9 0 0 1 10 1H90A9 9 0 0 1 96.36 3.64", shade: "M96.36 3.64A9 9 0 0 1 99 10V130A9 9 0 0 1 90 139H10A9 9 0 0 1 3.64 136.36",
+  inner: "M95.16 4.84A7.3 7.3 0 0 1 97.3 10V130A7.3 7.3 0 0 1 90 137.3H10A7.3 7.3 0 0 1 4.84 135.16" };
+export const stock = (fill, edge = "#c9bfa8", dark = "#ab9d7e", light = null) => `<g><rect x="1" y="1" width="98" height="138" rx="9" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>` +
+  (light ? `<path d="${RIM.lit}" fill="none" stroke="${light}" stroke-width="1.5"/>` : "") +
+  `<path d="${RIM.shade}" fill="none" stroke="${dark}" stroke-width="1.5"/><path d="${RIM.inner}" fill="none" stroke="#6b5a3c" stroke-opacity=".12" stroke-width="1.1"/></g>`;
+
 // face: 100 x 140. Big corner index (rank over suit) for reading at a glance. Everything else stays in the clear centre
 // column (x 32-68) between the two indices, so nothing ever sits on a rank or suit (scripts/check-cards.mjs)
 export function face(c, { four = false } = {}) {
   const W = 100, H = 140, cream = "#fffdf7";
-  const base = `<rect x="1" y="1" width="98" height="138" rx="9" fill="${cream}" stroke="#c9bfa8" stroke-width="1.5"/>`;
+  const base = stock(cream);
   if (c === "BJ" || c === "LJ") {
     const col = c === "BJ" ? "#d0182f" : "#16181d", star = curve(ring(50, 70, 26, 26, 10, 0, 3).map(([x, y], i) => (i % 2 ? [50 + (x - 50) * 0.45, 70 + (y - 70) * 0.45] : [x, y])));
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}<path d="${star}" fill="${col}"/>` +
