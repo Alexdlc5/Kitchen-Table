@@ -26,8 +26,8 @@ const oh = ({ size, trumpCard = "2D", bids = [1, 1, 1, 1], tricks = [0, 0, 0, 0]
   table("ohhell", { size, handNo: 0, trump: trumpCard && trumpCard[1], trumpCard, bids, tricks, broken: false, totals, ...o });
 const wh = ({ trumpCard = "2D", tricks = [0, 0, 0, 0], totals = { score: [0, 0] }, ...o }) => table("whist", { trump: trumpCard[1], trumpCard, tricks, totals, ...o });
 
-function sc(id, what, view, check) {
-  for (const level of LEVELS) {
+function sc(id, what, view, check, levels = LEVELS) {
+  for (const level of levels) {
     for (let k = 0; k < (level === "easy" ? 12 : 1); k++) { // Easy is random: try it many times
       const d = decide(structuredClone(view), level, rng, { ...cfg.ai, expertSamples: 12, extremeSamples: 16 });
       assert.deepEqual(sins(view, d.action), [], `${id} ${level}: ${JSON.stringify(d)} commits a sin`);
@@ -51,6 +51,13 @@ sc("O02", "a hand of nothing bids nothing", oh({ size: 5, phase: "bid", trumpCar
 sc("O03", "need a trick, last to play and can win it: take it", oh({ size: 4, bids: [2, 1, 0, 1], tricks: [1, 0, 0, 1], hand: "KH 3H 3C", trick: "1:4H 2:JH 3:2H", history: ["0:AS 1:3S 2:4S 3:5S"] }), (c) => c === "KH");
 sc("O03", "need a trick and void in the suit led: trump it when last", oh({ size: 3, trumpCard: "2S", bids: [1, 0, 1, 1], hand: "4S 9D 3D", trick: "1:KH 2:5H 3:6H" }), (c) => c === "4S");
 sc("O04", "need tricks but can't win this one: keep the high cards", oh({ size: 4, bids: [2, 1, 1, 0], hand: "QD JD 3D 8C", trick: "1:AD 2:4D 3:5D" }), (c) => c === "3D");
+// review 2 (AI-O1): on my bid and void, a trump that loses this trick goes first; it is the card that busts me later
+sc("O01", "on my bid and void: throw the 8 of trump under the king of trump, keep the side king",
+  oh({ size: 7, trumpCard: "5D", bids: [2, 1, 1, 2], tricks: [2, 1, 1, 0], hand: "KS 8S 8D", trick: "2:8H 3:KD",
+    history: ["0:AD 1:6H 2:TD 3:2D", "0:KH 1:7H 2:2H 3:QH", "0:2C 1:AC 2:4C 3:6C", "1:8C 2:KC 3:QC 0:7C"] }), (c) => c === "8D");
+sc("O01", "on my bid and void: throw a small trump under the 9 of trump, not the 7 of diamonds",
+  oh({ size: 7, trumpCard: "5H", dealer: 0, bids: [1, 2, 1, 2], tricks: [1, 1, 1, 1], hand: "6H 2H 7D", trick: "2:2C 3:9H",
+    history: ["1:AS 2:9S 3:4S 0:3S", "1:9D 2:4D 3:JD 0:AD", "0:3C 1:5C 2:JC 3:8H", "3:KS 0:JS 1:3H 2:4H"] }), (c) => c[1] === "H");
 
 // ---------------------------------------------------------------- Whist (§7)
 
@@ -62,6 +69,15 @@ sc("W03", "second hand: cover an honour with an honour", wh({ hand: "KC 5C 9H 3D
 sc("W03", "second hand: cover the jack, never duck under it", wh({ hand: "AC QC 5C 9H", trick: "3:JC" }), (c) => c !== "5C");
 sc("W04", "can't beat the opponents' card: keep the high one", wh({ hand: "QD 3D 9H 9C", trick: "1:AD 2:4D 3:5D" }), (c) => c === "3D");
 sc("W05", "partner's ace is good and the last opponent can follow: don't trump it", wh({ trumpCard: "2S", hand: "4S 9C 8C", trick: "2:AH 3:4H" }), (c) => c[1] !== "S");
+// review 2 (AI-W1, AI-W2): partner's card is safe only if it's boss, I'm last, or the last player can't beat it
+sc("W04", "third hand: partner led the 4 of hearts and I hold the boss queen: play it, not the 5",
+  wh({ trumpCard: "4S", dealer: 1, tricks: [0, 2, 2, 2], hand: "5H 9H TD 7H JC QH KD", trick: "2:4H 3:2D",
+    history: ["2:2S 3:5S 0:9S 1:JS", "1:AH 2:2H 3:KH 0:3H", "1:5C 2:AC 3:2C 0:8C", "2:3S 3:AS 0:8S 1:4S", "3:AD 0:6D 1:4D 2:9D", "3:KC 0:9C 1:7C 2:6S"] }),
+  (c) => c === "QH", ["standard", "expert", "extreme"]); // Easy may slip to another heart
+sc("W05", "partner's 9 of clubs can still be beaten by the last player: ruff it low",
+  wh({ trumpCard: "8D", tricks: [2, 1, 3, 2], hand: "6D 8S 6S JS 9H", trick: "2:9C 3:9S",
+    history: ["0:AH 1:QH 2:5H 3:3H", "0:2H 1:3D 2:8H 3:4H", "1:6C 2:4C 3:QC 0:2C", "3:AC 0:2D 1:3C 2:5C", "0:5S 1:2S 2:AS 3:4S",
+      "2:AD 3:8D 0:4D 1:TD", "2:KC 3:9D 0:6H 1:7C", "3:KH 0:7H 1:3S 2:5D"] }), (c) => c === "6D");
 
 // ---------------------------------------------------------------- honesty: what a bot can see (AI_SPEC §1)
 

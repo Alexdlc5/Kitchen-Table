@@ -101,7 +101,8 @@ export function play(v, K = knowO(v)) {
   if (losers.length) {
     const f = follow(losers);
     if (f.length) return R(highest(f, K), "duck_highest_under");
-    return R(highest(losers, K), "discard_danger");
+    const tr = losers.filter((c) => c[1] === v.trump); // a trump that loses now is the card most likely to bust me later
+    return R(highest(tr.length ? tr : losers, K), "discard_danger");
   }
   return R(T.last ? highest(legal, K) : lowest(legal, K), "forced_win");
 }
