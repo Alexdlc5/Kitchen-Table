@@ -69,13 +69,18 @@ const teacup = () => shade(70, 178, 58, 12) +
     `<path d="M105 128 C121 127 122 148 102 150" fill="none" stroke="${china}" stroke-width="4" stroke-linecap="round"/>` +
     `<ellipse cx="70" cy="118" rx="36" ry="8" fill="#6b3f22"/><ellipse cx="66" cy="117" rx="20" ry="3" fill="#8a5a34" opacity=".7"/>` +
     `<path d="M36 118 L104 118" stroke="${rim}" stroke-width="2"/><path d="M42 140 C60 146 82 146 98 140" stroke="${rim}" stroke-width="1.4" fill="none" opacity=".8"/>` +
-    `<g class="steam">` + stroke(60, 104, -1.75, 26, 2.2, "#fff", 0.35, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 22, 1.8, "#fff", 0.28, -0.4) + `</g>`;
+    `<g class="steam">` + stroke(60, 104, -1.75, 28, 2.4, "#fff", 0.5, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 24, 2, "#fff", 0.4, -0.4) + `</g>`;
 const blur = `<defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>`;
 // the one prop on the table (TABLE.md rule 4): a cup of tea at the edge, out of the way of every card and plate
 export const tableProp = () => `<svg viewBox="0 90 140 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur.replace("tpBlur", "tpBlur2")}${teacup().replaceAll("url(#tpBlur)", "url(#tpBlur2)")}</svg>`;
 
 export function titleProps() {
   const cup = teacup();
+  // a teaspoon resting on the saucer, bowl toward the cup: polished silver, lit from the top left
+  const silver = "#d9dde2", spoon = `<path d="M8 166 C18 163 28 161 36 160" stroke="${mix(silver, "#3a3a3a", 0.45)}" stroke-width="3.6" stroke-linecap="round" fill="none"/>` +
+    `<path d="M8 166 C18 163 28 161 36 160" stroke="${silver}" stroke-width="2.2" stroke-linecap="round" fill="none"/>` +
+    `<ellipse cx="42" cy="159" rx="7.5" ry="4.2" transform="rotate(-8 42 159)" fill="${silver}" stroke="${mix(silver, "#3a3a3a", 0.45)}" stroke-width="1"/>` +
+    `<ellipse cx="40.5" cy="158" rx="3.2" ry="1.4" transform="rotate(-8 40.5 158)" fill="#fff" opacity=".8"/>`;
   // cookies on a plate (right)
   const r = rng(5);
   let cookies = "";
@@ -92,5 +97,6 @@ export function titleProps() {
     `<text x="152" y="212" font-family="Alegreya, Georgia, serif" font-style="italic" font-size="9" fill="#5a4a3a" transform="rotate(-1.5 152 212)">Us 320 · Them 285</text>` +
     shape(curve([[168, 236], [292, 214], [296, 220], [172, 242]]), "#e2b24a", "#8a6420") + `<path d="M292 214 L306 214 L296 220Z" fill="#e8c9a0"/><path d="M302 214 L306 214 L303 216Z" fill="#3a3a3a"/>` +
     `<path d="M168 236 L160 238 L164 244 L172 242Z" fill="#d98a9a"/>`;
-  return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur}${cup}${plate}${pad}</svg>`;
+  // the cup and the plate sit out past the fan's corners, so no card ever hides them (nothing important under a card)
+  return `<svg viewBox="-16 0 432 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur}<g transform="translate(-14 4)">${cup}${spoon}</g><g transform="translate(14 4)">${plate}</g>${pad}</svg>`;
 }
