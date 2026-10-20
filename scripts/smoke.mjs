@@ -103,8 +103,9 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   if (COMFORT) await page.addInitScript(() => localStorage.setItem("kt.save", JSON.stringify({ reset: 1, opt: { comfort: true } })));
   await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast${LANG ? "&lang=" + LANG : ""}`);
   await page.waitForFunction(() => window.kt, null, { timeout: 15000 });
-  // every sentence the live region shows, with when it showed (P0-3: none may be replaced before it could be read)
-  await page.evaluate(() => { window.saidLog = []; new MutationObserver(() => saidLog.push([performance.now(), document.getElementById("announce").textContent])).observe(document.getElementById("announce"), { childList: true, characterData: true, subtree: true }); });
+  // every sentence the live region shows is logged with when it was written (kt.said.log); P0-3: none may be replaced before it
+  // could be read. And nothing else may write the live region behind the queue's back.
+  await page.evaluate(() => { window.writes = 0; new MutationObserver(() => writes++).observe(document.getElementById("announce"), { childList: true, characterData: true, subtree: true }); });
   const report = async (id, bad) => {
     bad = [...bad, ...errors.splice(0)].filter(Boolean);
     console.log(`${name.padEnd(9)} ${id.padEnd(14)} ${bad.length ? "FAIL " + bad.join(" | ") : "ok"}`);
@@ -164,7 +165,12 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     await report(`${game}-results`, await page.evaluate(AUDIT, "results"));
   }
   // P0-3: over all those hands, the live region never replaced a sentence before it could be read
-  await report("announce", await page.evaluate(() => { const out = []; for (let i = 1; i < saidLog.length; i++) { const [t0, s] = saidLog[i - 1], dt = saidLog[i][0] - t0; if (s && dt < kt.readMs(s) - 60) out.push(`"${s.slice(0, 40)}" replaced after ${dt | 0} ms`); } return out.length ? out.slice(0, 3).concat(`${out.length} of ${saidLog.length}`) : saidLog.length < 5 ? ["almost nothing was announced"] : []; }));
+  await report("announce", await page.evaluate(() => {
+    const log = kt.said.log, out = [];
+    for (let i = 1; i < log.length; i++) { const [t0, s] = log[i - 1], dt = log[i][0] - t0; if (dt < kt.readMs(s) - 5) out.push(`"${s.slice(0, 40)}" replaced after ${dt | 0} ms`); }
+    if (writes > log.length) out.push(`${writes - log.length} writes to the live region outside the queue`);
+    return out.length ? out.slice(0, 3).concat(`${out.length} of ${log.length}`) : log.length < 5 ? ["almost nothing was announced"] : [];
+  }));
   // P0-1: pass and play: with the cover up, the hand is gone, the cover is what's under a finger, and the table can't be reached
   const cover = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];

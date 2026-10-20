@@ -56,7 +56,7 @@ const sw = (act, on, label, { disabled = false, attrs = "" } = {}) => `<button c
 const toggle = (act, on, label, opt = {}) => `<div class="row"><span>${label}${opt.note ? ` <small class="muted">${opt.note}</small>` : ""}</span>${sw(act, on, label, opt)}</div>`;
 // a row of choices is one named radio group, so VoiceOver says which question "Standard, selected" answers
 let segN = 0;
-const seg = (act, val, opts, labelId) => `<div class="seg" role="radiogroup" ${labelId ? `aria-labelledby="${labelId}"` : ""}>${opts.map(([v, name]) => `<button role="radio" data-act="${act}" data-v="${v}" aria-checked="${val === v}">${name}</button>`).join("")}</div>`;
+const seg = (act, val, opts, labelId) => `<div class="seg" data-n="${opts.length}" role="radiogroup" ${labelId ? `aria-labelledby="${labelId}"` : ""}>${opts.map(([v, name]) => `<button role="radio" data-act="${act}" data-v="${v}" aria-checked="${val === v}">${name}</button>`).join("")}</div>`;
 const segRow = (label, act, val, opts) => { const id = "sg" + ++segN; return `<div class="row"><span id="${id}">${label}</span>${seg(act, val, opts, id)}</div>`; };
 let screen = null;
 function show(id) {
@@ -87,21 +87,22 @@ function applyLook() {
   const root = document.documentElement;
   root.classList.toggle("comfort", !!S.opt.comfort);
   root.style.setProperty("--speed", S.opt.speed === "fast" ? 0.6 : 1);
-  const theme = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", st = themeStyle(theme), felt = $("#felt");
+  const theme = trial || (ownsTheme(S.opt.theme) ? S.opt.theme : "walnut"), st = themeStyle(theme), felt = $("#felt"); // trial: a theme tried for one hand
   felt.style.background = st.background; felt.style.boxShadow = st.boxShadow;
   for (const [k, v] of Object.entries(st.vars)) root.style.setProperty(k, v);
   root.classList.toggle("text-l", S.opt.text === "large"); root.classList.toggle("text-xl", S.opt.text === "xl");
   speech.enabled = !!S.opt.speak; speech.rate = S.opt.speakRate || 1;
   sound.enabled = S.opt.sound; sound.setIgnoreSilent(S.opt.loud);
   faces.clear(); look++; M = null; geo = null;
-  backSvg = themeBack(ownsTheme(S.opt.back) ? S.opt.back : theme);
+  backSvg = themeBack(!trial && ownsTheme(S.opt.back) ? S.opt.back : theme);
+  backImg = `<img src="data:image/svg+xml,${encodeURIComponent(backSvg)}" alt="">`; // the plates' little backs: one image node each, not an SVG tree
 }
 const ownsTheme = (id) => THEMES[id] && (THEMES[id].tier === "free" || platform.owns("theme_" + id));
 const faces = new Map();
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches; // no motion, ever, when the phone asks
 const four = () => !!(S.opt.four || S.opt.comfort); // Comfort always deals the four-colour deck (DESIGN §6.1)
 const svgFor = (c) => { const k = c + four(); if (!faces.has(k)) faces.set(k, face(c, { four: four() })); return faces.get(k); };
-let backSvg = ""; // the chosen card back, drawn once per change of theme
+let backSvg = "", backImg = ""; // the chosen card back, drawn once per change of theme
 let look = 0, M = null, geo = null; // look: bumps with every theme/deck/text change; M: sizes read from the CSS once per look; geo: plate sizes
 
 // R2: nothing may pop up between the deal and the last trick. dialog() refuses unless the player opened it themselves.
@@ -122,12 +123,13 @@ function dialog(html, { user = false } = {}) {
 let peekOpen = false; // the score sheet opened from the chip; it closes itself when the hand or the game ends
 const closePeek = () => { if (peekOpen) dialog.done?.(null); };
 
-// R9: an outbound link only after a grown-up check (press and hold), never while the caregiver lock is on
+// R9: an outbound link only after a grown-up check (press and hold: a finger, or Space or Enter), never while the caregiver
+// lock is on. Switch Control can't hold, so a press that arrives without one gets a second, plain "Open" question instead.
 async function gate(url, what) {
   if (S.care.lock) return;
   const ok = await dialog(`<h2>Leaving ${BRAND}</h2><p>This opens ${esc(what)} in Safari. Press and hold the button for two seconds.</p>
     <div class="stack"><button class="btn big hold" data-hold="2000">Hold to open<i></i></button><button class="btn" data-dlg="">Stay here</button></div>`, { user: true });
-  if (ok === "hold") platform.openUrl(url);
+  if (ok === "hold" || (ok === "tap" && (await dialog(`<h2>Open Safari?</h2><p>This leaves ${BRAND} for ${esc(what)}.</p><div class="stack"><button class="btn" data-dlg="open">Open Safari</button><button class="btn big" data-dlg="">Stay here</button></div>`, { user: true })) === "open")) platform.openUrl(url);
 }
 
 // ---------------------------------------------------------------- what a bot's play means, for the "Why?" button
@@ -167,14 +169,14 @@ function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
   const fan = ["AS", "AH", "AD", "AC"].map((c, i) => `<span class="ace" style="--i:${i}; transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px)" data-act="flip" aria-hidden="true"><span class="face">${svgFor(c)}</span><span class="back">${backSvg}</span></span>`).join("");
   $("#title").innerHTML = `<div class="stack title">
-    <p class="kicker" data-act="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
+    <p class="kicker" data-act="kicker"><span>Play a game of cards at…</span></p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
     <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
     <button class="btn big" data-act="deal" data-game="${game}">${S.cur ? "Back to the table" : `Deal: ${GAME_NAME[game]}`}</button>
     <div class="grid2">
       <button class="btn" data-act="go" data-to="picker">Games and rules</button>
       <button class="btn" data-act="go" data-to="boards">Leaderboards</button>
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="shop">Table shop</button>
-      <button class="btn" data-act="go" data-to="stats">Fair deal</button>
+      <button class="btn" data-act="go" data-to="stats">Is the deal fair?</button>
       <button class="btn" data-act="go" data-to="howto">How to play</button>
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
     </div>
@@ -185,17 +187,17 @@ function renderTitle() {
 
 function renderPicker() { // playable games two to a shelf, then the closed boxes of what's coming
   const playable = Object.keys(cfg.games).filter((g) => !cfg.games[g].release && S.care.games.includes(g));
-  const coming = [...Object.keys(cfg.games).filter((g) => cfg.games[g].release).map((g) => [g, GAME_NAME[g], `${GAME_NAME[g]}, coming soon, free with Everything`]),
+  const coming = [...Object.keys(cfg.games).filter((g) => cfg.games[g].release).map((g) => [g, GAME_NAME[g], `${GAME_NAME[g]}: coming soon. Included in Everything.`]),
     ...Object.entries(more.ROADMAP).map(([g, [name, said]]) => [g, name, `${said}, coming soon`])];
   const box = (g) => {
     const locked = !owns(g), sub = g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Ready to play";
-    return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}</span></button>`;
+    return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}<b class="play" aria-hidden="true">${locked ? "Have a look ›" : "Play ›"}</b></span></button>`;
   };
   const shelves = [];
   for (let i = 0; i < playable.length; i += 2) shelves.push(`<div class="shelf">${playable.slice(i, i + 2).map(box).join("")}</div>`);
   const rows = shelves.join("") + `<h2 class="shelfsign">Coming to the table</h2><div class="shelf soon">${coming.map(([g, name, said]) => `<div class="box soon" role="img" aria-label="${said}">${tuckBox(g, name, { soon: true })}</div>`).join("")}</div>`;
   const unlockRow = !platform.owns("everything") && !S.opt.comfort && !S.care.lock ? `<button class="btn" data-act="go" data-to="unlock">Unlock everything · $6.99 once</button>` : "";
-  $("#picker").innerHTML = `<div class="stack"><h1 class="sign">The game cupboard</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+  $("#picker").innerHTML = `<div class="stack"><h1 class="sign">Games and rules</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 
 let setupGame = "hearts";
@@ -432,7 +434,7 @@ function patchPlate(e, s, mine) { // true when its words changed (its size may h
   const h = bits.map((b) => `<span>${esc(b)}</span>`).join("");
   if (e._st !== h) { e._st = h; e.querySelector(".st").innerHTML = h; moved = true; }
   const bk = e.querySelector(".backs"), n = Math.min(3, st.hands[s].length);
-  if (bk && bk._n !== n) { bk._n = n; bk.innerHTML = backSvg.repeat(n); }
+  if (bk && bk._n !== n) { bk._n = n; bk.innerHTML = backImg.repeat(n); }
   const wt = e.querySelector(".whytab");
   if (wt) wt.hidden = !whyOf(s);
   const ask = e.querySelector(".ask"); // Comfort: "Tap a card" rides on your one-line strip, where the eye already is
@@ -621,10 +623,19 @@ function renderSheet() {
   const mine = sp ? h.lines.filter((l) => l.team === 0) : h.lines.filter((l) => l.seat === 0);
   const st = G.game === "euchre" ? euchreStamp(h.lines[0]) : more.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
-  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
-    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
+  const goal = G.over === null ? goalLine() : "";
+  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h1>Hand ${h.n}</h1>${table}${sp ? "" : `<h3>Game</h3>${totals}`}${goal ? `<p class="goal">${esc(goal)}</p>` : ""}
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
-    <button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
+    ${trialPlate()}<button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
+}
+// P1-10: a table theme tried for one hand asks, after the hand, whether to keep it (never during the hand)
+let trial = null;
+function trialPlate() {
+  if (!trial) return "";
+  const t = THEMES[trial], price = priceOf(t.tier);
+  return `<div class="paper"><h2>How was ${esc(t.name)}?</h2><p>You played that hand on it. Keep it for ${price}, or put it back.</p>
+    <div class="grid2"><button class="btn" data-act="trialback">Put it back</button><button class="btn big" data-act="trialkeep" aria-label="Keep ${esc(t.name)} for ${price}">Keep it, ${price}</button></div></div>`;
 }
 
 function renderResults() {
@@ -641,11 +652,14 @@ function renderResults() {
   track("game_end", { game: G.game, won: won ? 1 : 0, hands: G.handNo });
   const consent = S.opt.analytics === null && !S.care.lock ? `<div class="paper" id="consentCard"><h2>Help make ${cfg.brand.wordmark} better?</h2>
     <p>Share anonymous numbers like how many hands you play and which rules you pick. No ads, no tracking, nothing about you. You can change this in Options.</p>
-    <div class="row"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn big" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
+    <div class="grid2"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
+  // P2-8: playing for yourself, the table is ranked, winner on top (low score wins Hearts)
+  const order = sp ? [0, 1] : [0, 1, 2, 3].sort((a, b) => (G.game === "hearts" ? G.totals.score[a] - G.totals.score[b] : G.totals.score[b] - G.totals.score[a]));
+  const place = (k) => (sp ? "" : `<td class="place">${["1st", "2nd", "3rd", "4th"][k]}</td>`);
   S.cur = null; save();
   if (won && !calm()) setTimeout(confetti, 300);
   $("#results").innerHTML = `<div class="stack">${won ? `<div class="ribbon">${rosette(sp ? "Win!" : "1st")}</div>` : `<p class="kicker">Good game. There's always the next deal.</p>`}<h1>${who}</h1>${newBest.length ? `<p class="say" style="justify-self:center">New personal best: ${esc(newBest.join(", "))}</p>` : ""}
-    <div class="paper pad"><table>${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => `<tr><td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
+    <div class="paper pad"><table>${order.map((i, k) => `<tr>${place(k)}<td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
     <p class="muted">${G.handNo} hand${G.handNo === 1 ? "" : "s"} · ${PRESET_NAME[G.preset]} rules · ${rec.won} won of ${rec.played}</p></div>
     <button class="btn big" data-act="again">Deal again</button>
     ${consent}
@@ -672,8 +686,16 @@ function renderStats() {
     nilExpect = (100 * k) / 20000;
   }
   const rec = Object.entries(S.record).map(([g, r]) => `<tr><td>${GAME_NAME[g]}</td><td class="n">${r.won} of ${r.played}</td><td class="n">${g === "hearts" ? (r.best ?? "—") : "streak " + r.streak}</td></tr>`).join("");
-  $("#stats").innerHTML = `<div class="stack ledger"><h1>The fair deal ledger</h1>
-    <div class="paper"><p>Every hand is shuffled from a random seed and nothing else: not your score, your streak, what you bought, or who is winning. The seed is on every score sheet, and our website re-deals any hand from it.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}
+  const intro = `<div class="paper"><p>Every hand comes from its seed and nothing else. The seed is on every score sheet: type it into our website to see the same four hands.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}`;
+  if (n < 20) { // P1-12: a first look shows what a fair deck gives, never a row of zeros
+    $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>${intro}</div>
+      <div class="paper"><h2>Your deals go here</h2><p>Play a few hands and your own deals appear here, next to what a fair deck gives${n ? ` (${n} so far; they show from 20)` : ""}.</p>
+        <p>A fair deck gives each hand <b>4.00</b> aces, kings, queens and jacks on average, and the queen of spades lands in one Hearts hand in four.</p></div>
+      <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+    return;
+  }
+  $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>
+    ${intro}
     <p class="muted">Your last ${n} deal${n === 1 ? "" : "s"}. The green bar is you; the black line is what a fair deck gives on average. Small samples wobble.</p></div>
     <div class="paper"><h2>High cards</h2><p>Aces, kings, queens and jacks per hand: <b>${hc.toFixed(2)}</b> (a fair deck averages <b>4.00</b>)</p></div>
     <div class="paper"><h2>Hand shapes</h2><div class="bars">${shapes}</div></div>
@@ -813,28 +835,28 @@ const TIER_ORDER = ["classic", "signature", "luxe"];
 const priceOf = (tier) => `$${cfg.shop.tiers[tier].price}`;
 function themeTile(id, big = false) {
   const t = THEMES[id], mine = ownsTheme(id), using = (S.opt.theme || "walnut") === id;
-  const action = using ? `<span class="tag">In use</span>` : mine ? `<button class="btn" data-act="usetheme" data-v="${id}">Use</button>`
-    : `<button class="btn big" data-act="buytheme" data-v="${id}">${priceOf(t.tier)}</button>`;
+  const action = using ? `<span class="tag">In use</span>` : mine ? `<button class="btn" data-act="usetheme" data-v="${id}" aria-label="Use ${esc(t.name)}">Use</button>`
+    : `<button class="btn" data-act="buytheme" data-v="${id}" aria-label="Buy ${esc(t.name)}, ${priceOf(t.tier)}">${priceOf(t.tier)}</button><button class="btn ghost ink" data-act="trytheme" data-v="${id}" aria-label="Try ${esc(t.name)} at the table">Try at the table</button>`;
   return `<div class="tile ${big ? "luxe" : ""} ${using ? "using" : ""}"><span class="tprev" data-theme="${id}" aria-hidden="true"><span class="tback">${themeBack(id)}</span><span class="tface">${svgFor("AH")}</span></span>
     <span class="tname">${esc(t.name)}</span><span class="tblurb">${esc(t.blurb)}</span>${action}</div>`;
 }
 function paintPreviews(root) { // backgrounds are set from JS: their SVG data URLs carry quotes an attribute can't hold
   for (const el of root.querySelectorAll("[data-theme]")) { const st = themeStyle(el.dataset.theme); el.style.background = st.background; el.style.boxShadow = st.boxShadow; }
 }
+let showBacks = false;
 function renderShop() {
   const ids = (tier) => Object.keys(THEMES).filter((k) => THEMES[k].tier === tier);
   const mine = Object.keys(THEMES).filter(ownsTheme), table = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", backNow = ownsTheme(S.opt.back) ? S.opt.back : null;
   const swatch = (id) => `<button class="swatch ${table === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)} table${table === id ? ", in use" : ""}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
   // the card backs you own, fanned out like a hand: tap one to play with it
-  const backs = [null, ...mine].map((id, i) => {
+  const row = innerWidth >= 700 ? 7 : S.opt.comfort ? 2 : 3, all = [null, ...mine], few = !showBacks && all.length > row + 1; // P2-9: one row of backs, the rest a tap away
+  const backs = (few ? all.slice(0, row) : all).map((id, i) => {
     const on = backNow === id, label = id ? THEMES[id].name : "Matches the table";
     return `<button class="backpick ${on ? "on" : ""}" style="--i:${i}" data-act="useback" data-v="${id || ""}" aria-label="Card back: ${esc(label)}${on ? ", selected" : ""}">${themeBack(id || table)}<small>${esc(id ? THEMES[id].name.replace(" felt", "") : "Match table")}</small></button>`;
-  }).join("");
+  }).join("") + (few ? `<button class="btn showall" data-act="allbacks">Show all ${all.length}</button>` : "");
   const forSale = TIER_ORDER.map((tier) => [tier, ids(tier).filter((id) => !ownsTheme(id))]).filter(([, list]) => list.length);
   $("#shop").innerHTML = `<div class="stack"><h1 class="sign">The table shop</h1>
-    <div class="paper thanks"><h2>Thank you for being here</h2>
-      <p>${cfg.brand.wordmark} has no ads and never will. It's made by one small team, and every theme you pick up is what keeps the cards coming: new games, new rules, and a table that stays calm. We're truly grateful. Thank you for supporting us.</p>
-      <p class="muted">Every theme is yours to keep, on every device in your Family Sharing group. Nothing renews.</p></div>
+    <div class="paper thanks"><p>No ads, ever: every table you pick up keeps the cards coming. Thank you. <span class="muted">Yours to keep on every device in your Family Sharing group; nothing renews.</span></p></div>
     <div class="paper"><h2>Your card backs</h2><p class="muted">Tap a card to deal with it. Any back goes with any table.</p><div class="backfan">${backs}</div></div>
     <div class="paper"><h2>Your tables</h2><div class="swatches">${mine.map(swatch).join("")}</div></div>
     ${forSale.map(([tier, list]) => `<div class="paper ${tier === "luxe" ? "luxebox" : ""}"><h2>${cfg.shop.tiers[tier].name} <span class="muted">· ${priceOf(tier)} each</span></h2>
@@ -849,10 +871,10 @@ function renderShop() {
 function renderBoards() {
   const fmt = (b, v) => (v == null ? "—" : b.unit ? `${v} ${b.unit}` : v);
   $("#boards").innerHTML = `<div class="stack"><h1 class="sign">The leaderboard</h1>
-    <div class="pins">${cfg.leaderboards.map((b, i) => `<div class="paper pin" style="--tilt:${[-2, 1.5, -1, 2, -1.5][i % 5]}deg"><h3>${esc(b.name)}</h3><p class="best">${fmt(b, S.best[b.id])}</p><small class="muted">${esc(b.explain)}</small>${(S.newBest || []).includes(b.name) ? `<span class="minirib">${rosette("New!")}</span>` : ""}</div>`).join("")}</div>
+    <div class="pins">${cfg.leaderboards.map((b, i) => `<div class="paper pin" style="--tilt:${[-2, 1.5, -1, 2, -1.5][i % 5]}deg"><h3>${esc(b.name)}</h3>${S.best[b.id] == null ? `<p class="none">No games yet. Your first win goes here.</p>` : `<p class="best">${fmt(b, S.best[b.id])}</p>`}<small class="muted">${esc(b.explain)}</small>${(S.newBest || []).includes(b.name) ? `<span class="minirib">${rosette("New!")}</span>` : ""}</div>`).join("")}</div>
     <p class="paper pin small" style="--tilt:1deg">Scores count for games you play alone against the computer. Pass-and-play games don't post scores.</p>
     ${platform.leaderboards ? `<button class="btn big" data-act="gc">See the Game Center leaderboards</button>`
-      : `<p class="corknote">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
+      : `<p class="paper corknote">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 // after a solo game: update the bests and post them (best = lowest for Hearts, highest elsewhere)
@@ -949,7 +971,7 @@ const SUIT_WORD = { S: "Spades", H: "Hearts", D: "Diamonds", C: "Clubs" };
 const cardList = (cs) => cs.map(cardName).join(cs.length === 2 ? " and " : ", ");
 // VoiceOver reads the live region: one sentence at a time, each left up for as long as it takes to read (about 60 ms a
 // character), so a new one waits its turn instead of replacing the last. With VoiceOver on, the bots wait for the queue (run()).
-const said = { q: [], busy: false, idle: () => new Promise((done) => { const t = () => (said.busy ? setTimeout(t, 100) : done()); t(); }) };
+const said = { q: [], log: [], busy: false, idle: () => new Promise((done) => { const t = () => (said.busy ? setTimeout(t, 100) : done()); t(); }) };
 const readMs = (t) => Math.max(1000, 60 * t.length);
 let vo = qs.has("vo"); // ?vo: tests. On the phone, the shell's ScreenReader plugin says whether VoiceOver is running
 try { const SR = window.Capacitor?.Plugins?.ScreenReader; SR?.isEnabled?.().then((r) => (vo = !!r?.value), () => {}); SR?.addListener?.("stateChange", (r) => (vo = !!r?.value)); } catch {}
@@ -959,7 +981,7 @@ function announce(text, { interrupt = false } = {}) {
   if (interrupt) said.q.length = 0; // a new hand: what's waiting from the last one goes; what's being read finishes
   said.q.push(text);
   if (!vo && said.q.length > 4) said.q.splice(0, said.q.length - 4); // ponytail: nothing waits on the queue without VoiceOver, so its backlog stays short
-  if (!said.busy) (async () => { said.busy = true; while (said.q.length) { const t = said.q.shift(); $("#announce").textContent = t; await wait(readMs(t)); } said.busy = false; })();
+  if (!said.busy) (async () => { said.busy = true; while (said.q.length) { const t = said.q.shift(); $("#announce").textContent = t; if (DEBUG) said.log.push([performance.now(), t]); await wait(readMs(t)); } said.busy = false; })();
 }
 function lastTrick() { // the Read button and the menu: the trick that was just swept away
   const t = G.st.lastTrick;
@@ -1058,7 +1080,7 @@ const ACT = {
     if (v === "leave" || v === "quit") {
       if (v === "quit" && !(await dialog(`<h2>End this game?</h2><p>Scores for this game are lost. "Save and leave" keeps your place instead.</p><div class="stack"><button class="btn" data-dlg="yes">End the game</button><button class="btn big" data-dlg="">Keep playing</button></div>`, { user: true }))) return;
       if (v === "leave" && S.opt.comfort && !(await dialog(`<h2>Leave the table?</h2><div class="stack"><button class="btn big" data-dlg="yes">Yes, leave</button><button class="btn" data-dlg="">No, keep playing</button></div>`, { user: true }))) return;
-      runId++; pending = null; handLive = false; net?.leave(); net = null;
+      runId++; pending = null; handLive = false; net?.leave(); net = null; if (trial) { trial = null; applyLook(); }
       if (v === "quit") { S.cur = null; G = null; }
       save(); go("title");
     }
@@ -1068,7 +1090,16 @@ const ACT = {
   family: () => familyTable(),
   next: () => { if (G.over !== null) { renderResults(); show("results"); } else startHand(); },
   again: () => newGame(G.game),
-  seedinfo: () => dialog(`<h2>The seed</h2><p>Each hand is shuffled from this code and nothing else. Type it into the "verify a deal" page on our website and you'll see exactly the same four hands. Nobody, including us, can steer a deal.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
+  seedinfo: () => dialog(`<h2>The seed</h2><p>Every hand comes from this seed and nothing else. Type it into our website to see the same four hands.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
+  allbacks: () => { showBacks = true; renderShop(); },
+  trytheme: (el) => { // dress the next hand in this theme; after it, the sheet asks whether to keep it
+    trial = el.dataset.v; applyLook();
+    if (S.cur && G) return run();
+    const g = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
+    newGame(g);
+  },
+  trialback: () => { trial = null; applyLook(); renderSheet(); announce("Put back. Your own table is out again."); },
+  trialkeep: async () => { const id = trial; if (!platform.native || (await platform.buy("theme_" + id))) { S.opt.theme = id; save(); } trial = null; applyLook(); renderSheet(); },
   verify: () => gate(platform.site + "/verify.html", "our verify-a-deal page"),
   link: (el) => gate(platform.site + "/" + el.dataset.url, "our website"),
   consent: (el) => { S.opt.analytics = el.dataset.v === "yes"; setTelemetry(S.opt.analytics, { first: true }); save(); $("#consentCard")?.remove(); },
@@ -1091,7 +1122,7 @@ const ACT = {
     if (!calm()) await el.animate([{ transform: "translateY(0) rotateY(0)" }, { transform: "translateY(-18px) rotateY(90deg)" }, { transform: "translateY(-12px) rotateY(0)" }], { duration: 360, easing: "ease-out" }).finished.catch(() => {});
     renderShop(); speech.say("Card back chosen.");
   },
-  usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
+  usetheme: (el) => { S.opt.theme = el.dataset.v; trial = null; save(); applyLook(); renderShop(); },
   buytheme: async (el) => {
     const id = el.dataset.v;
     if (!platform.native) return ACT.usetheme(el);
@@ -1116,6 +1147,7 @@ const ACT = {
 function setSeat(s, el) { S.last.seats[s] = el.dataset.v; save(); renderSetup(); }
 
 document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-hold]")) { if (performance.now() - pressed > 600) dialog.done?.("tap"); return; }
   const d = e.target.closest("[data-dlg]");
   if (d) return dialog.done?.(d.dataset.dlg || null);
   const p = e.target.closest("[data-pin]");
@@ -1134,16 +1166,22 @@ document.addEventListener("change", (e) => {
   if (act === "back") { S.opt.back = el.value || null; save(); applyLook(); }
   if (act === "lang") { S.opt.lang = el.value || null; save(); location.reload(); }
 });
-// press-and-hold buttons (the grown-up gate)
-document.addEventListener("pointerdown", (e) => {
-  const el = e.target.closest("[data-hold]");
-  if (!el) return;
+// press-and-hold buttons (the grown-up gate): a finger held down, or Space or Enter held down
+let pressed = -1e9; // when a real press last began or ended: a click that comes without one is Switch Control (or VoiceOver)
+function hold(el, ends) {
   const ms = +el.dataset.hold, bar = el.querySelector("i"), t0 = performance.now();
   let raf;
   const tick = (t) => { const k = (t - t0) / ms; bar.style.width = Math.min(100, k * 100) + "%"; if (k >= 1) { stop(); dialog.done?.("hold"); } else raf = requestAnimationFrame(tick); };
-  const stop = () => { cancelAnimationFrame(raf); bar.style.width = "0"; removeEventListener("pointerup", stop); removeEventListener("pointercancel", stop); };
-  addEventListener("pointerup", stop); addEventListener("pointercancel", stop);
+  const stop = () => { pressed = performance.now(); cancelAnimationFrame(raf); bar.style.width = "0"; ends.forEach((x) => removeEventListener(x, stop)); };
+  ends.forEach((x) => addEventListener(x, stop));
   raf = requestAnimationFrame(tick);
+}
+document.addEventListener("pointerdown", (e) => { const el = e.target.closest("[data-hold]"); if (el) { pressed = performance.now(); hold(el, ["pointerup", "pointercancel"]); } });
+document.addEventListener("keydown", (e) => {
+  const el = e.target.closest?.("[data-hold]");
+  if (!el || (e.key !== " " && e.key !== "Enter")) return;
+  e.preventDefault(); pressed = performance.now();
+  if (!e.repeat) hold(el, ["keyup", "blur"]);
 });
 addEventListener("resize", () => { M = null; geo = null; if (screen === "table") drawTable(); });
 addEventListener("keydown", (e) => { if (e.key === "Escape" && dialog.done) dialog.done(null); }); // a keyboard can always close a dialog
@@ -1188,6 +1226,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, readMs, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, get peekOpen() { return peekOpen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, readMs, said, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, get peekOpen() { return peekOpen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };
