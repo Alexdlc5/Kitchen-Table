@@ -502,8 +502,34 @@ function fitsBids(v, hs) {
   return true;
 }
 
+// Extreme reads the play in Hearts the way a strong player does. A player who can't follow sheds the Q♠ first, then a
+// heart, and only then anything else; and nobody keeps the Q♠ under a winning A♠ or K♠. So, while the queen is out: a
+// discard other than the queen, or another spade under the A♠/K♠, means no queen; a discard of a non-point card means
+// no hearts either. Tricks a moon runner was winning don't count (then everyone keeps their points).
+function readPlay(v) {
+  const noQ = new Set(), noH = new Set();
+  if (v.game !== "hearts") return { noQ, noH };
+  const last = v.history.length ? v.history[v.history.length - 1].n + 1 : 0;
+  const plays = [...v.history, ...v.trick.map((t) => ({ ...t, n: last }))], took = [[], [], [], []];
+  let gone = v.hand.includes("QS"), n = -1, led = null, top = null, trick = [];
+  const end = () => { if (trick.length === 4) took[top.seat].push(...trick.filter((p) => HPTS(p.card))); };
+  for (const p of plays) {
+    if (p.n !== n) { end(); n = p.n; led = p.card[1]; top = p; trick = []; }
+    else {
+      const runner = took.filter((t) => t.length).length === 1 && took[top.seat].length >= 6;
+      const off = p.card[1] !== led, under = led === "S" && (top.card === "AS" || top.card === "KS") && hearts.pow(p.card) < hearts.pow(top.card);
+      if (n > 0 && !runner && !gone && p.card !== "QS" && (off || under)) noQ.add(p.seat);
+      if (n > 0 && !runner && off && !HPTS(p.card) && !((p.card === "AS" || p.card === "KS") && !gone)) noH.add(p.seat);
+      if (p.card[1] === led && hearts.pow(p.card) > hearts.pow(top.card)) top = p;
+    }
+    trick.push(p);
+    if (p.card === "QS") gone = true;
+  }
+  return { noQ, noH };
+}
+
 function sampleWorld(v, K, rng, read = false) {
-  const sizes = v.sizes;
+  const sizes = v.sizes, R = read ? readPlay(v) : { noQ: new Set(), noH: new Set() };
   for (let attempt = 0; attempt < (read ? 80 : 40); attempt++) {
     const pool = [...K.unseen];
     const known = [[], [], [], []];
@@ -516,7 +542,7 @@ function sampleWorld(v, K, rng, read = false) {
     let ok = true;
     const seats = [1, 2, 3].map((k) => (v.seat + k) % 4).sort((a, b) => K.voids[b].size - K.voids[a].size); // from my left: any chair samples alike
     for (const c of pool) {
-      const cands = seats.filter((s) => hs[s].length < sizes[s] && (attempt > 30 || !K.voids[s].has(K.eff(c))));
+      const cands = seats.filter((s) => hs[s].length < sizes[s] && (attempt > 30 || (!K.voids[s].has(K.eff(c)) && !(c === "QS" && R.noQ.has(s)) && !(c[1] === "H" && R.noH.has(s)))));
       if (!cands.length) { ok = false; break; }
       hs[pick(rng, cands)].push(c);
     }
