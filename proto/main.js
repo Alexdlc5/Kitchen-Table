@@ -270,7 +270,7 @@ async function startHand() {
   announce(`Hand ${G.handNo + 1}. New cards are dealt.${G.game === "euchre" ? ` ${G.seats[G.st.dealer].name} deals; the upcard is the ${cardName(G.st.up)}.` : ""} ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}${faceDown(G.viewer) ? " Your team is behind, so your cards are dealt face down: you may bid blind nil before you look." : ""}`, { interrupt: true });
   run();
 }
-// F1: the cut. The fingerprint (the seed's SHA-256, cut short) is shown first, so the shuffle is fixed before the player cuts;
+// F1: the cut. The fingerprint (the seed's SHA-256, cut short) is shown first, so the seed is fixed before the player cuts;
 // the deal is the shuffle rotated by the cut. Only offered for a game whose newHand(…, handNo, cut) really deals by the cut, so
 // the score sheet never prints a cut the website can't reproduce.
 const cutWorks = {};
@@ -278,13 +278,13 @@ function cutsDeal(game) {
   if (!(game in cutWorks)) { const m = MOD[game], s = newSeed(), deal = (c) => JSON.stringify(m.newHand(G.rules, s, 0, undefined, 0, c).hands); cutWorks[game] = deal(0) !== deal(17); }
   return cutWorks[game];
 }
-// P1-5 (passover 2): the dealer cuts at random unless you've asked to cut yourself (Options; the caregiver's switch in Comfort).
+// P1-5 (passover 2): the app cuts at random unless you've asked to cut yourself (Options; the caregiver's switch in Comfort).
 // Either way the cut and the fingerprint go on the score sheet, so every hand can be checked.
 const dealerCut = (n) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % (n - 1));
 async function cutDeck(seed, n) { // on the table itself, before the cards come out
   const fp = fingerprint(seed);
   show("table"); $("#table").classList.add("predeal");
-  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed before you cut: its fingerprint is <b class="seed fp">${fpHTML(fp)}</b>, printed on the score sheet. Tap the deck where you'd like to cut it.</p>
+  const v = await dialog(`<h2>Cut the deck</h2><p>The seed is fixed before you cut: its fingerprint is <b class="seed fp">${fpHTML(fp)}</b>, printed on the score sheet. Your cut is mixed into the shuffle. Tap the deck where you'd like to cut it.</p>
     <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
     <div class="stack"><button class="btn" data-dlg="dealer">Let the app cut</button></div>`);
   $("#table").classList.remove("predeal");
@@ -787,7 +787,7 @@ function renderOptions() {
     <div class="paper"><h2>Table</h2>
       ${segRow("Speed", "speed", o.speed, [["relaxed", "Relaxed"], ["normal", "Normal"], ["fast", "Fast"]])}
       ${toggle("opt:cut", o.cut, "Cut the deck myself before each deal", c ? { disabled: true, note: "(in Comfort, the caregiver decides)" } : {})}
-      <p class="muted">Off, the dealer cuts at random. Either way the score sheet prints the cut and the deck's fingerprint, so any hand can be checked on our website.</p>
+      <p class="muted">Off, the app cuts at random. Either way the score sheet prints the cut and the seed's fingerprint, so any hand can be checked on our website.</p>
       <div class="row"><label for="optBack">Card back</label><select id="optBack" data-act="back"><option value="">Matches the table</option>${owned.map((id) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${esc(THEMES[id].name)}</option>`).join("")}</select></div>
       <div class="row"><span>Table theme</span><button class="btn" data-act="go" data-to="shop">${esc(THEMES[ownsTheme(o.theme) ? o.theme : "walnut"].name)} ›</button></div></div>
     <div class="paper">${toggle("opt:sound", o.sound, "Sound")}${toggle("opt:loud", o.loud, "Play sound when the phone is on silent")}
