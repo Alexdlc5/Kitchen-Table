@@ -47,11 +47,10 @@ export function face(c, { four = false } = {}) {
 
 // the title's still life around the four aces: a teacup on its saucer, cookies on a plate, a score pad and pencil.
 // Painted like everything else (tinted shadow side, warm light from the top left, a soft contact shadow under each prop).
-export function titleProps() {
-  const shade = (x, y, rx, ry) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#1a0c04" opacity=".32" filter="url(#tpBlur)"/>`;
-  const china = "#f7f1e6", rim = "#c9a45c";
-  // teacup and saucer (left)
-  const cup = shade(70, 178, 58, 12) +
+const shade = (x, y, rx, ry) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#1a0c04" opacity=".32" filter="url(#tpBlur)"/>`;
+const china = "#f7f1e6", rim = "#c9a45c";
+// a teacup on its saucer, centred on (70, 140); needs the #tpBlur filter in its svg
+const teacup = () => shade(70, 178, 58, 12) +
     shape(curve(ring(70, 168, 56, 14, 18, 0.02, 4)), china, mix(china, "#5a3a20", 0.35)) +
     `<ellipse cx="70" cy="166" rx="44" ry="9" fill="none" stroke="${rim}" stroke-width="1.6" opacity=".9"/>` +
     shape(curve([[34, 118], [106, 118], [100, 150], [86, 164], [54, 164], [40, 150]]), china, mix(china, "#5a3a20", 0.35)) +
@@ -60,6 +59,12 @@ export function titleProps() {
     `<ellipse cx="70" cy="118" rx="36" ry="8" fill="#6b3f22"/><ellipse cx="66" cy="117" rx="20" ry="3" fill="#8a5a34" opacity=".7"/>` +
     `<path d="M36 118 L104 118" stroke="${rim}" stroke-width="2"/><path d="M42 140 C60 146 82 146 98 140" stroke="${rim}" stroke-width="1.4" fill="none" opacity=".8"/>` +
     `<g class="steam">` + stroke(60, 104, -1.75, 26, 2.2, "#fff", 0.35, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 22, 1.8, "#fff", 0.28, -0.4) + `</g>`;
+const blur = `<defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>`;
+// the one prop on the table (TABLE.md rule 4): a cup of tea at the edge, out of the way of every card and plate
+export const tableProp = () => `<svg viewBox="0 90 140 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur.replace("tpBlur", "tpBlur2")}${teacup().replaceAll("url(#tpBlur)", "url(#tpBlur2)")}</svg>`;
+
+export function titleProps() {
+  const cup = teacup();
   // cookies on a plate (right)
   const r = rng(5);
   let cookies = "";
@@ -76,5 +81,5 @@ export function titleProps() {
     `<text x="152" y="212" font-family="Alegreya, Georgia, serif" font-style="italic" font-size="9" fill="#5a4a3a" transform="rotate(-1.5 152 212)">Us 320 · Them 285</text>` +
     shape(curve([[168, 236], [292, 214], [296, 220], [172, 242]]), "#e2b24a", "#8a6420") + `<path d="M292 214 L306 214 L296 220Z" fill="#e8c9a0"/><path d="M302 214 L306 214 L303 216Z" fill="#3a3a3a"/>` +
     `<path d="M168 236 L160 238 L164 244 L172 242Z" fill="#d98a9a"/>`;
-  return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>${cup}${plate}${pad}</svg>`;
+  return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur}${cup}${plate}${pad}</svg>`;
 }

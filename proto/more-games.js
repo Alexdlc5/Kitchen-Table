@@ -8,9 +8,18 @@ export const NAMES = { ohhell: "Oh Hell", whist: "Whist" };
 // the closed boxes on the "Coming to the table" shelf: [name on the box, what VoiceOver says]
 export const ROADMAP = { cribbage: ["Cribbage", "Cribbage"], ginrummy: ["Gin Rummy", "Gin Rummy"], pinochle: ["Pinochle", "Pinochle"], canasta: ["Canasta", "Canasta and Hand and Foot"] };
 
+// How to play: five short steps each
 export const HOWTO = {
-  ohhell: "Everyone plays for themselves. The number of cards changes every hand: down to one each and back up again. After the deal the next card is turned face up, and its suit is trump. Look at your cards and bid exactly how many tricks you'll take; zero is a fine bid. The dealer bids last, and with the hook can't make the bids add up to the tricks, so somebody has to miss. Follow suit if you can; otherwise play anything, and trump beats every other suit. Take exactly your bid to score. With all 52 cards dealt there's nothing left to turn, so that hand has no trump.",
-  whist: "Partners sit across. All 52 cards are dealt, and the dealer's last card is turned face up: its suit is trump, and the dealer keeps it to play later. There's no bidding. The player left of the dealer leads. Follow suit if you can, otherwise trump or throw away. Your side's first six tricks are the book; every trick after that is a point. The old manners still win: second hand low, third hand high, cover an honour with an honour, and lead back your partner's suit.",
+  ohhell: ["Everyone plays for themselves. The number of cards changes every hand: down to one each and back up again.",
+    "After the deal the next card is turned face up, and its suit is trump. With all 52 cards dealt there's nothing left to turn, so that hand has no trump.",
+    "Look at your cards and bid exactly how many tricks you'll take; zero is a fine bid. The dealer bids last, and with the hook can't make the bids add up to the tricks, so somebody has to miss.",
+    "Follow suit if you can; otherwise play anything. Trump beats every other suit.",
+    "Take exactly your bid for the bonus. Your score after the last hand decides the game."],
+  whist: ["Partners sit across. All 52 cards are dealt, and the dealer's last card is turned face up: its suit is trump, and the dealer keeps it to play later.",
+    "There's no bidding. The player left of the dealer leads.",
+    "Follow suit if you can; otherwise trump, or throw away.",
+    "Your side's first six tricks are the book; every trick after that is a point.",
+    "The old manners still win: second hand low, third hand high, cover an honour with an honour, and lead back your partner's suit."],
 };
 export const SERVES = { ohhell: "about 30 minutes a game", whist: "about 20 minutes a game" };
 
@@ -42,9 +51,9 @@ export function trumpTile(st, svgFor, names) {
   return `<div class="tt" role="img" aria-label="Trump is ${suitWord(st.trump)}. The ${cardName(st.trumpCard)} was turned${held}."><span class="ttc">${svgFor(st.trumpCard)}</span><b>Trump</b></div>`;
 }
 
-export function plateStatus(game, st, s) {
-  if (game === "ohhell") return st.bids[s] === null ? "" : `<span>Bid ${st.bids[s]}</span><span>took ${st.tricks[s]}</span>`;
-  if (game === "whist") return `<span>took ${st.tricks[s]}</span>`;
+export function plateStatus(game, st, s) { // the words on a seat plate (one line each in Comfort)
+  if (game === "ohhell") return st.bids[s] === null ? [] : [`Bid ${st.bids[s]}`, `took ${st.tricks[s]}`];
+  if (game === "whist") return [`took ${st.tricks[s]}`];
 }
 
 export function bidPrompt(game, st) {
@@ -55,16 +64,16 @@ export function bidPrompt(game, st) {
 export const bidsDone = (game, st) => (game === "ohhell" && st.phase === "play" ? ` The bids add up to ${st.bids.reduce((a, b) => a + b, 0)} for ${plural(st.size, "trick")}.` : "");
 
 // Oh Hell's bid: one stepper whatever the hand size; the hooked number is stepped over, never offered
-export function bidPanel(mine, st) {
+export function bidPanel(mine, st, extra = "") { // extra: one more button at the end of the row (the Comfort "?")
   const ok = mine.legal.map((a) => a.bid), hook = hookBid(st), dir = mine.dir || 1;
   let v = Math.min(st.size, Math.max(0, mine.step ?? Math.round(st.size / 4)));
   if (!ok.includes(v)) v = ok.includes(v + dir) ? v + dir : v - dir;
   mine.step = v;
   const sum = st.bids.reduce((a, b) => a + (b ?? 0), 0);
   const note = `Bids so far: ${sum} for ${plural(st.size, "trick")}${hook !== null ? `. The hook: you can't bid ${hook}` : ""}.`;
-  return `<div class="say">${note}</div><div class="row" style="gap:8px;justify-content:center;flex-wrap:nowrap">
-    <button class="btn" data-act="step" data-v="-1" aria-label="One less" ${ok.some((b) => b < v) ? "" : "disabled"}>−</button><b style="font-size:var(--fs-l);min-width:2ch;text-align:center" aria-hidden="true">${v}</b>
-    <button class="btn" data-act="step" data-v="1" aria-label="One more" ${ok.some((b) => b > v) ? "" : "disabled"}>+</button><button class="btn big" data-act="bid" data-v="${v}">Bid ${v}</button></div>`;
+  return `<div class="say">${note}</div><div class="row stepper">
+    <button class="btn" data-act="step" data-v="-1" aria-label="One less" ${ok.some((b) => b < v) ? "" : "disabled"}>−</button><b class="chip" aria-hidden="true">${v}</b>
+    <button class="btn" data-act="step" data-v="1" aria-label="One more" ${ok.some((b) => b > v) ? "" : "disabled"}>+</button><button class="btn big" data-act="bid" data-v="${v}">Bid ${v}</button>${extra}</div>`;
 }
 
 export function sheetLabel(l, who) {
