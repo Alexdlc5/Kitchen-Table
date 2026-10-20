@@ -100,7 +100,8 @@ scenarios in `sim/test_ai_euchre.mjs`, every level (Easy 12 times).
 | E04 | **Calls trump on nothing.** "My 'partner' calls trump on less than nothing and we often get euchred." "Terrible calls." | Never order up / call with ≤ 1 trump and no bower (the dealer counts the upcard; stick-the-dealer forced call excepted). Sim: maker euchre rate ≤ 20% (Standard). |
 | E05 | **Bleeds trump regardless.** "Your AI partner's sole objective is to bleed trump, whether it makes sense or not." | Don't lead trump when defending (E01), or, on the making side, when partner is out of trump (or sitting out) and the opponents have none left, while a losing side card could be led instead. |
 | E06 | **Over-trumped by partner.** "Over trumped by the partner multiple times a game." | Same as S04 for Euchre: partner's trump is winning and every opponent still to play is known out of trump → never play a higher trump. |
-| E07 | **Goes alone recklessly / never alone.** | Alone only with ≥ 4 sure tricks (the unbroken run of top trump, every trump if that run outlasts the trump still out, plus off aces; the dealer counts the hand after picking up); a hand with both bowers, A K of trump and an off ace goes alone at every level; under Canadian loner an assist-only hand passes. Sim: loner success (all five tricks) ≥ 60%. |
+| E07 | **Goes alone recklessly / never alone.** "My partner never goes alone." | Sin (reckless): alone without the right bower, or with fewer than 3 top tricks (both bowers, the A K Q of trump, off aces; the dealer counts the hand after picking up). Standard goes alone with the right, two of the left / A / K of trump and an off ace, or with five trumps; Extreme may choose any loner that isn't reckless by look-ahead. J♠ A♠ K♠ Q♠ A♥ and both bowers + A K + an off ace go alone at every level; under Canadian loner an assist-only hand passes. Sim: loner success (all five tricks) 55-75% and ≥ 4 loners per 100 hands (review 2, AI-E2: a loner pays from about one march in two). |
+| E10 | **Wastes the right bower trumping in.** (review 2, AI-E1) | Void in the suit led and an opponent winning: trump in with the lowest trump that wins, keeping a bower for a sure trick later, unless an opponent still to play is known out of the suit led too. |
 | E08 | **Signals with hidden information.** "Seem to know exactly when to throw off because their partner has the winning card." | §1.1 view test. |
 | E09 | **Farmer's hand / stick the dealer applied wrongly.** | Engine tests per preset (`sim/test_euchre.mjs`: stick the dealer, Canadian loner, farmer's hand, defend alone, loner's left leads, 5,000 random hands per preset); a bot with a farmer's hand swaps three and keeps the upcard's suit. |
 
@@ -140,8 +141,9 @@ and Expert's sampled worlds put it there.
 | W05 | **Trumps partner's sure trick.** Partner's card is the best left in the suit and the last opponent hasn't shown out, and the bot trumps it anyway. | Not last, partner winning with the boss card, last opponent not known void in the suit led, a non-trump discard available → no trump. |
 | W06 | **Book, honours or game end scored wrongly.** | `sim/test_family.mjs`: tricks over six score 1 each; honours 4 for all four, 2 for three, off in Standard; tricks score before honours; a side one point from game can't count honours; honours can reach game but not pass it; first side to 5 or 7 wins. |
 
-Sim (`node sim/sim.mjs --game whist --check`, Standard, 20K hands): tricks per team within 0.15 a hand with equal bots
-(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%; 577-651 games each, 2026-10-19): Standard vs Easy
+Sim (`node sim/sim.mjs --game whist --check`, Standard and Kitchen, 20K hands): with equal bots each team takes the same
+tricks when it deals, within 0.15 (6.85 / 6.83; the dealing side takes 6.84 to the other side's 6.16, so raw team totals
+differ by 0.20 in short Kitchen games where one team deals more often), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%; 577-651 games each, 2026-10-19): Standard vs Easy
 69.3%, Expert vs Standard 71.9%, Extreme vs Expert 49.3% (measured with an earlier lead-reading Extreme, since removed;
 Extreme is not yet measurably stronger than Expert: open item).
 Extreme is Expert with 60 samples instead of 24 (a bid-reading filter has nothing to read in Whist: there is no bidding).
@@ -174,7 +176,8 @@ Expert opponents":
 | Moon rate (Hearts) | hands where someone shot the moon | 1-4% |
 | Moon stops | runs where one seat holds every point taken so far, at least 10, after trick 6, that end without a moon | ≥ 60% |
 | Maker euchre rate (Euchre) | calls where the makers took 2 tricks or fewer | ≤ 20% |
-| Loner success (Euchre) | loners that took all five tricks | ≥ 60% |
+| Loner success (Euchre) | loners that took all five tricks; loners per 100 hands | 55-75%; ≥ 4 |
+| Whist balance | tricks the dealing side takes, team 0 dealing vs team 1 dealing (the dealer's side is ahead by the turned trump: 6.84 / 6.16; checked on Standard and Kitchen) | within 0.15 |
 | Also reported (Euchre) | hands with a maker, thrown in, round-two calls, dealer stuck, marches, points per call, loners per 100 hands | — |
 | Blind nil made (Spades, Kitchen) | blind nil bids that took no trick, with the 2-card exchange | ≥ 45% |
 | Nil-able hands, plain rule | reported next to the bots' own nil test: ≤ 2 spades, none above the 9, no side ace (DESIGN §7) | — |
@@ -186,3 +189,14 @@ Expert opponents":
 
 Every run is cut into chunks (500 hands, or 10 whole games for the ladder), each with a seed of its own, so CI and a
 laptop play exactly the same hands whatever `--workers` is (review T2).
+
+**Measured (2026-10-20, overhaul W1, `--ladder --games 2000`):**
+
+| Game | Extreme vs Expert | Expert vs Standard | Standard vs Easy |
+|---|---|---|---|
+| Spades | 66.2% | 84.9% | 73.4% |
+| Euchre | 63.8% | 58.6% | 58.5% |
+| Hearts | HEARTS_X | 50.9% | 50.8% |
+
+At Standard over 100K hands per game and preset: 0 sins shipped, 0 caught by the guard. Blind nil (Kitchen, exchange 2)
+69.4% made; with the exchange off, 26.8%.

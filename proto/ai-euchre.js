@@ -5,7 +5,7 @@ import * as E from "./euchre.js";
 import { SUITS, partner, team, next } from "./cards.js";
 
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
-const DEFAULT = { easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, euchreOrder: 2.5, euchreAlone: 3.7 };
+const DEFAULT = { easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, euchreOrder: 2.5 };
 
 export function legalFor(v) {
   const st = { ...v, turn: v.seat, hands: [] };
@@ -87,6 +87,21 @@ export function sureTricks(hand, t) {
   return (run >= 7 - mine ? mine : run) + aces;
 }
 
+// top cards for a loner: both bowers and the ace, king and queen of trump, plus the off-suit aces (AI-E2: a classic loner
+// like J♠ A♠ K♠ Q♠ A♥ is missing the left bower, so an unbroken-run count calls it two sure tricks)
+export function topTricks(hand, t) {
+  const top = ["J" + t, "J" + E.MATE[t], "A" + t, "K" + t, "Q" + t];
+  return hand.filter((c) => top.includes(c)).length + hand.filter((c) => c[0] === "A" && !isTrump(c, t)).length;
+}
+// Standard goes alone with the right bower, two of the left, ace and king of trump, and an off ace (J♠ A♠ K♠ Q♠ A♥),
+// or with five trumps (review 2, AI-E2). A hand with a loser and no off ace marches 18-27% of the time and stays with
+// partner; these march 59% in Standard self-play, 4.7 loners per 100 hands, and a loner pays from about one march in two
+function lonerHand(hand, t) {
+  if (!hand.includes("J" + t)) return false;
+  const more = ["J" + E.MATE[t], "A" + t, "K" + t].filter((c) => hand.includes(c)).length;
+  return (more >= 2 && hand.some((c) => c[0] === "A" && !isTrump(c, t))) || countTrump(hand, t) === 5;
+}
+
 // the dealer's hand after picking up the upcard and throwing the worst card
 function afterPickup(hand, up) {
   const h = [...hand, up], d = discardChoice(h, up[1]);
@@ -114,9 +129,9 @@ function bid(v, level, rng, tune) {
   const opts = round === 1 ? [v.up[1]] : SUITS.split("").filter((t) => t !== v.up[1]);
   let best = null;
   for (const t of opts) { const c = callValue(v, t, round); if (!best || c.x > best.x) best = { t, ...c }; }
-  const call = round === 1 ? "order" : best.t, sure = sureTricks(best.hand, best.t);
+  const call = round === 1 ? "order" : best.t;
   const onlyAlone = !legal.some((a) => a.call === call && !a.alone);
-  if (sure >= 4 && best.x >= tune.euchreAlone && legal.some((a) => a.call === call && a.alone)) return { action: { call, alone: true }, reason: "alone_sure_tricks" };
+  if (lonerHand(best.hand, best.t) && legal.some((a) => a.call === call && a.alone)) return { action: { call, alone: true }, reason: "alone_top_trumps" };
   if (onlyAlone) return { action: { call: "pass" }, reason: "pass_canadian" }; // Canadian loner: only call with a loner hand
   if (!canPass || (best.x + noise >= tune.euchreOrder && !sins(v, { call }).length)) return { action: { call }, reason: canPass ? (round === 1 ? "order_strength" : "call_strength") : "stuck_dealer" };
   return { action: { call: "pass" }, reason: "pass_weak" };
@@ -171,6 +186,10 @@ function play(v, K) {
   }
   if (winners.length) {
     if (T.last) return R(lowest(winners, K), "win_last_lowest");
+    // trumping in (AI-E1): the lowest trump that wins, keeping a bower as a sure trick for later, unless an opponent still
+    // to play is known out of the suit led as well and may overtrump
+    const over = T.seatsAfter.some((x) => team(x) !== team(s) && K.voids[x].has(T.led) && !K.voids[x].has(t));
+    if (!follow.length && !over) return R(lowest(winners, K), "trump_in_low");
     const sure = winners.filter(K.boss);
     if (sure.length) return R(lowest(sure, K), "win_with_boss");
     const fw = winners.filter((c) => K.eff(c) === T.led);
@@ -203,7 +222,7 @@ export function sins(v, a) {
     const forced = !legalFor(v).some((x) => x.call === "pass");
     if (!forced && countTrump(hand, tt) <= 1 && !hasBower(hand, tt)) out.push("E04");
     const loner = v.phase === "bid1" && s === v.dealer ? afterPickup(v.hand, v.up) : v.hand;
-    if (a.alone && sureTricks(loner, tt) < 4) out.push("E07");
+    if (a.alone && (!loner.includes("J" + tt) || topTricks(loner, tt) < 3)) out.push("E07"); // reckless: no right bower, or under 3 top tricks
     return out;
   }
   if (v.phase !== "play") return out;

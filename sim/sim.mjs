@@ -35,7 +35,7 @@ function run({ game, levels, preset, custom = {}, hands, games, seed }) {
     contracts: 0, made: 0, exact: 0, set: 0, bags: 0, nilBids: 0, nilMade: 0, blindBids: 0, blindMade: 0, nilChances: 0, nilPlain: 0, unfinished: 0,
     besideNil: 0, besideNilSet: 0, moons: 0, moonAttempts: 0, moonStops: 0, moonPlain: 0, moonPlainStops: 0, points: [0, 0, 0, 0], qsSeat0: 0, bidSum: 0, bidErr: 0,
     calls: 0, euchred: 0, marches: 0, loners: 0, lonerMarch: 0, lonerEuchred: 0, thrown: 0, stuck: 0, round2: 0, makerPts: 0,
-    bids: 0, exactBids: 0, overBids: 0, hooked: 0, overTables: 0, underTables: 0, teamTricks: [0, 0], honours: 0, trickPts: 0 };
+    bids: 0, exactBids: 0, overBids: 0, hooked: 0, overTables: 0, underTables: 0, teamTricks: [0, 0], honours: 0, trickPts: 0, dealTricks: [0, 0], deals: [0, 0] };
   const S = (c) => spades.eff(c, rules.jokers) === "S", PTS = (c) => c[1] === "H" || c === "QS";
   // the plain rule players use (T3), next to the bots' own: at most 2 spades, none above the 9, no side ace
   const plainNil = (h) => h.filter(S).length <= 2 && h.filter(S).every((c) => spades.pow(c, rules.jokers) <= 9) && !h.some((c) => c[0] === "A" && !S(c));
@@ -87,6 +87,7 @@ function run({ game, levels, preset, custom = {}, hands, games, seed }) {
         if (st.rules.hook && st.bids.reduce((a, b) => a + b, 0) - st.bids[st.dealer] <= st.size) m.hooked++;
       } else if (game === "whist") {
         for (const t of [0, 1]) { const k = st.tricks[t] + st.tricks[t + 2]; m.teamTricks[t] += k; m.trickPts += Math.max(0, k - 6); }
+        const dt = team(st.dealer); m.deals[dt]++; m.dealTricks[dt] += st.tricks[dt] + st.tricks[dt + 2]; // the dealing side holds the turned trump
         if (st.rules.honours && [0, 1].some((t) => whist.honoursHeld(st, t) >= 3)) m.honours++;
       } else if (st.moon !== null) m.moons++;
       if (st.phase === "moon") g.apply(st, decide(g.view(st, st.turn), levels[st.turn], rng).action);
@@ -162,7 +163,10 @@ function report(game, level, m) {
       ["Hands where the hook barred a bid", pct(m.hooked, m.hands)], ["Average points per hand, seats 0-3", m.points.map((p) => (p / m.hands).toFixed(2)).join(" / ")],
       ["Wins, seats 0-3", m.wins.map((w) => pct(w, m.games)).join(" / ")]);
   } else if (game === "whist") {
-    rows.push(["Tricks per hand, team 0 / team 1", m.teamTricks.map((t) => (t / m.hands).toFixed(2)).join(" / ")], ["Points from tricks per hand", (m.trickPts / m.hands).toFixed(2)],
+    const dealing = (m.dealTricks[0] + m.dealTricks[1]) / m.hands;
+    rows.push(["Tricks per hand, team 0 / team 1", m.teamTricks.map((t) => (t / m.hands).toFixed(2)).join(" / ")],
+      ["Tricks per hand, dealing side / the other side", `${dealing.toFixed(2)} / ${(13 - dealing).toFixed(2)}`],
+      ["Dealing side's tricks, team 0 dealing / team 1 dealing", m.dealTricks.map((t, i) => (t / Math.max(1, m.deals[i])).toFixed(2)).join(" / ")], ["Points from tricks per hand", (m.trickPts / m.hands).toFixed(2)],
       ["Hands with honours (3+ to one side)", pct(m.honours, m.hands)], ["Team 0 / team 1 wins", `${pct(m.wins[0], m.games)} / ${pct(m.wins[1], m.games)}`]);
   } else {
     rows.push(["Moon rate", pct(m.moons, m.hands)], ["Moon runs stopped (one seat had every point, 10+, after trick 6)", pct(m.moonStops, m.moonAttempts), `${pct(m.moonPlainStops, m.moonPlain)} of ${m.moonPlain} (every point card taken, 5+, after trick 6)`],
@@ -187,13 +191,18 @@ function check(game, m, rules) {
     need(!m.blindBids || !rules.blindSwap || m.blindMade / m.blindBids >= 0.45, `blind nil made ${pct(m.blindMade, m.blindBids)} < 45%`); // R3: with the exchange
   } else if (game === "euchre") {
     need(m.euchred / m.calls <= 0.2, `maker euchre rate ${pct(m.euchred, m.calls)} > 20%`);
-    need(m.lonerMarch / Math.max(1, m.loners) >= 0.6, `loner success ${pct(m.lonerMarch, m.loners)} < 60%`);
-    need(m.loners > 0, "nobody ever went alone");
+    // review 2, AI-E2: a loner pays when it marches about half the time, so neither timid nor reckless
+    const lone = m.lonerMarch / Math.max(1, m.loners);
+    need(lone >= 0.55 && lone <= 0.75, `loner success ${pct(m.lonerMarch, m.loners)} outside 55-75%`);
+    need((100 * m.loners) / m.hands >= 4, `${((100 * m.loners) / m.hands).toFixed(1)} loners per 100 hands < 4`);
   } else if (game === "ohhell") {
     need(m.exactBids / m.bids >= 0.5, `exact bids ${pct(m.exactBids, m.bids)} < 50%`);
     need(m.bidErr / m.bids <= 0.6, "average miss > 0.6 tricks");
   } else if (game === "whist") {
-    need(Math.abs(m.teamTricks[0] - m.teamTricks[1]) / m.hands <= 0.15, "one team takes 0.15+ more tricks a hand with equal bots");
+    // equal bots: each team takes the same tricks when it deals (the dealer's side is ahead by the turned trump, and short
+    // Kitchen games let one team deal more often, so raw team totals differ by 0.2 there: review 2, F2-5)
+    const per = m.dealTricks.map((t, i) => t / Math.max(1, m.deals[i]));
+    need(Math.abs(per[0] - per[1]) <= 0.15, `the dealing side takes ${per.map((x) => x.toFixed(2)).join(" vs ")} tricks by team with equal bots`);
   } else {
     need(m.moons / m.hands >= 0.01 && m.moons / m.hands <= 0.04, `moon rate ${pct(m.moons, m.hands)} outside 1-4%`);
     need(m.moonStops / Math.max(1, m.moonAttempts) >= 0.6, "moon stops < 60%");

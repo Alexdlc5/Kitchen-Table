@@ -37,3 +37,4 @@ jobs:
           node sim/sim.mjs --check --game ohhell --hands 20000
           node sim/sim.mjs --check --game ohhell --preset tournament --hands 20000
           node sim/sim.mjs --check --game whist --hands 20000
+          node sim/sim.mjs --check --game whist --preset kitchen --hands 20000
