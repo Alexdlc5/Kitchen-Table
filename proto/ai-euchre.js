@@ -95,7 +95,8 @@ export function topTricks(hand, t) {
 }
 // Standard goes alone with the right bower, two of the left, ace and king of trump, and an off ace (J♠ A♠ K♠ Q♠ A♥),
 // or with five trumps (review 2, AI-E2). A hand with a loser and no off ace marches 18-27% of the time and stays with
-// partner; these march 59% in Standard self-play, 4.7 loners per 100 hands, and a loner pays from about one march in two
+/// partner; these march 61% in Standard self-play (100K hands), 4.6 loners per 100 hands, and a loner pays from about one
+// march in two
 function lonerHand(hand, t) {
   if (!hand.includes("J" + t)) return false;
   const more = ["J" + E.MATE[t], "A" + t, "K" + t].filter((c) => hand.includes(c)).length;
