@@ -52,6 +52,17 @@ test("every card is equally likely in every seat (40,000 deals, within 1%)", () 
   for (const c of newDeck()) assert.ok(Math.abs(hits.get(c) / N - 0.25) < 0.01, `${c} in seat 0: ${hits.get(c) / N}`);
 });
 
+test("newHand passes the cut through; cut 0 is the deal it always was", () => {
+  for (let i = 0; i < 200; i++) {
+    const seed = newSeed(), d = i % 4, k = i % 52;
+    for (const [g, deck] of [[spades, newDeck()], [hearts, newDeck()], [spades, newDeck(true)]]) {
+      const rules = rulesFor(cfg, g === spades ? "spades" : "hearts", deck.includes("BJ") ? "kitchen" : "standard");
+      assert.deepEqual(g.newHand(rules, seed, d, undefined, 3).hands, dealHands(seed, d, deck), "cut 0 (and handNo 3) leaves the deal alone");
+      assert.deepEqual(g.newHand(rules, seed, d, undefined, 3, k).hands, dealHands(seed, d, deck, k));
+    }
+  }
+});
+
 test("decks: 52 cards, Jokers deck swaps 2C 2H for the jokers", () => {
   assert.equal(new Set(newDeck()).size, 52);
   const j = newDeck(true);

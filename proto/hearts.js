@@ -13,8 +13,8 @@ export function passDir(rules, handNo) {
   return DIR[cycle[handNo % cycle.length]];
 }
 
-export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0] }, handNo = 0) {
-  const dir = passDir(rules, handNo), hands = dealHands(seed, dealer, newDeck());
+export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0] }, handNo = 0, cut = 0) {
+  const dir = passDir(rules, handNo), hands = dealHands(seed, dealer, newDeck(), cut);
   const st = {
     game: "hearts", rules, seed, dealer, handNo, totals: structuredClone(totals), dir,
     phase: dir ? "pass" : "play", turn: next(dealer), hands, passes: [null, null, null, null], received: [null, null, null, null],

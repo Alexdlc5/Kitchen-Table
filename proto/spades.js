@@ -8,10 +8,11 @@ export const eff = (c, j) => (j && (c === "BJ" || c === "LJ" || c === "2D") ? "S
 export const pow = (c, j) => (j && JOKER_POW[c]) || "23456789TJQKA".indexOf(c[0]) + 2;
 export const isTrump = (c, j) => eff(c, j) === "S";
 
-export function newHand(rules, seed, dealer, totals = { score: [0, 0], bags: [0, 0] }) {
+// handNo is unused here; it keeps cut (the player's cut of the deck, W2) in the same place as every other game
+export function newHand(rules, seed, dealer, totals = { score: [0, 0], bags: [0, 0] }, handNo = 0, cut = 0) {
   return {
     game: "spades", rules, seed, dealer, totals: structuredClone(totals),
-    phase: "bid", turn: next(dealer), hands: dealHands(seed, dealer, newDeck(rules.jokers)),
+    phase: "bid", turn: next(dealer), hands: dealHands(seed, dealer, newDeck(rules.jokers), cut),
     bids: [null, null, null, null], blind: [false, false, false, false], passes: [null, null, null, null], received: [null, null, null, null],
     trick: [], lastTrick: null, tricks: [0, 0, 0, 0], history: [], broken: false,
   };
