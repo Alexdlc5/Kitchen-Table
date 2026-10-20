@@ -445,3 +445,7 @@ html.comfort .recipe .from { color: var(--muted); }
 .backpick:focus-visible svg { outline: 3px solid var(--brass-d); outline-offset: 3px; }
 html.comfort .backpick, html.comfort .backpick svg { width: 100px; }
 @media (prefers-reduced-motion: reduce) { .backpick { transition: none; } }
+/* Acknowledgements: licence texts keep their line breaks but wrap to the paper */
+.licence { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 var(--fs-s)/1.45 var(--sans); }
+#ack h1 { font-size: min(calc(var(--fs-l) * 1.6), 10vw); }
+#ack h2 { font-size: var(--fs); overflow-wrap: anywhere; }

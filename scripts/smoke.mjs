@@ -30,7 +30,7 @@ const fonts = (page) => page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => (N
   body: FACES.map(([f, fam, w, s]) => `@font-face { font-family: "${fam}"; font-weight: ${w}; font-style: ${s}; font-display: block; src: url(http://localhost:${server.address().port}/node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2) format("woff2"); }`).join("\n") })));
 if (shots) mkdirSync(shots, { recursive: true });
 const VW = IPAD ? 820 : SE ? 375 : 402, VH = IPAD ? 1180 : SE ? 667 : 874, DPR = SE || IPAD ? 2 : 3;
-const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards"];
+const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards", "ack"];
 
 // in the page: buttons on the current screen that are off screen or too small to tap
 const AUDIT = (id) => {
@@ -144,7 +144,8 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     await page.evaluate(async (id) => { await kt.go(id); }, id);
     await page.waitForTimeout(300);
     const shown = await page.evaluate((id) => document.getElementById(id).classList.contains("on") && document.getElementById(id).innerHTML.length > 50, id);
-    await report(id, [!shown && "not shown", ...(await page.evaluate(AUDIT, id)), ...(await page.evaluate(A11Y, id))]);
+    const licences = id === "ack" && (await page.evaluate(() => document.querySelectorAll("#ack .licence").length < 3 && "licence texts missing (run scripts/build-web.mjs first)"));
+    await report(id, [!shown && "not shown", licences, ...(await page.evaluate(AUDIT, id)), ...(await page.evaluate(A11Y, id))]);
   }
   // a dialog takes the focus, is named by its heading, closes with Escape and gives the focus back
   await page.evaluate(() => kt.go("title")); await page.waitForTimeout(300);

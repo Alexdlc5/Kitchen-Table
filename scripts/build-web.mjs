@@ -13,6 +13,25 @@ const FONTS = [["alegreya", "Alegreya", 500, "normal"], ["alegreya", "Alegreya",
 for (const [f, , w, s] of FONTS) copyFileSync(`node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2`, `${out}/fonts/${f}-${w}-${s}.woff2`);
 // the SIL Open Font License asks that the licence travel with the fonts
 for (const f of new Set(FONTS.map(([f]) => f))) copyFileSync(`node_modules/@fontsource/${f}/LICENSE`, `${out}/fonts/OFL-${f}.txt`);
+// Acknowledgements (Options › About): what the iOS app ships and each licence's full text (plus any NOTICE), read from node_modules
+const fileIn = (dir, re) => { const f = readdirSync(dir).find((f) => re.test(f)); return f && readFileSync(`${dir}/${f}`, "utf8").replace(/\r\n/g, "\n").trim(); };
+const ack = Object.keys(JSON.parse(readFileSync("package.json", "utf8")).dependencies)
+  .filter((p) => p !== "@capacitor/android" && (!p.startsWith("@fontsource/") || FONTS.some(([f]) => p === `@fontsource/${f}`)))
+  .map((p) => {
+    const dir = `node_modules/${p}`, { version, license } = JSON.parse(readFileSync(`${dir}/package.json`, "utf8")), text = fileIn(dir, /^licen[cs]e(\.(md|txt))?$/i);
+    if (!text) throw new Error(`${p}: no licence file in ${dir}`);
+    return { name: `${p} ${version}`, license, text: [text, fileIn(dir, /^notice(\.(md|txt))?$/i)].filter(Boolean).join("\n\n") };
+  });
+// native SDKs Swift Package Manager fetches (not in node_modules): the same licence text as an npm package above, with their own copyright line
+for (const [name, license, copyright] of [["Firebase iOS SDK, GoogleAppMeasurement, GoogleUtilities, GoogleDataTransport, Promises", "Apache-2.0", "Copyright Google LLC"],
+  ["RevenueCat purchases-ios", "MIT", "Copyright (c) 2024 RevenueCat, Inc."], ["RevenueCat purchases-hybrid-common", "MIT", "Copyright (c) 2019 RevenueCat, Inc."]]) {
+  const base = ack.find((a) => a.license === license)?.text, text = base?.replace(/^(\s*)Copyright (?!\[).*$/m, `$1${copyright}`);
+  if (!base || text === base) throw new Error(`${name}: no ${license} text to copy`);
+  ack.push({ name, license, text });
+}
+const blocks = []; // packages with an identical licence text share one block
+for (const a of ack) { const b = blocks.find((b) => b.text === a.text); if (b) b.names.push(a.name); else blocks.push({ names: [a.name], text: a.text }); }
+writeFileSync(`${out}/licenses.json`, JSON.stringify(blocks));
 let html = readFileSync("proto/index.html", "utf8");
 const font = FONTS.map(([f, fam, w, s]) => `@font-face { font-family: "${fam}"; font-weight: ${w}; font-style: ${s}; font-display: swap; src: url(fonts/${f}-${w}-${s}.woff2) format("woff2"); }`).join("\n");
 html = html.replace(/<link rel="preconnect"[^>]*>\s*<link href="https:\/\/fonts\.googleapis\.com[^>]*>/, `<style>${font}</style>`);
@@ -20,7 +39,8 @@ if (html.includes("fonts.googleapis.com")) throw new Error("Google Fonts link no
 writeFileSync(`${out}/index.html`, html);
 const main = readFileSync(`${out}/main.js`, "utf8");
 if (!main.includes('"../sim/generator.json"')) throw new Error("config path not found");
-writeFileSync(`${out}/main.js`, main.replace('"../sim/generator.json"', '"./generator.json"'));
+if (!main.includes('"../www/licenses.json"')) throw new Error("licences path not found");
+writeFileSync(`${out}/main.js`, main.replace('"../sim/generator.json"', '"./generator.json"').replace('"../www/licenses.json"', '"./licenses.json"'));
 // version shown in Options: MARKETING_VERSION from the Xcode project plus ios/BUILD (the number TestFlight shows)
 const pbx = "ios/App/App.xcodeproj/project.pbxproj";
 const ver = existsSync(pbx) ? readFileSync(pbx, "utf8").match(/MARKETING_VERSION = ([\d.]+);/)?.[1] || "0" : "0";

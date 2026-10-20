@@ -20,7 +20,7 @@ links point at it, and it doesn't exist yet.
 | Game names and rules | Hearts, Spades, Euchre, Oh Hell and Whist are traditional games. Rules aren't copyrightable, and the rule text is our own | ✅ |
 | Shop copy | "Mint formica" named a registered trademark | ✅ **Fixed:** "Mint laminate" |
 | Apple names (VoiceOver, Game Center, Family Sharing, iPhone) | Used descriptively, with the correct names | ✅ Keep it that way (Apple's trademark guidelines) |
-| Code libraries | Capacitor (MIT), RevenueCat (MIT), Firebase iOS SDK (Apache 2.0) | ⚠️ **Owed:** an Acknowledgements page (Options › About) with their licence texts. Apache 2.0 and MIT ask for the notice to travel with the app |
+| Code libraries | Capacitor (MIT), RevenueCat (MIT), Firebase iOS SDK (Apache 2.0) | ✅ **Done:** Options › About › Acknowledgements, built from node_modules by scripts/build-web.mjs (no NOTICE files exist upstream) |
 
 **Age rating note (not copyright):** the "Whiskey & shells" theme mentions whiskey, shotgun shells and 9mm brass. Answer
 the App Store age questionnaire with "infrequent/mild alcohol references", or soften the copy.
@@ -50,5 +50,5 @@ the App Store age questionnaire with "infrequent/mild alcohol references", or so
    anonymous ID if its manifest lists one. Use Xcode's privacy report (Product › Archive › Generate Privacy Report).
 3. **In the Firebase console:** accept the Google data processing terms, set data retention to 2 months, and turn off
    Google signals and ads personalisation.
-4. **An Acknowledgements page** with the OFL, MIT and Apache licence texts (see above).
+4. ~~**An Acknowledgements page**~~ done: Options › About › Acknowledgements.
 5. **A legal read** of the privacy policy and these answers by someone qualified, especially for EU players.
