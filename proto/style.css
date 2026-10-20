@@ -229,8 +229,7 @@ html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #1389
 .dialog .answer { font: italic 400 var(--fs-l)/1.35 var(--serif); }
 /* a tight table (an iPhone SE at Extra large text): the bar keeps Menu's icon, the panels use regular-height buttons */
 #table.tight #menuBtn span { display: none; }
-#table.tight #seats .s-left, #table.tight #seats .s-right { max-width: calc(50% - 64px); }
-#table.tight #seats .seat:not(.s-me) .st span { display: block; } #table.tight #seats .seat:not(.s-me) .st span + span::before { content: none; }
+
 #table.tight #center { gap: 6px; }
 #table.tight #center .btn.big { min-height: var(--tap); font: 700 var(--fs)/1.15 var(--serif); }
 #table.tight #center .say { padding: 4px 12px; }
@@ -241,6 +240,11 @@ html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #1389
 .s-left { top: calc(var(--mid, 48%) + var(--tcw) * .9); left: 8px; }
 .s-right { top: calc(var(--mid, 48%) + var(--tcw) * .9); right: 8px; }
 html:not(.comfort) #seats .seat.s-me { max-width: calc(100% - 2 * var(--sideW, 0px) - 32px); }
+/* the side plates never reach the trick's side cards, whatever the words or the text size: they stop short of the card slots
+   and stack their words one per line, as Comfort's plates do */
+html:not(.comfort) #seats .s-left, html:not(.comfort) #seats .s-right { max-width: calc(50% - var(--slotX, 80px) - 14px); }
+html:not(.comfort) #seats .seat:is(.s-left, .s-right) .st span { display: block; }
+html:not(.comfort) #seats .seat:is(.s-left, .s-right) .st span + span::before { content: none; }
 /* Comfort: the other three seats share one row under the bar, so the 1.6x hand leaves room for the trick */
 html.comfort #seats .seat:not(.s-me) { top: calc(var(--safe-t) + 70px); width: calc((100% - 32px) / 3); min-width: 0; padding: 4px 6px; transform: none; }
 html.comfort .s-left { left: 8px; }

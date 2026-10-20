@@ -223,7 +223,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     if (document.getElementById("handoff").hidden) return ["the cover never came up"];
     let at = null; // past the screens' cross-fade: the last screen fades out over the table for a moment
     for (let t = 0; t < 40 && !at?.closest("#table"); t++) { await sleep(100); at = document.elementFromPoint(hand.left + hand.width - 20, hand.top + 20); }
-    if (!at?.closest("#handoff")) out.push(`over the hand is ${at?.outerHTML.slice(0, 40)}`);
+    if (!at?.closest("#handoff")) out.push(`over the hand is ${at?.outerHTML.slice(0, 40)} (screen ${kt.screen}; on: ${[...document.querySelectorAll(".screen.on")].map((e) => e.id)}; visible: ${[...document.querySelectorAll(".screen")].filter((e) => getComputedStyle(e).visibility === "visible").map((e) => e.id + " " + getComputedStyle(e).opacity)})`);
     if (document.querySelectorAll("#hand .card").length) out.push("hand cards still in the page under the cover");
     if (!document.getElementById("seats").inert || !document.getElementById("hand").inert) out.push("the table isn't inert under the cover");
     if (!document.getElementById("handoff").contains(document.activeElement)) out.push("focus isn't on the cover");

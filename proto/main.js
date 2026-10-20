@@ -426,6 +426,7 @@ function drawTable(justPlayed = -1) {
   }
   const tb = $("#table"), box = $("#trick"), tr = showTrick || st.trick;
   setStyle(tb, "--free0", free0 + "px"); setStyle(tb, "--free1", free1 + "px"); setStyle(tb, "--mid", mid + "px"); setStyle(box, "--tw", tw + "px");
+  setStyle(tb, "--slotX", Math.abs(place(1)[0]) + tw / 2 + "px"); // how far the side cards of the trick reach from the middle: the side plates stop short of it
   setStyle(tb, "--sideW", geo.sideW + "px"); // your plate is never wider than the gap between the side seats: its words wrap instead
   box.classList.toggle("named", comfort || ipad);
   const keys = new Set(tr.map((t) => t.seat + t.card + look));
