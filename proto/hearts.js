@@ -1,5 +1,5 @@
 // Hearts rules: pure functions over a plain state object. Actions: [3 cards] while passing, a card string while
-// playing, "add" | "sub" when the shooter chooses how to score a moon.
+// playing, "add" | "sub" when the shooter chooses how to score a moon (moon rule "choose"; "auto" picks for them).
 import { newDeck, dealHands, winnerIndex, followable, next } from "./cards.js";
 
 export const eff = (c) => c[1];
@@ -13,8 +13,8 @@ export function passDir(rules, handNo) {
   return DIR[cycle[handNo % cycle.length]];
 }
 
-export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0] }, handNo = 0) {
-  const dir = passDir(rules, handNo), hands = dealHands(seed, dealer, newDeck());
+export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0] }, handNo = 0, cut = 0) {
+  const dir = passDir(rules, handNo), hands = dealHands(seed, dealer, newDeck(), cut);
   const st = {
     game: "hearts", rules, seed, dealer, handNo, totals: structuredClone(totals), dir,
     phase: dir ? "pass" : "play", turn: next(dealer), hands, passes: [null, null, null, null], received: [null, null, null, null],
@@ -81,6 +81,7 @@ export function apply(st, a) {
     if (shooter >= 0 && r.moon !== "off") {
       st.moon = shooter;
       if (r.moon === "choose") { st.phase = "moon"; st.turn = shooter; } else st.moonChoice = "add";
+      if (r.moon === "auto") { const w = winner(score(st).totals, r); if (w !== null && w !== shooter) st.moonChoice = "sub"; } // add, unless that loses
     }
   }
   return st;

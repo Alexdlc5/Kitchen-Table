@@ -245,12 +245,28 @@
     }
    },
    {
+    "id": "blindSwap",
+    "name": "Blind nil exchange",
+    "explain": "After the bids, a blind nil bidder passes this many cards to their partner, and the partner passes the same number back. 0 means no exchange.",
+    "type": "choice",
+    "choices": [
+     2,
+     1,
+     0
+    ],
+    "presets": {
+     "standard": 0,
+     "kitchen": 0,
+     "tournament": 0
+    }
+   },
+   {
     "id": "nilTricksCount",
     "name": "A broken nil's tricks help the partner",
-    "explain": "When a nil bidder takes tricks, they count toward the partner's bid.",
+    "explain": "Off: tricks a broken nil takes don't count toward the partner's bid; they count as bags for the team instead. On: they count toward the partner's bid.",
     "type": "toggle",
     "presets": {
-     "standard": true,
+     "standard": false,
      "kitchen": true,
      "tournament": false
     }
@@ -301,7 +317,7 @@
    {
     "id": "tenFor200",
     "name": "10 for 200",
-    "explain": "A team that bids 10 or more and makes it scores double.",
+    "explain": "A team that bids 10 or more tricks scores 200 if it makes the bid and loses 200 if it doesn't.",
     "type": "toggle",
     "presets": {
      "standard": false,
@@ -338,18 +354,45 @@
    },
    {
     "id": "boston",
-    "name": "Boston bonus",
-    "explain": "Extra points for a team that takes all 13 tricks. 0 turns it off.",
-    "type": "number",
-    "range": [
+    "name": "Boston",
+    "explain": "Took 13: a team that takes all 13 tricks gets 250 extra, whatever it bid. Bid 13: a team that bids all 13 tricks scores 500 if it takes them all and loses 500 if it doesn't. Off: no bonus.",
+    "type": "choice",
+    "presets": {
+     "standard": "off",
+     "kitchen": "took 13",
+     "tournament": "off"
+    },
+    "choices": [
+     "off",
+     "took 13",
+     "bid 13"
+    ]
+   },
+   {
+    "id": "loseAt",
+    "name": "Lose at",
+    "explain": "A team whose score drops to this loses the game right away. 0 turns it off.",
+    "type": "choice",
+    "choices": [
      0,
-     500
+     -200,
+     -500
     ],
-    "step": 50,
     "presets": {
      "standard": 0,
-     "kitchen": 250,
+     "kitchen": -200,
      "tournament": 0
+    }
+   },
+   {
+    "id": "twoClubsLead",
+    "name": "2 of clubs leads",
+    "explain": "Whoever holds the 2 of clubs (the 3 of clubs with Jokers) leads it to the first trick, instead of the player left of the dealer.",
+    "type": "toggle",
+    "presets": {
+     "standard": false,
+     "kitchen": false,
+     "tournament": false
     }
    }
   ],
@@ -373,23 +416,24 @@
    {
     "id": "moon",
     "name": "Shoot the moon",
-    "explain": "Take every heart and the queen of spades: everyone else gets 26 (add), the shooter picks add or subtract 26 from their own score (choose), or no special scoring (off).",
+    "explain": "Take every heart and the queen of spades. Add: everyone else gets 26. Choose: the shooter picks add, or 26 off their own score. Auto: add, unless that would end the game with the shooter losing; then 26 comes off the shooter's score. Off: no special scoring.",
     "type": "choice",
     "choices": [
      "add",
      "choose",
+     "auto",
      "off"
     ],
     "presets": {
      "standard": "add",
      "kitchen": "choose",
-     "tournament": "add"
+     "tournament": "auto"
     }
    },
    {
     "id": "jackDiamonds",
-    "name": "Jack of diamonds is -10",
-    "explain": "Whoever takes the jack of diamonds subtracts 10 points.",
+    "name": "Omnibus: jack of diamonds is -10",
+    "explain": "Whoever takes the jack of diamonds subtracts 10 points. Some tables call this Omnibus Hearts.",
     "type": "toggle",
     "presets": {
      "standard": false,
@@ -417,7 +461,7 @@
    {
     "id": "heartsBroken",
     "name": "Hearts must be broken to lead",
-    "explain": "Nobody may lead a heart until a heart (or the queen of spades) has been played, unless they hold only hearts.",
+    "explain": "Nobody may lead a heart until hearts are broken, unless they hold only hearts. A heart played on another suit breaks them; so does the queen of spades when that rule is on.",
     "type": "toggle",
     "presets": {
      "standard": true,
@@ -439,12 +483,12 @@
    {
     "id": "queenBreaks",
     "name": "Queen of spades breaks hearts",
-    "explain": "Playing the queen of spades counts as breaking hearts.",
+    "explain": "Playing the queen of spades counts as breaking hearts. Off: only a heart breaks hearts.",
     "type": "toggle",
     "presets": {
      "standard": true,
      "kitchen": true,
-     "tournament": true
+     "tournament": false
     }
    }
   ],
@@ -632,7 +676,8 @@
    "extreme": 0.22
   },
   "bidBias": 0.25,
-  "extremeSamples": 60
+  "extremeSamples": 60,
+  "lookNilRisk": 0.45
  },
  "shop": {
   "tiers": {
