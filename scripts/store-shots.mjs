@@ -21,7 +21,7 @@ export const SHOTS = [
   { id: "2-hearts", head: "Hearts is free, for good", sub: "No trial, no timer, no catch.", game: "hearts", seed: 7, left: 8 },
   { id: "3-cupboard", head: "Five classics, one unlock", sub: "Buy once, keep it for good.", screen: "picker", css: ".box { width: min(29%, 136px); } .shelf { margin-bottom: 3.2em; }" /* all five boxes in view */ },
   { id: "4-comfort", head: "Big cards, big print", sub: "Comfort mode, large text, read aloud.", game: "spades", seed: 3, left: 9, opt: { comfort: true, text: "large", theme: "green" } },
-  { id: "5-fair", head: "Deals you can check", sub: "The seed is on every score sheet.", game: "spades", seed: 11, sheet: true },
+  { id: "5-fair", head: "Deals you can check", sub: "Seed and cut on every score sheet.", game: "spades", seed: 11, sheet: true },
   { id: "6-themes", head: "Set the table your way", sub: "Gingham, leather, marble and more.", game: "euchre", seed: 5, left: 4, trick: 1, opt: { theme: "parlor" } },
 ];
 

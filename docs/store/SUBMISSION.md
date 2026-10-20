@@ -158,14 +158,15 @@ Thank you for reviewing Kitchen Table.
 
 No sign-in: the app has no accounts. Game Center is optional (leaderboards only).
 
-Free vs paid: Hearts is free. One non-consumable "Everything" unlock adds Spades, Euchre, Oh Hell and Whist.
+Free vs paid: Hearts is free. One non-consumable "Everything" unlock adds Spades, Euchre, Oh Hell and Classic Whist
+(partnership whist, no bidding).
 To test it: on the title screen tap "Games and rules", pick Spades, and tap the unlock button; or Options >
 "Unlock everything". Table themes (non-consumable, cosmetic only) are in "Table shop". "Restore purchases"
 is on the title screen. All purchases are non-consumable with Family Sharing on. There are no ads, no
 subscriptions and no consumables.
 
-Fair deal: every hand is shuffled from a random seed and the player's cut, and nothing else. The seed is
-printed on each score sheet (shown after every hand). Our website re-deals any seed, card for card:
+Fair deal: every hand is shuffled from a random seed and the player's cut. The seed and cut are printed
+on each score sheet (shown after every hand). Our website re-deals any hand from its seed and cut, card for card:
 https://alexdlc5.github.io/kitchen-table/verify.html
 
 Privacy: on the first game the app asks whether to share anonymous usage numbers and crash reports (Firebase).
@@ -182,7 +183,7 @@ these exact names). Display names stay under 30 characters, descriptions under 4
 
 | Product ID | Reference name | Price | Display name | Description |
 |---|---|---|---|---|
-| `everything` | Everything unlock | $6.99 | Everything | Spades, Euchre, Oh Hell, Whist and more |
+| `everything` | Everything unlock | $6.99 | Everything | Spades, Euchre, Oh Hell, Classic Whist |
 | `theme_gingham` | Theme: Sunday gingham | $2.99 | Sunday gingham | A red check tablecloth table |
 | `theme_cabin` | Theme: Lake cabin | $2.99 | Lake cabin | Buffalo plaid and pine card backs |
 | `theme_diner` | Theme: Diner '57 | $2.99 | Diner '57 | Mint formica with a chrome edge |
@@ -205,7 +206,7 @@ build with the sandbox account, before buying.
 
 **Review note** (same for all): `Non-consumable, cosmetic table theme. Buy it in Table shop on the title screen;
 it applies at once and is restored with "Restore purchases".` For `everything`: `Non-consumable. Unlocks Spades,
-Euchre, Oh Hell and Whist (and future games). Buy from Games and rules > any locked game, or Options.`
+Euchre, Oh Hell and Classic Whist (and future games). Buy from Games and rules > any locked game, or Options.`
 
 ## Game Center leaderboards (from `sim/generator.json` › `leaderboards`)
 
