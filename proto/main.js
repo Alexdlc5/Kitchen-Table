@@ -575,7 +575,7 @@ function centre(mine) {
       <div class="callpad" style="--n:${now ? 2 : 1}"><button class="btn big" data-act="look">Look at my cards</button>${now ? `<button class="btn" data-act="bid" data-v="blind">Bid blind nil</button>` : ""}</div>`;
   }
   if (G.game === "euchre") return euchreCentre(mine);
-  if (mine?.kind === "bid" && G.game === "ohhell") return S.opt.comfort ? more.bidPanel(mine, st, suggest(mine)) : more.bidPanel(mine, st) + suggest(mine);
+  if (mine?.kind === "bid" && G.game === "ohhell") return S.opt.comfort || tight ? more.bidPanel(mine, st, suggest(mine)) : more.bidPanel(mine, st) + suggest(mine);
   if (mine?.kind === "bid") {
     const nums = mine.legal.filter((a) => !a.blind);
     if (S.opt.comfort || tight) { // a stepper keeps the big hand in view: one row, the number on the brass Bid button itself; below 1 is nil
