@@ -2,7 +2,7 @@
 // dealer.js; this file only shows the table and asks the humans. Every screen is drawn from the save (S) and the game (G).
 import { platform, track, setTelemetry } from "./platform.js";
 import { LANGS, CHOSEN } from "./i18n.js";
-import { newSeed, fingerprint } from "./dealer.js";
+import { newSeed, fingerprint, seedBytes } from "./dealer.js";
 import { rulesFor, team, partner, SUITS } from "./cards.js";
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
@@ -215,8 +215,10 @@ function renderSetup() {
   if (L.preset === "custom") rules = defs.map((d) => d.type === "toggle" ? `<div class="row"><span>${name(d)}</span>${sw("rule", r[d.id], d.name, { attrs: `data-id="${d.id}"` })}</div>`
     : `<div class="row"><label for="rule-${d.id}">${name(d)}</label><select id="rule-${d.id}" data-act="rulesel" data-id="${d.id}">${optsOf(d).map((c) => `<option value="${esc(c)}" ${c === r[d.id] ? "selected" : ""}>${esc(fmt(d, c))}</option>`).join("")}</select></div>`).join("");
   else { // a preset: one line that says what it is; every rule is one tap away
-    const first = (L.preset === "standard" ? defs : defs.filter((d) => d.presets[L.preset] !== d.presets.standard)).slice(0, 3);
-    rules = `<details class="rules"><summary><span><b>${PRESET_NAME[L.preset]} rules</b> · ${first.map((d) => `${esc(d.name)}: ${esc(fmt(d, r[d.id]))}`).join(" · ")}</span><span class="see">See all ${defs.length}</span></summary>
+    // Euchre always names the two house rules people argue about: stick the dealer, and who leads against a loner
+    const first = g === "euchre" ? defs.filter((d) => ["target", "stickDealer", "lonerLeft"].includes(d.id)) : (L.preset === "standard" ? defs : defs.filter((d) => d.presets[L.preset] !== d.presets.standard)).slice(0, 3);
+    const said = (d) => (d.id === "lonerLeft" ? `Against a loner: ${r.lonerLeft ? "the loner's left leads" : "left of the dealer leads"}` : `${esc(d.name)}: ${esc(fmt(d, r[d.id]))}`);
+    rules = `<details class="rules"><summary><span><b>${PRESET_NAME[L.preset]} rules</b> · ${first.map(said).join(" · ")}</span><span class="see">See all ${defs.length}</span></summary>
       ${defs.map((d) => `<div class="row"><span>${name(d)}</span><b>${esc(fmt(d, r[d.id]))}</b></div>`).join("")}</details>`;
   }
   const seatRow = [1, 2, 3].map((s) => segRow((TEAMS(g) ? ["", "Left", "Partner", "Right"] : ["", "Left", "Across", "Right"])[s], "seat" + s, L.seats[s] || "bot", [["bot", "Computer"], ["human", "Person here"]])).join("");
@@ -245,6 +247,9 @@ function newGame(game, fixed = null) {
   });
   G = { game, rules, preset: L.preset, seats, totals: undefined, // the first hand starts from its own game's empty totals
     handNo: 0, dealer: 3, history: [], st: null, viewer: 0, reasons: {}, over: null };
+  // F2-5 (rules passover 2): the first dealer is drawn from the game's first seed, not always the seat on your right (dealing is
+  // worth a little in Whist and Euchre). The sheet prints who dealt.
+  G.nextSeed = newSeed(); G.dealer = seedBytes(G.nextSeed)[15] % 4;
   track("game_start", { game, preset: L.preset, level: L.opps });
   startHand();
 }
@@ -252,9 +257,9 @@ async function startHand() {
   if (net && !net.host) return guestHand();
   const m = MOD[G.game], seed = (G.nextSeed ??= newSeed()); // kept until it's dealt: a fingerprint, once shown, is never swapped for another
   const n = G.game === "euchre" ? 24 : 52, mine = G.seats[G.viewer]?.kind === "human" && !net && ((qs.has("fast") && qs.has("cut")) || (S.opt.comfort ? S.care.cut : S.opt.cut));
-  const cut = !cutsDeal(G.game) ? 0 : mine ? await cutDeck(seed, n) : dealerCut(n);
+  const [cut, by] = !cutsDeal(G.game) ? [0, ""] : mine ? await cutDeck(seed, n) : [dealerCut(n), "app"]; // by: who cut, "you" or "app"
   G.st = m.newHand(G.rules, seed, G.dealer, G.totals, G.handNo, cut);
-  G.st.cut ??= cut; delete G.nextSeed;
+  G.st.cut ??= cut; G.st.cutBy = by; delete G.nextSeed;
   G.totals ??= structuredClone(G.st.totals);
   if (net) net.send({ t: "start", seed: G.st.seed, cut, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
   G.reasons = {}; G.looked = {}; whyNow = null; closePeek();
@@ -279,14 +284,17 @@ const dealerCut = (n) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % (n
 async function cutDeck(seed, n) { // on the table itself, before the cards come out
   const fp = fingerprint(seed);
   show("table"); $("#table").classList.add("predeal");
-  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed before you cut: its fingerprint is <b class="seed fp">${fp.slice(0, 4)} ${fp.slice(4)}</b>, printed on the score sheet. Tap the deck where you'd like to cut it.</p>
+  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed before you cut: its fingerprint is <b class="seed fp">${fpHTML(fp)}</b>, printed on the score sheet. Tap the deck where you'd like to cut it.</p>
     <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
-    <div class="stack"><button class="btn" data-dlg="dealer">Let the dealer cut</button></div>`);
+    <div class="stack"><button class="btn" data-dlg="dealer">Let the app cut</button></div>`);
   $("#table").classList.remove("predeal");
-  const c = typeof v === "string" && v.startsWith("cut:") ? +v.slice(4) : dealerCut(n);
-  announce(v?.startsWith?.("cut:") ? `You cut ${c} cards.` : `The dealer cut ${c} cards.`);
-  return c;
+  const yours = typeof v === "string" && v.startsWith("cut:"), c = yours ? +v.slice(4) : dealerCut(n);
+  announce(yours ? `You cut ${c} cards.` : `The app cut ${c} cards.`);
+  return [c, yours ? "you" : "app"];
 }
+// a fingerprint in groups of four ("A1B2 C3D4 …"), whichever length dealer.js gives; groups never break across lines
+const fpGroups = (fp) => String(fp).replace(/\s/g, "").match(/.{1,4}/g).join(" ");
+const fpHTML = (fp) => fpGroups(fp).split(" ").map((g) => `<span>${g}</span>`).join(" ");
 
 // R2: when blind nil is open to a person, their cards stay face down until they look or bid it
 const canBlind = (s) => G.game === "spades" && !!G.rules.blindNil && G.st.phase === "bid" && G.st.bids[s] === null && G.st.hands[s].length === 13 && G.st.totals.score[1 - team(s)] - G.st.totals.score[team(s)] >= G.rules.blindNilDown;
@@ -409,7 +417,7 @@ function drawTable(justPlayed = -1) {
   // the room between the seats and the hand: plate sizes come from the last layout, unless their words just changed
   const platesMoved = !geo;
   if (!geo) geo = { free0: Math.max(...[2, ...(comfort ? [1, 3] : [])].map((p) => plates[(me + p) % 4].getBoundingClientRect().bottom)), meH: plates[me].offsetHeight,
-    sideW: Math.max(plates[(me + 1) % 4].offsetWidth, plates[(me + 3) % 4].offsetWidth) };
+    sideW: Math.max(plates[(me + 1) % 4].offsetWidth, plates[(me + 3) % 4].offsetWidth), sideH: Math.max(plates[(me + 1) % 4].offsetHeight, plates[(me + 3) % 4].offsetHeight) };
   const meBottom = Z.safeB + hh + 18, free1 = innerHeight - meBottom - geo.meH, free0 = geo.free0, ipad = innerWidth >= 700;
   setStyle(plates[me], "bottom", meBottom + "px");
   // the trick: in Comfort a row of named cards under the seats (it never competes with the big hand); on iPad the cards sit out
@@ -428,6 +436,7 @@ function drawTable(justPlayed = -1) {
   setStyle(tb, "--free0", free0 + "px"); setStyle(tb, "--free1", free1 + "px"); setStyle(tb, "--mid", mid + "px"); setStyle(box, "--tw", tw + "px");
   setStyle(tb, "--slotX", Math.abs(place(1)[0]) + tw / 2 + "px"); // how far the side cards of the trick reach from the middle: the side plates stop short of it
   setStyle(tb, "--sideW", geo.sideW + "px"); // your plate is never wider than the gap between the side seats: its words wrap instead
+  setStyle(tb, "--side", Math.min(mid + Z.tcw * 0.9, innerHeight - Z.safeB - 8 - hh - geo.sideH - 6) + "px"); // side seats beside the trick, rising only to clear your hand
   box.classList.toggle("named", comfort || ipad);
   const keys = new Set(tr.map((t) => t.seat + t.card + look));
   for (const e of [...box.children]) if (!keys.has(e.dataset.k)) e.remove();
@@ -631,7 +640,7 @@ function finishHand() {
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
   else if (more.NAMES[G.game]) more.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
   if (G.game === "euchre" && lines[0].team !== null) { if (lines[0].team === team(me)) sound.made(); else if (lines[0].kind.includes("uchre")) sound.set(); }
-  G.history.push({ seed: st.seed, fp: fingerprint(st.seed), cut: st.cut ?? 0, size: st.size, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
+  G.history.push({ seed: st.seed, fp: fingerprint(st.seed), cut: st.cut ?? 0, cutBy: st.cutBy, size: st.size, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
   if (G.over !== null && net) { net.leave(); net = null; }
@@ -677,7 +686,7 @@ function renderSheet() {
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
   const goal = G.over === null ? goalLine() : "";
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h1>Hand ${h.n}</h1>${table}${sp ? "" : `<h3>Game</h3>${totals}`}${goal ? `<p class="goal">${esc(goal)}</p>` : ""}
-    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span>${h.cut ? ` · cut ${h.cut}` : ""} · fingerprint <span class="seed">${h.fp ?? fingerprint(h.seed)}</span></p>
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]})${h.n === 1 ? ", drawn from the seed" : ""} · seed <span class="seed">${seedHTML(h.seed)}</span>${h.cut ? ` · ${h.cutBy === "you" ? `you cut ${h.cut}` : `cut ${h.cut} by the app`}` : ""} · fingerprint <span class="seed">${fpHTML(h.fp ?? fingerprint(h.seed))}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
     ${trialPlate()}<button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
 }
@@ -735,7 +744,8 @@ function recordDeal() { // every deal, as dealt (before any pass): yours, the ot
 }
 function renderStats() {
   const v = ledger.view(S.deals);
-  const intro = `<div class="paper"><p>Every hand comes from its seed and nothing else. The seed is on every score sheet: type it into our website to see the same four hands.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}</div>`;
+  const intro = `<div class="paper"><p>Every hand comes from its seed and its cut, and nothing else. Both are on every score sheet: type them into our website to see the same four hands.</p>
+    <p class="muted">The app cuts at random unless you turn on "Cut the deck myself" in Options. At a family table across two phones, the host's phone cuts.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}</div>`;
   const num = (x, unit) => (unit === "%" ? `${x.toFixed(1)}%` : x.toFixed(2));
   const section = (s) => {
     if (s.hidden) return `<div class="paper"><h2>${esc(s.title)}</h2><p class="muted">${esc(s.note)}</p></div>`;
@@ -748,7 +758,7 @@ function renderStats() {
   $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>${intro}
     ${v.empty ? `<div class="paper"><h2>Your deals go here</h2><p>Play a few hands and your own deals appear here, next to what a fair deck gives${v.n ? ` (${v.n} so far; they show from 20)` : ""}.</p>
       <p>A fair deck gives each 13-card hand <b>4.00</b> aces, kings, queens and jacks on average, and the queen of spades lands in one Hearts hand in four.</p></div>`
-    : `<p class="paper muted">Your last ${v.n} deals. The green bar is you, the black line is a fair deck's average, and the shaded band is where a fair deck lands 95% of the time for that many hands.</p>${v.sections.map(section).join("")}`}
+    : `<p class="paper muted">Your last ${v.n} deals. The green bar is you, the black line is a fair deck's average, and the shaded band is where a fair deck almost always lands for that many hands.${v.note ? ` ${esc(v.note.replace(/^Each band is where a fair deck almost always lands\.\s*/, ""))}` : ""}</p>${v.sections.map(section).join("")}`}
     ${rec ? `<div class="paper pad"><h2>Your games</h2><table>${rec}</table></div>` : ""}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
@@ -837,7 +847,7 @@ async function renderUnlock() {
   const prices = await platform.prices(), price = prices.everything || "$6.99", box = (g) => `<span class="ubox">${tuckBox(g, GAME_NAME[g])}</span>`;
   $("#unlock").innerHTML = `<div class="stack"><h1>All games, ${price} once</h1>
     <div class="paper"><div class="uboxes" aria-hidden="true">${["spades", "euchre", "ohhell", "whist"].map(box).join("")}</div>
-      <p>Opens Spades, Euchre, Oh Hell and Whist now, and every game we add after that. No ads, no subscription, nothing that renews.</p>
+      <p>Opens Spades, Euchre, Oh Hell and Classic Whist now, and every game we add after that. No ads, no subscription, nothing that renews.</p>
       <p>Shared with your family through Family Sharing. Hearts stays free either way.</p>
       ${platform.owns("everything") ? "<p><b>You have Everything. Thank you!</b></p>" : platform.native ? `<button class="btn big" data-act="buy" data-v="everything">Unlock all games for ${price}</button>` : `<p class="muted">This test build in the browser has everything unlocked.</p>`}
       <button class="btn" data-act="restore">Restore purchases</button></div>
@@ -861,7 +871,7 @@ const HOWTO = {
     "The dealer turns up a card. In turn, anyone may order it up: its suit is trump, and the dealer picks it up and throws one away. If everyone passes, anyone may name another suit.",
     "The jack of trump is the highest card (the right bower). The other jack of the same colour is next (the left bower), and counts as trump.",
     "Follow suit if you can. The side that chose trump needs three of the five tricks for 1 point, all five for 2. Fall short and the others score 2: you've been euchred.",
-    "Go alone, with your partner sitting out, and all five tricks score 4. The first side to 10 wins."],
+    "Go alone, with your partner sitting out, and all five tricks score 4. Who leads against a loner is a house rule: this table's is under House rules. The first side to 10 wins."],
 };
 const EXAMPLE = { // [left, across, right, you], the winner, what it shows
   plain: [["2C", "KC", "9C", "5C"], 1, "Clubs were led, so the highest club takes the trick: the king."],
@@ -1149,8 +1159,8 @@ const ACT = {
   again: () => newGame(G.game),
   seedinfo: async () => { // the hand's own check: verify.html deals it again from the seed and the cut, and checks the fingerprint first
     const h = G.history.at(-1), game = G.game === "spades" && G.rules.jokers ? "jokers" : G.game;
-    const url = `${platform.site}/verify.html?seed=${h.seed}&cut=${h.cut ?? 0}&fp=${h.fp ?? fingerprint(h.seed)}&game=${game}&dealer=${h.dealer}${h.size ? `&size=${h.size}` : ""}`;
-    const v = await dialog(`<h2>The seed</h2><p>Every hand comes from this seed and nothing else. Type it into our website to see the same four hands.</p>
+    const url = `${platform.site}/verify.html?seed=${h.seed}&cut=${h.cut ?? 0}&fp=${String(h.fp ?? fingerprint(h.seed)).replace(/\s/g, "")}&game=${game}&dealer=${h.dealer}${h.size ? `&size=${h.size}` : ""}`;
+    const v = await dialog(`<h2>The seed</h2><p>Every hand comes from this seed and your cut, and nothing else. Type them into our website to see the same four hands.</p>
       <p>The fingerprint is the seed's SHA-256, cut short. Our website checks it against the seed before it deals.</p>
       <div class="stack">${S.care.lock ? "" : `<button class="btn" data-dlg="check">Check this hand on our website</button>`}<button class="btn big" data-dlg="">Got it</button></div>`, { user: true });
     if (v === "check") gate(url, "the check-a-deal page on our website");

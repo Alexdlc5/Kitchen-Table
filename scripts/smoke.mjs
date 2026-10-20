@@ -156,8 +156,9 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
       cutBad = await page.evaluate(async (s) => {
         const { fingerprint } = await import("./dealer.js"), cards = await import("./cards.js"), st = kt.G.st, want = Math.round(0.3 * (s.n - 2)) + 1;
         const deck = st.game === "euchre" ? (await import("./euchre.js")).DECK : cards.newDeck(), size = { euchre: 5, ohhell: st.size }[st.game] ?? 13;
-        return [fingerprint(s.seed) !== s.fp && "the fingerprint shown isn't the seed's", st.seed !== s.seed && "the deal used another seed", st.cut !== want && `cut ${st.cut}, tapped at ${want}`,
-          JSON.stringify(cards.dealOut(st.seed, st.dealer, deck, size, st.cut).hands) !== JSON.stringify(st.hands) && "the hands aren't the cut deal", !s.focused && "focus not on the cut"];
+        return [fingerprint(s.seed).replace(/\s/g, "") !== s.fp && "the fingerprint shown isn't the seed's", st.seed !== s.seed && "the deal used another seed", st.cut !== want && `cut ${st.cut}, tapped at ${want}`,
+          // the engine's own deal for this seed, dealer and cut (the live hands may already have moved: a pickup, a lead)
+          JSON.stringify(cards.dealOut(st.seed, st.dealer, deck, size, st.cut).hands) !== JSON.stringify((await import(`./${st.game}.js`)).newHand(st.rules, st.seed, st.dealer, undefined, st.handNo ?? 0, st.cut).hands) && "the hands aren't the cut deal", !s.focused && "focus not on the cut"];
       }, shown);
     }
     await report(`${game}-cut`, shown || game === "hearts" || game === "spades" ? cutBad : ["no cut offered"]); // Hearts and Spades cut once #16 lands
@@ -197,7 +198,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
       return [...seen, ...kt.blocked.map((b) => "overlay: blocked: " + b), ...(kt.screen === "sheet" ? [] : ["the hand never finished"])];
     });
     await report(`${game}-hand`, seen);
-    await report(`${game}-sheet`, [...(await page.evaluate(AUDIT, "sheet")), ...(await page.evaluate(() => { const h = kt.G.history.at(-1), t = document.getElementById("sheet").textContent; return [h.cut && !t.includes(`cut ${h.cut}`) && "the sheet doesn't print the cut", !t.includes(h.fp) && "the sheet doesn't print the fingerprint"]; }))]);
+    await report(`${game}-sheet`, [...(await page.evaluate(AUDIT, "sheet")), ...(await page.evaluate(() => { const h = kt.G.history.at(-1), t = document.getElementById("sheet").textContent; return [h.cut && !t.includes(`cut ${h.cut}`) && "the sheet doesn't print the cut", !t.replace(/\s/g, "").includes(String(h.fp).replace(/\s/g, "")) && "the sheet doesn't print the fingerprint"]; }))]);
     // reopening the app on the score sheet shows it again; it never scores the same hand twice
     await report(`${game}-reopen`, await page.evaluate(async () => { const n = kt.G.history.length, sc = JSON.stringify(kt.G.totals); kt.ACT.resume(); await new Promise((r) => setTimeout(r, 200)); return [kt.G.history.length !== n || JSON.stringify(kt.G.totals) !== sc ? "the hand was scored again" : null, kt.screen !== "sheet" ? `on ${kt.screen}, not the sheet` : null]; }));
     await page.evaluate(() => { kt.G.over = 0; kt.ACT.next(); });
@@ -216,10 +217,10 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];
     kt.S.last.seats = ["you", "human", "bot", "bot"]; kt.newGame("hearts");
     document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click();
-    for (let t = 0; t < 200 && !(kt.pending?.seat === 0); t++) await sleep(50);
+    for (let t = 0; t < 40 && !document.querySelectorAll("#hand .card").length; t++) await sleep(50);
     const hand = document.getElementById("hand").getBoundingClientRect();
-    kt.pending.resolve(kt.pending.kind === "pass" ? kt.pending.legal.slice(0, 3) : kt.pending.legal[0]);
-    for (let t = 0; t < 200 && document.getElementById("handoff").hidden; t++) await sleep(50);
+    // whoever passes first (the first dealer comes from the seed): play your own turns until it's Player 2's and the cover is up
+    for (let t = 0; t < 200 && document.getElementById("handoff").hidden; t++) { const p = kt.pending; if (p?.seat === 0) p.resolve(p.kind === "pass" ? p.legal.slice(0, 3) : p.legal[0]); await sleep(50); }
     if (document.getElementById("handoff").hidden) return ["the cover never came up"];
     let at = null; // past the screens' cross-fade: the last screen fades out over the table for a moment
     for (let t = 0; t < 40 && !at?.closest("#table"); t++) { await sleep(100); at = document.elementFromPoint(hand.left + hand.width - 20, hand.top + 20); }

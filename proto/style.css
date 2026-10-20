@@ -237,8 +237,8 @@ html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #1389
 #seats .seat .ask:empty { display: none; }
 #seats .seat .ask { font-weight: 700; color: #6e4a16; }
 .s-top { top: calc(var(--safe-t) + 64px); left: 50%; transform: translateX(-50%); }
-.s-left { top: calc(var(--mid, 48%) + var(--tcw) * .9); left: 8px; }
-.s-right { top: calc(var(--mid, 48%) + var(--tcw) * .9); right: 8px; }
+.s-left { top: var(--side, calc(var(--mid, 48%) + var(--tcw) * .9)); left: 8px; }
+.s-right { top: var(--side, calc(var(--mid, 48%) + var(--tcw) * .9)); right: 8px; }
 html:not(.comfort) #seats .seat.s-me { max-width: calc(100% - 2 * var(--sideW, 0px) - 32px); }
 /* the side plates never reach the trick's side cards, whatever the words or the text size: they stop short of the card slots
    and stack their words one per line, as Comfort's plates do */

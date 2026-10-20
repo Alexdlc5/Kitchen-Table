@@ -4,9 +4,10 @@ import { hookBid } from "./ohhell.js";
 import { cardName, SUIT_NAME } from "./art.js";
 import { stamp } from "./scenes.js";
 
-export const NAMES = { ohhell: "Oh Hell", whist: "Whist" };
+// "Classic Whist": to most American players "Whist" means Bid Whist, which is a different game (it's first on the shelf below)
+export const NAMES = { ohhell: "Oh Hell", whist: "Classic Whist" };
 // the closed boxes on the "Coming to the table" shelf: [name on the box, what VoiceOver says]
-export const ROADMAP = { cribbage: ["Cribbage", "Cribbage"], ginrummy: ["Gin Rummy", "Gin Rummy"], pinochle: ["Pinochle", "Pinochle"], canasta: ["Canasta", "Canasta and Hand and Foot"] };
+export const ROADMAP = { bidwhist: ["Bid Whist", "Bid Whist"], cribbage: ["Cribbage", "Cribbage"], ginrummy: ["Gin Rummy", "Gin Rummy"], pinochle: ["Pinochle", "Pinochle"], canasta: ["Canasta", "Canasta and Hand and Foot"] };
 
 // How to play: five short steps each
 export const HOWTO = {
@@ -15,8 +16,8 @@ export const HOWTO = {
     "Look at your cards and bid exactly how many tricks you'll take; zero is a fine bid. The dealer bids last, and with the hook can't make the bids add up to the tricks, so somebody has to miss.",
     "Follow suit if you can; otherwise play anything. Trump beats every other suit.",
     "Take exactly your bid for the bonus. Your score after the last hand decides the game."],
-  whist: ["Partners sit across. All 52 cards are dealt, and the dealer's last card is turned face up: its suit is trump, and the dealer keeps it to play later.",
-    "There's no bidding. The player left of the dealer leads.",
+  whist: ["Classic Whist has no bidding: the trump card is turned. Partners sit across, all 52 cards are dealt, and the dealer's last card is turned face up: its suit is trump, and the dealer keeps it to play later.",
+    "The player left of the dealer leads.",
     "Follow suit if you can; otherwise trump, or throw away.",
     "Your side's first six tricks are the book; every trick after that is a point.",
     "The old manners still win: second hand low, third hand high, cover an honour with an honour, and lead back your partner's suit."],

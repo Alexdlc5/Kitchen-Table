@@ -27,6 +27,7 @@ const BOXES = {
   euchre: { body: "#2c5a3e", trim: "#d8c08a", pip: "C", pipCol: "#2c5a3e" },
   ohhell: { body: "#9a6a1f", trim: "#f0dca6", pip: "D", pipCol: "#9a6a1f" },
   whist: { body: "#5b2d4f", trim: "#d8c08a", pip: "S", pipCol: "#5b2d4f" },
+  bidwhist: { body: "#2f4f6f", trim: "#e8cf94", pip: "S", pipCol: "#2f4f6f" },
   // coming to the table: closed, ribboned
   cribbage: { body: "#7a3b2a", trim: "#e8cf94", pip: "C", pipCol: "#7a3b2a" },
   ginrummy: { body: "#2d6466", trim: "#d8c08a", pip: "D", pipCol: "#2d6466" },
@@ -37,7 +38,9 @@ export function tuckBox(game, name, { locked = false, soon = false } = {}) {
   const b = BOXES[game], dark = mix(b.body, "#000000", 0.35), light = mix(b.body, "#ffffff", 0.18);
   const label = `<ellipse cx="58" cy="92" rx="40" ry="30" fill="#f6ecd6" stroke="${b.trim}" stroke-width="2.4"/>
     <path d="${PIP[b.pip]}" transform="translate(48 66) scale(.2)" fill="${b.pipCol}"/>
-    <text x="58" y="110" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="15" fill="#2a2118">${name}</text>`;
+    ${name.length > 10 && name.includes(" ") // a two-word name over two lines ("Classic / Whist"), so it stays inside the label
+      ? `<text x="58" y="103" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="11" fill="#2a2118">${name.slice(0, name.lastIndexOf(" "))}</text><text x="58" y="117" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="15" fill="#2a2118">${name.slice(name.lastIndexOf(" ") + 1)}</text>`
+      : `<text x="58" y="110" text-anchor="middle" font-family="Alegreya, Georgia, serif" font-weight="600" font-size="15" fill="#2a2118">${name}</text>`}`;
   const ribbon = soon ? `<rect x="0" y="134" width="116" height="12" fill="#c9a45c"/><path d="M22 140 l-14 -10 v20z M22 140 l14 -10 v20z" fill="#b8924c"/><circle cx="22" cy="140" r="5" fill="#e8cf94"/>` : "";
   const lock = locked ? `<g transform="translate(86 128)"><path d="M4 0 a8 8 0 0 1 16 0 v6 h-4 v-6 a4 4 0 0 0 -8 0 v6 h-4z" fill="#c9a45c"/><rect x="0" y="6" width="24" height="18" rx="3" fill="#c9a45c" stroke="#8a6f3e"/><circle cx="12" cy="15" r="2.5" fill="#5a4320"/></g>` : "";
   return `<svg viewBox="-6 -40 140 214" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
