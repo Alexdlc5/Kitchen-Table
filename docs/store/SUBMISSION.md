@@ -251,6 +251,10 @@ the two disagree; take the price from `platform.prices()` everywhere.
 
 ## Other languages
 
-Only `listing.en-US.json` exists. Its `"locales_pending": true` lets `store-check.mjs` pass without the other 7
-(de, es, pt-BR, ja, ko, zh-Hans, hi); remove that line when the translations land, and check every keyword list stays
-under 100 bytes.
+Listings in 8 languages: `listing.<locale>.json` for en-US, de-DE, es-MX, pt-BR, ja, ko, zh-Hans and hi; the file
+name is the ASC language (English (U.S.), German, Spanish (Mexico), Portuguese (Brazil), Japanese, Korean, Chinese
+(Simplified), Hindi). In ASC, pick each language from the menu at the top right of the version page (add it first
+with **+** in App Information › Localizable Information) and paste the same fields as for English; subtitle and
+privacy URL live under App Information. `store-check.mjs` keeps every field under Apple's limits (keywords in bytes).
+The screenshots are English for every language: leave the other languages' screenshot slots empty and ASC uses the
+English ones. No prices in the other languages' text (storefronts differ); the English description says $6.99.

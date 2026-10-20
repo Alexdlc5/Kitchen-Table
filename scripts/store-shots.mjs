@@ -100,7 +100,10 @@ async function shoot(page, base, shot, S) {
   else {
     await page.evaluate((g) => kt.newGame(g), shot.game);
     await page.waitForFunction(({ sheet, left, trick }) => {
-      if (sheet) { if (kt.screen === "sheet") return true; if (kt.pending) kt.autoplay(); return false; }
+      if (sheet) { // a hand the player's side made: a "SET" stamp is the wrong first impression
+        if (kt.screen === "sheet") { if (/set/i.test(document.querySelector("#sheet .stamp")?.textContent || "")) throw new Error("not the staged moment: set"); return true; }
+        if (kt.pending) kt.autoplay(); return false;
+      }
       if (kt.screen === "sheet") throw new Error("the hand ended before the staged moment: try another seed");
       const p = kt.pending, st = kt.G?.st;
       if (!p || p.seat !== 0) return false;

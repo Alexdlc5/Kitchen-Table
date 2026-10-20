@@ -54,10 +54,7 @@ else {
     if (/<[a-z]/i.test(d.description || "")) say(`${f}: description contains HTML`);
     for (const k of ["support_url", "privacy_policy_url"]) if (!/^https?:\/\//.test(d[k] || "")) say(`${f}: ${k} must be a full URL`);
   }
-  // "locales_pending": true in the English listing lets the other 7 be missing while the English strings settle; delete it
-  // when the translations land (CI runs this script as is, so the switch lives in the data, not in a flag)
-  const pending = files.some((f) => JSON.parse(readFileSync(`${DIR}/${f}`, "utf8")).locales_pending === true);
-  for (const l of LOCALES) if (!seen.some((s) => s === l || s.startsWith(l + "-"))) (pending && l !== "en" ? console.log : say)(`${pending && l !== "en" ? "note: pending: " : ""}missing listing for ${l}`);
+  for (const l of LOCALES) if (!seen.some((s) => s === l || s.startsWith(l + "-"))) say(`missing listing for ${l}`);
   // iPhone 6.1" (Dynamic Island, medium) in screens/, iPad 13" in screens/ipad/ (the app runs on iPad, so App Store Connect asks for both)
   for (const [sub, W, H] of [["", 1206, 2622], ["/ipad", 2064, 2752]]) {
     const d = `${DIR}/screens${sub}`, pngs = existsSync(d) ? readdirSync(d).filter((f) => f.endsWith(".png")) : [];

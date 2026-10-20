@@ -22,7 +22,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>${FRAME_CSS}
   .device { left: auto; right: 210px; transform: none; top: 110px; width: ${480 + 28}px; height: ${480 * 874 / 402 + 28}px; padding: 14px; border-radius: 74px; }
   .device img { border-radius: 60px; }</style>
   <div class="left"><div class="kicker">Play a game of cards at…</div><h1>The Kitchen Table</h1><span class="rule"></span>
-    <p>Hearts, Spades, Euchre, Oh Hell and Classic Whist.<br>No ads, ever. A fair deal you can check.</p><div class="props">${titleProps()}<div class="fan">${fan}</div></div></div>
+    <p>Hearts, Spades, Euchre,<br>Oh Hell and Classic Whist.<br>No ads, ever. A fair deal you can check.</p><div class="props">${titleProps()}<div class="fan">${fan}</div></div></div>
   <div class="device"><img src="data:image/png;base64,${hearts.toString("base64")}"></div>`;
 const png = await paint(browser, srv, html, 1920, 1280, 2);
 mkdirSync("docs/store", { recursive: true });
