@@ -255,6 +255,26 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     return out;
   });
   await report("asks-first", asks);
+  // R3: the blind nil exchange as shipped (Kitchen, 2 cards): bid blind nil face down, pick two cards, pass them, get two back
+  const swap = await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];
+    kt.S.last.preset = "kitchen"; kt.newGame("spades");
+    document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click(); await sleep(100);
+    kt.G.totals = { score: [0, 150], bags: [0, 0] }; kt.ACT.next();
+    await sleep(0); document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click();
+    for (let t = 0; t < 200 && !(kt.pending?.seat === 0 && kt.pending.kind === "bid" && kt.G.st.totals.score[1] === 150); t++) await sleep(50);
+    document.querySelector("#center [data-act=bid][data-v=blind]")?.click();
+    for (let t = 0; t < 200 && !(kt.pending?.seat === 0 && kt.pending.kind === "exchange"); t++) await sleep(50);
+    if (kt.pending?.kind !== "exchange") { kt.S.last.preset = "standard"; return [`no exchange after a blind nil (phase ${kt.G.st.phase})`]; }
+    if (!/Pick 2 cards to pass to /.test(document.querySelector("#center .say")?.textContent || "")) out.push("no pick-2 panel");
+    for (const c of [...document.querySelectorAll("#hand .card:not([disabled])")].slice(-2)) c.click();
+    document.querySelector("#center [data-act=swap]")?.click();
+    for (let t = 0; t < 200 && kt.G.st.phase === "exchange"; t++) await sleep(50);
+    if (kt.G.st.phase === "exchange" || kt.G.st.received[0]?.length !== 2) out.push(`the exchange didn't finish (phase ${kt.G.st.phase})`);
+    kt.S.last.preset = "standard";
+    return out;
+  });
+  await report("blind-nil-swap", swap);
   // F2-F6: the Fair deal page from ledger.view(): 250 real deals from the real dealer fill every section with numbers
   const fair = await page.evaluate(async () => {
     const { newSeed } = await import("./dealer.js"), cards = await import("./cards.js"), ledger = await import("./ledger.js"), keep = kt.S.deals;
