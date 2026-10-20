@@ -101,7 +101,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("response", (r) => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
   if (COMFORT) await page.addInitScript(() => localStorage.setItem("kt.save", JSON.stringify({ reset: 1, opt: { comfort: true } })));
-  await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast${LANG ? "&lang=" + LANG : ""}`);
+  await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast&cut${LANG ? "&lang=" + LANG : ""}`);
   await page.waitForFunction(() => window.kt, null, { timeout: 15000 });
   // every sentence the live region shows is logged with when it was written (kt.said.log); P0-3: none may be replaced before it
   // could be read. And nothing else may write the live region behind the queue's back.
@@ -132,6 +132,21 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   await report("dialog-focus", [!inDialog[0] && "focus not in the dialog", !inDialog[1] && "dialog not labelled by its heading", !inDialog[2] && "the page behind the dialog isn't inert", !back && "focus not back on the button that opened it"]);
   for (const game of ["hearts", "spades", "euchre", "ohhell", "whist"]) {
     await page.evaluate((g) => kt.newGame(g), game);
+    // F1: in a game that deals by the cut, the fingerprint comes first; a tap 30% along the deck cuts there, and that's the deal
+    const shown = await page.evaluate(async () => document.querySelector("#dialog:not([hidden]) [data-dlg=cut]") && { fp: document.querySelector("#dialog .fp").textContent.replace(/\s/g, ""), seed: kt.G.nextSeed, n: +document.querySelector("[data-dlg=cut]").dataset.n, focused: document.getElementById("dialog").contains(document.activeElement) });
+    let cutBad = [];
+    if (shown) {
+      const r = await (await page.$("[data-dlg=cut]")).boundingBox();
+      await page.mouse.click(r.x + r.width * 0.3, r.y + r.height / 2);
+      await page.waitForFunction(() => kt.G.st && !kt.G.nextSeed, null, { timeout: 5000 });
+      cutBad = await page.evaluate(async (s) => {
+        const { fingerprint } = await import("./dealer.js"), cards = await import("./cards.js"), st = kt.G.st, want = Math.round(0.3 * (s.n - 2)) + 1;
+        const deck = st.game === "euchre" ? (await import("./euchre.js")).DECK : cards.newDeck(), size = { euchre: 5, ohhell: st.size }[st.game] ?? 13;
+        return [fingerprint(s.seed) !== s.fp && "the fingerprint shown isn't the seed's", st.seed !== s.seed && "the deal used another seed", st.cut !== want && `cut ${st.cut}, tapped at ${want}`,
+          JSON.stringify(cards.dealOut(st.seed, st.dealer, deck, size, st.cut).hands) !== JSON.stringify(st.hands) && "the hands aren't the cut deal", !s.focused && "focus not on the cut"];
+      }, shown);
+    }
+    await report(`${game}-cut`, shown || game === "hearts" || game === "spades" ? cutBad : ["no cut offered"]); // Hearts and Spades cut once #16 lands
     // R10: the human's turn waits as long as they need
     await page.waitForFunction(() => kt.G && kt.pending && kt.pending.seat === 0, null, { timeout: 20000 }); // the game is asking the player
     const before = await page.evaluate(() => JSON.stringify([kt.G.st.phase, kt.G.st.history.length, kt.G.st.bids]));
@@ -159,7 +174,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
       return [...seen, ...kt.blocked.map((b) => "overlay: blocked: " + b), ...(kt.screen === "sheet" ? [] : ["the hand never finished"])];
     });
     await report(`${game}-hand`, seen);
-    await report(`${game}-sheet`, await page.evaluate(AUDIT, "sheet"));
+    await report(`${game}-sheet`, [...(await page.evaluate(AUDIT, "sheet")), ...(await page.evaluate(() => { const h = kt.G.history.at(-1), t = document.getElementById("sheet").textContent; return [!t.includes(`cut ${h.cut}`) && "the sheet doesn't print the cut", !t.includes(h.fp) && "the sheet doesn't print the fingerprint"]; }))]);
     // reopening the app on the score sheet shows it again; it never scores the same hand twice
     await report(`${game}-reopen`, await page.evaluate(async () => { const n = kt.G.history.length, sc = JSON.stringify(kt.G.totals); kt.ACT.resume(); await new Promise((r) => setTimeout(r, 200)); return [kt.G.history.length !== n || JSON.stringify(kt.G.totals) !== sc ? "the hand was scored again" : null, kt.screen !== "sheet" ? `on ${kt.screen}, not the sheet` : null]; }));
     await page.evaluate(() => { kt.G.over = 0; kt.ACT.next(); });
@@ -177,6 +192,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   const cover = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];
     kt.S.last.seats = ["you", "human", "bot", "bot"]; kt.newGame("hearts");
+    document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click();
     for (let t = 0; t < 200 && !(kt.pending?.seat === 0); t++) await sleep(50);
     const hand = document.getElementById("hand").getBoundingClientRect();
     kt.pending.resolve(kt.pending.kind === "pass" ? kt.pending.legal.slice(0, 3) : kt.pending.legal[0]);
@@ -198,8 +214,10 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   const asks = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];
     kt.S.last.preset = "kitchen"; kt.newGame("spades");
+    document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click(); await sleep(100);
     kt.G.totals = { score: [0, 150], bags: [0, 0] }; kt.ACT.next(); // a new hand, your team 150 behind
-    for (let t = 0; t < 200 && !(kt.pending?.seat === 0); t++) await sleep(50);
+    await sleep(0); document.querySelector("#dialog:not([hidden]) [data-dlg=cut]")?.click();
+    for (let t = 0; t < 200 && !(kt.pending?.seat === 0 && kt.G.st.totals.score[1] === 150); t++) await sleep(50); // asked in the new hand, not the last
     const cards = [...document.querySelectorAll("#hand .card")];
     if (!cards.length || cards.some((c) => c.getAttribute("aria-label") !== "Face-down card")) out.push("cards not face down with blind nil open");
     if (!document.querySelector("#center [data-act=look]") || !document.querySelector('#center [data-act=bid][data-v=blind]')) out.push("no Look at my cards / Bid blind nil");

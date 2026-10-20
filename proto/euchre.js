@@ -3,8 +3,7 @@
 // Phases and actions: "farmer" {swap: [3 cards] | null} (farmer's hand), "bid1" {call: "pass" | "order", alone?},
 // "bid2" {call: "pass" | suit, alone?}, "discard" a card (the dealer, after picking up), "defend" {defend: bool}
 // (defend alone), "play" a card string. A hand everyone passes twice ends with no maker (thrown in).
-import { deal } from "./dealer.js";
-import { SUITS, winnerIndex, followable, next, partner, team } from "./cards.js";
+import { SUITS, dealOut, winnerIndex, followable, next, partner, team } from "./cards.js";
 
 export const DECK = [...SUITS].flatMap((s) => [..."9TJQKA"].map((r) => r + s));
 export const MATE = { S: "C", C: "S", H: "D", D: "H" };
@@ -15,11 +14,9 @@ export const isFarmer = (hand) => hand.every((c) => c[0] === "9" || c[0] === "T"
 const combos = (a, k) => (k ? a.flatMap((x, i) => combos(a.slice(i + 1), k - 1).map((c) => [x, ...c])) : [[]]);
 const nextIn = (st, s) => { do s = next(s); while (st.out.includes(s)); return s; };
 
-// five cards each, round-robin from the dealer's left; the last four are the kitty, its top card turned up
-export function newHand(rules, seed, dealer, totals = { score: [0, 0] }, handNo = 0) {
-  const p = deal(seed, 24), hands = [[], [], [], []];
-  p.slice(0, 20).forEach((ci, k) => hands[(dealer + 1 + k) % 4].push(DECK[ci]));
-  const kitty = p.slice(20).map((ci) => DECK[ci]);
+// five cards each, round-robin from the dealer's left after the player's cut; the last four are the kitty, its top card turned up
+export function newHand(rules, seed, dealer, totals = { score: [0, 0] }, handNo = 0, cut = 0) {
+  const { hands, rest: kitty } = dealOut(seed, dealer, DECK, 5, cut);
   const st = {
     game: "euchre", rules, seed, dealer, handNo, totals: structuredClone(totals),
     phase: "bid1", turn: next(dealer), hands, kitty, up: kitty[0], trump: null, maker: null, alone: false, defender: null, out: [],

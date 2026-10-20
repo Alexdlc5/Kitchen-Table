@@ -270,7 +270,7 @@ function cutsDeal(game) {
   return cutWorks[game];
 }
 async function cutDeck(seed) {
-  if (!cutsDeal(G.game)) return 0;
+  if (!cutsDeal(G.game) || (qs.has("fast") && !qs.has("cut"))) return 0; // ?fast (tests) deals uncut unless it asks for the cut (&cut, smoke.mjs)
   const n = G.game === "euchre" ? 24 : 52, fp = fingerprint(seed);
   const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed: its fingerprint is <b class="seed fp">${fp.slice(0, 4)} ${fp.slice(4)}</b>. Tap the deck where you'd like to cut it.</p>
     <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
@@ -287,6 +287,8 @@ const faceDown = (s) => G.seats[s].kind === "human" && !G.looked?.[s] && (pendin
 const humans = () => G.seats.filter((s) => s.kind !== "bot").length; // "remote": a person at another device
 async function run() {
   const my = ++runId, m = MOD[G.game], st = G.st;
+  pending = null; // a question from a loop that's been replaced is nobody's to answer, and must not draw this hand's choices
+  if (!$("#handoff").hidden) { $("#handoff").hidden = true; cover(false); } // a cover left up by the last game's loop belongs to nobody now
   show("table"); handLive = st.phase !== "done"; drawTable();
   if (G.justDealt) { G.justDealt = false; await dealIn(); }
   while (st.phase !== "done") {
