@@ -1,7 +1,8 @@
 // The fair deal ledger (DESIGN.md §7): entry() keeps one small record per deal (your hand as dealt, before any pass),
 // view() turns the last deals into what the Fair deal screen draws. Every "expected" number below is a constant
 // measured with dealer.js over 200,000 deals, all four seats (`node sim/test_fair.mjs --measure 200000` prints them;
-// the test re-measures 50,000 other deals against them). Bands are where a fair deck lands 95% of the time.
+// the test re-measures 50,000 other deals against them). Bands are 3 standard errors wide: where a fair deck lands
+// 997 times in 1,000. With ~25 bars on the screen, 95% bands would show most fair players a bar outside its band.
 import { eff, pow } from "./spades.js";
 import { nilRisk, nilForbidden } from "./ai.js";
 
@@ -22,7 +23,7 @@ export const EXPECT = {
   jacks: [0.834,0.758], // jacks in a Euchre hand: mean, sd
 };
 
-const HIGH = "AKQJ", NIL_RISK = 0.22; // NIL_RISK: Standard's nil threshold in ai.js
+const HIGH = "AKQJ", NIL_RISK = 0.22, Z = 3; // NIL_RISK: Standard's nil threshold in ai.js
 const BUCKETS = ["0 or 1", "2", "3", "4", "5", "6", "7 or more"];
 const r2 = (x) => Math.round(x * 100) / 100;
 const highs = (h) => h.filter((c) => HIGH.includes(c[0])).length;
@@ -50,18 +51,19 @@ export function entry({ hand, others = [], game, rules = {}, standing }) {
 
 // a share: k of n hands against p% expected
 function share(label, k, n, p) {
-  const half = 196 * Math.sqrt(((p / 100) * (1 - p / 100)) / n);
+  const half = 100 * Z * Math.sqrt(((p / 100) * (1 - p / 100)) / n);
   return { label, mine: r2((100 * k) / n), expected: p, lo: r2(Math.max(0, p - half)), hi: r2(Math.min(100, p + half)), n };
 }
 // an average: xs = [[yours, expected mean, sd], ...], one per hand (hand sizes may differ)
 function average(label, xs) {
   const n = xs.length, sum = (f) => xs.reduce((a, x) => a + f(x), 0);
   if (!n) return { label, mine: null, expected: null, lo: null, hi: null, n };
-  const exp = sum((x) => x[1]) / n, half = (1.96 * Math.sqrt(sum((x) => x[2] * x[2]))) / n;
+  const exp = sum((x) => x[1]) / n, half = (Z * Math.sqrt(sum((x) => x[2] * x[2]))) / n;
   return { label, mine: r2(sum((x) => x[0]) / n), expected: r2(exp), lo: r2(exp - half), hi: r2(exp + half), n };
 }
 
 const MIN = 200, EMPTY = 20;
+export const NOTE = "Each band is where a fair deck almost always lands. With this many bars, about one fair player in ten still sees one outside its band by chance.";
 export function view(entries) {
   const all = (entries || []).filter((e) => e && e.d && typeof e.hc === "number"), n = all.length;
   if (n < EMPTY) return { n, empty: true, sections: [] };
@@ -96,12 +98,12 @@ export function view(entries) {
   const hearts = all.filter((e) => e.g === "hearts" && e.qs != null);
   add("queen", "The queen of spades", "%", "Hearts: how often she's dealt to you. Fair is one hand in four.", hearts, () => [share("Dealt to you", hearts.filter((e) => e.qs).length, hearts.length, EXPECT.queen)]);
   const nils = all.filter((e) => e.g === "spades" && e.nil != null);
-  add("nil", "Hands you could bid nil on", "%", "Spades. The plain rule: at most 2 spades, none above the 9, and no ace in another suit. The bots weigh every card.", nils, () =>
+  add("nil", "Hands you could bid nil on", "%", "Spades. The plain rule: at most 2 spades, none above the 9, and no ace in another suit. Standard bots weigh every card.", nils, () =>
     ["plain", "jokers"].flatMap((d) => {
       const of = nils.filter((e) => e.d === d), x = d === "jokers" ? "Jokers deck" : "Regular deck";
-      return of.length ? [share(`${x}, plain rule`, of.filter((e) => e.nil).length, of.length, EXPECT.nil[d][0]), share(`${x}, the bots' rule`, of.filter((e) => e.nb).length, of.length, EXPECT.nil[d][1])] : [];
+      return of.length ? [share(`${x}, plain rule`, of.filter((e) => e.nil).length, of.length, EXPECT.nil[d][0]), share(`${x}, Standard bots' rule`, of.filter((e) => e.nb).length, of.length, EXPECT.nil[d][1])] : [];
     }));
   const euchre = all.filter((e) => e.g === "euchre" && e.jk != null);
   add("jacks", "Jacks in Euchre", "cards", "Jacks dealt to you in five cards from the 24-card deck, before trump is named.", euchre, () => [average("Jacks per hand", euchre.map((e) => [e.jk, EXPECT.jacks[0], EXPECT.jacks[1]]))]);
-  return { n, empty: false, sections };
+  return { n, empty: false, note: NOTE, sections };
 }

@@ -1,7 +1,7 @@
 // The whole fair deal. This file imports nothing and reads nothing but its arguments (asserted in sim/test_sim.mjs).
 // A seed is 128 random bits, written as 26 Crockford base-32 characters. deal(seed, n) is a Fisher-Yates shuffle of
 // 0..n-1 driven by xoshiro128** (seeded through SplitMix32), with rejection sampling so no card is favoured.
-// fingerprint(seed) is shown before the deal, so the seed is fixed before the player cuts (cards.js applies the cut).
+// fingerprint(seed) is shown before the deal, so the seed is fixed before the player cuts (cards.js mixes the cut in).
 // site/verify.html runs this same file.
 
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -63,9 +63,10 @@ export function deal(seed, n) {
   return p;
 }
 
-// The first 8 hex digits of SHA-256 over the seed's 16 bytes. Any SHA-256 tool gives the same answer.
+// The first 16 hex digits (64 bits) of SHA-256 over the seed's 16 bytes, as "A1B2 C3D4 E5F6 7788". Any SHA-256 tool
+// gives the same answer.
 export function fingerprint(seed) {
-  return sha256(seedBytes(seed)).slice(0, 8).toUpperCase();
+  return sha256(seedBytes(seed)).slice(0, 16).toUpperCase().match(/.{4}/g).join(" ");
 }
 
 export function seedBytes(seed) { // the 128 bits, most significant byte first

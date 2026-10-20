@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { newSeed, encode, deal, fingerprint, seedBytes, sha256 } from "../proto/dealer.js";
-import { newDeck, dealHands, dealOut, rulesFor } from "../proto/cards.js";
-import { entry, view, EXPECT } from "../proto/ledger.js";
+import { newDeck, dealHands, dealOut, cutSeed, rulesFor } from "../proto/cards.js";
+import { entry, view, EXPECT, NOTE } from "../proto/ledger.js";
 import * as hearts from "../proto/hearts.js";
 import * as spades from "../proto/spades.js";
 import * as euchre from "../proto/euchre.js";
@@ -24,45 +24,49 @@ assert.ok(!R.plain.jokers && R.jokers.jokers, "standard deals a regular deck, ki
 // ---------------------------------------------------------------- the ledger's expectations, measured
 
 // every seat of `deals` deals: a regular and a Jokers deck (13 each), Euchre's 24 (5 each), Oh Hell at 1-12 cards
-// (dealt round-robin, an Oh Hell hand of k is the first k cards of the full deal's hand)
+// (dealt round-robin, an Oh Hell hand of k is the first k cards of the full deal's hand). Each statistic is summed per
+// deal (four hands), so its standard error counts the deal as the unit: the four hands of one deal aren't independent.
 function measure(deals, seedAt) {
-  const high = {}, shapes = { plain: {}, jokers: {} }, sp = { plain: Array(7).fill(0), jokers: Array(7).fill(0) };
-  const nil = { plain: [0, 0], jokers: [0, 0] }, n13 = { plain: 0, jokers: 0 }, jk = [0, 0, 0];
-  let queen = 0;
+  const S = {}, Q = {}, listed = Object.fromEntries(["plain", "jokers"].map((d) => [d, new Set(EXPECT.shapes[d].slice(0, -1).map(([s]) => s))]));
+  let cur;
+  const put = (k, x) => (cur[k] = (cur[k] || 0) + x);
   const each = (hands, game, rules, fn) => hands.forEach((hand, s) => fn(entry({ hand, others: hands.filter((_, t) => t !== s), game, rules, standing: "level" }), hand));
-  const stat = (key, e) => { const a = (high[key] ??= [0, 0, 0, 0, 0]); a[0]++; a[1] += e.hc; a[2] += e.hc * e.hc; a[3] += e.o; a[4] += e.o * e.o; };
+  const stat = (key, e) => { put("hc" + key, e.hc); put("hq" + key, e.hc * e.hc); put("o" + key, e.o); put("oq" + key, e.o * e.o); };
   for (let i = 0; i < deals; i++) {
-    const seed = seedAt(i);
-    const full = dealHands(seed, 0, newDeck());
+    const seed = seedAt(i), full = dealHands(seed, 0, newDeck());
+    cur = {};
     for (const d of ["plain", "jokers"]) each(d === "plain" ? full : dealHands(seed, 0, newDeck(true)), "spades", R[d], (e, hand) => {
-      stat("13", e); n13[d]++;
-      shapes[d][e.sh] = (shapes[d][e.sh] || 0) + 1;
-      sp[d][Math.min(6, Math.max(0, e.sp - 1))]++;
-      nil[d][0] += e.nil; nil[d][1] += e.nb;
-      if (d === "plain") queen += entry({ hand, game: "hearts" }).qs;
+      if (d === "plain") { stat("13", e); put("queen", entry({ hand, game: "hearts" }).qs); } // the Jokers deck has the same 16 high cards
+      put(`sh.${d}.${e.sh}`, 1); put(`sho.${d}`, listed[d].has(e.sh) ? 0 : 1);
+      put(`sp.${d}.${Math.min(6, Math.max(0, e.sp - 1))}`, 1);
+      put(`nil.${d}`, e.nil); put(`nb.${d}`, e.nb);
     });
-    each(dealOut(seed, 0, euchre.DECK, 5).hands, "euchre", {}, (e) => { stat("e5", e); jk[0]++; jk[1] += e.jk; jk[2] += e.jk * e.jk; });
+    each(dealOut(seed, 0, euchre.DECK, 5).hands, "euchre", {}, (e) => { stat("e5", e); put("jk", e.jk); put("jkq", e.jk * e.jk); });
     for (let k = 1; k <= 12; k++) each(full.map((h) => h.slice(0, k)), "ohhell", {}, (e) => stat(String(k), e));
+    for (const k in cur) { S[k] = (S[k] || 0) + cur[k]; Q[k] = (Q[k] || 0) + cur[k] ** 2; }
   }
-  const f = (x, d) => +x.toFixed(d), sd = (n, s, q) => Math.sqrt(q / n - (s / n) ** 2);
-  const pct = (k, n) => f((100 * k) / n, 2);
+  // [value, standard error]: the mean of one hand's statistic (x scale), or its standard deviation
+  const get = (k, scale = 1) => [(scale * (S[k] || 0)) / (4 * deals), (scale * Math.sqrt(Math.max(0, (Q[k] || 0) / deals - ((S[k] || 0) / deals) ** 2) / deals)) / 4];
+  const sd = (k, q) => { const v = Math.sqrt(get(q)[0] - get(k)[0] ** 2); return [v, v / Math.sqrt(2 * deals)]; };
+  const f = (x, d) => +x.toFixed(d), pct = (k) => f(get(k, 100)[0], 2);
   const top = (d) => {
-    const best = Object.entries(shapes[d]).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    return [...best.map(([s, k]) => [s, pct(k, n13[d])]), ["other", pct(n13[d] - best.reduce((a, [, k]) => a + k, 0), n13[d])]];
+    const best = Object.keys(S).filter((k) => k.startsWith(`sh.${d}.`)).sort((a, b) => S[b] - S[a]).slice(0, 10);
+    return [...best.map((k) => [k.split(".")[2], pct(k)]), ["other", f(100 - best.reduce((a, k) => a + get(k, 100)[0], 0), 2)]];
   };
-  return {
-    high: Object.fromEntries(Object.entries(high).map(([k, a]) => [k, [f(a[1] / a[0], 3), f(sd(a[0], a[1], a[2]), 3), f(a[3] / a[0], 3), f(sd(a[0], a[3], a[4]), 3)]])),
+  const expect = {
+    high: Object.fromEntries(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "e5"].map((k) => [k, [get("hc" + k)[0], sd("hc" + k, "hq" + k)[0], get("o" + k)[0], sd("o" + k, "oq" + k)[0]].map((x) => f(x, 3))])),
     shapes: { plain: top("plain"), jokers: top("jokers") },
-    spades: { plain: sp.plain.map((k) => pct(k, n13.plain)), jokers: sp.jokers.map((k) => pct(k, n13.jokers)) },
-    nil: { plain: nil.plain.map((k) => pct(k, n13.plain)), jokers: nil.jokers.map((k) => pct(k, n13.jokers)) },
-    queen: pct(queen, n13.plain),
-    jacks: [f(jk[1] / jk[0], 3), f(sd(jk[0], jk[1], jk[2]), 3)],
+    spades: Object.fromEntries(["plain", "jokers"].map((d) => [d, [0, 1, 2, 3, 4, 5, 6].map((b) => pct(`sp.${d}.${b}`))])),
+    nil: Object.fromEntries(["plain", "jokers"].map((d) => [d, [pct(`nil.${d}`), pct(`nb.${d}`)]])),
+    queen: pct("queen"),
+    jacks: [f(get("jk")[0], 3), f(sd("jk", "jkq")[0], 3)],
   };
+  return { expect, get, sd };
 }
 
 const at = process.argv.indexOf("--measure");
 if (at > 0) {
-  const N = +process.argv[at + 1] || 200000, m = measure(N, () => newSeed()), J = JSON.stringify;
+  const N = +process.argv[at + 1] || 200000, m = measure(N, () => newSeed()).expect, J = JSON.stringify;
   console.log(`  high: ${J(m.high)},\n  shapes: {\n    plain: ${J(m.shapes.plain)},\n    jokers: ${J(m.shapes.jokers)},\n  },`);
   console.log(`  spades: { plain: ${J(m.spades.plain)}, jokers: ${J(m.spades.jokers)} },\n  nil: { plain: ${J(m.nil.plain)}, jokers: ${J(m.nil.jokers)} },`);
   console.log(`  queen: ${m.queen.toFixed(2)},\n  jacks: ${J(m.jacks)},\n(${N} deals, all four seats)`);
@@ -79,22 +83,22 @@ await test("dealer.js still imports nothing", () => {
   assert.doesNotMatch(read("../proto/dealer.js").replace(/\/\/.*$/gm, ""), /\bimport\b|\brequire\(/);
 });
 
-await test("fingerprint: the first 8 hex digits of SHA-256 of the seed's 16 bytes (goldens and node's crypto)", () => {
-  assert.equal(fingerprint("0000-0000-0000-0000-0000-0000-00"), "374708FF"); // SHA-256 of 16 zero bytes
-  assert.equal(fingerprint(GOLDEN_SEED), "05296D3E"); // cross-checked with Python hashlib
-  assert.equal(fingerprint(encode([0xdeadbeef, 0, 0xffffffff, 12345])), "832798A8");
+await test("fingerprint: the first 16 hex digits of SHA-256 of the seed's 16 bytes, in fours (goldens and node's crypto)", () => {
+  assert.equal(fingerprint("0000-0000-0000-0000-0000-0000-00"), "3747 08FF F771 9DD5"); // SHA-256 of 16 zero bytes
+  assert.equal(fingerprint(GOLDEN_SEED), "0529 6D3E 3488 C222"); // cross-checked with Python hashlib
+  assert.equal(fingerprint(encode([0xdeadbeef, 0, 0xffffffff, 12345])), "8327 98A8 79C5 1A1D");
   assert.equal(fingerprint(GOLDEN_SEED.toLowerCase().replace(/-/g, " ")), fingerprint(GOLDEN_SEED), "same seed text rules as deal()");
   assert.equal(sha256(new TextEncoder().encode("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"); // FIPS 180-4 example
   for (let i = 0; i < 500; i++) {
     const s = newSeed(), h = createHash("sha256").update(seedBytes(s)).digest("hex");
-    assert.equal(fingerprint(s), h.slice(0, 8).toUpperCase());
+    assert.equal(fingerprint(s), h.slice(0, 16).toUpperCase().match(/.{4}/g).join(" "));
     assert.equal(sha256(seedBytes(s)), h);
   }
   for (let len = 0; len < 200; len++) { // every padding case, one and several blocks
     const b = Uint8Array.from({ length: len }, (_, k) => (k * 151 + len) & 255);
     assert.equal(sha256(b), createHash("sha256").update(b).digest("hex"), `length ${len}`);
   }
-  assert.match(fingerprint(newSeed()), /^[0-9A-F]{8}$/);
+  assert.match(fingerprint(newSeed()), /^[0-9A-F]{4}( [0-9A-F]{4}){3}$/, "64 bits: a seed with a chosen fingerprint is out of reach");
 });
 
 // ---------------------------------------------------------------- the cut (F1)
@@ -110,18 +114,22 @@ await test("cut 0 deals exactly what every game dealt before the cut existed", (
   }
 });
 
-await test("the cut is a rotation of the seeded order: the top `cut` cards go to the bottom (goldens)", () => {
-  const p = deal(GOLDEN_SEED, 52), deck = newDeck();
-  for (const cut of [0, 1, 17, 51]) {
-    const q = p.slice(cut).concat(p.slice(0, cut)), want = [[], [], [], []];
-    q.forEach((ci, k) => want[(2 + 1 + k) % 4].push(deck[ci]));
-    assert.deepEqual(dealHands(GOLDEN_SEED, 2, deck, cut), want, `cut ${cut}`);
+await test("the cut is mixed into the shuffle: cut c deals from SHA-256(seed bytes, c) (goldens, node's crypto)", () => {
+  const deck = newDeck(), mixed = (seed, c) => { const h = createHash("sha256").update(Uint8Array.of(...seedBytes(seed), c)).digest(); return encode([0, 4, 8, 12].map((i) => h.readUInt32BE(i))); };
+  assert.equal(cutSeed(GOLDEN_SEED, 0), GOLDEN_SEED, "no cut: the seed itself");
+  for (let i = 0; i < 200; i++) {
+    const seed = newSeed(), c = 1 + (i % 51);
+    assert.equal(cutSeed(seed, c), mixed(seed, c));
+    const want = [[], [], [], []];
+    deal(mixed(seed, c), 52).forEach((ci, k) => want[(2 + 1 + k) % 4].push(deck[ci]));
+    assert.deepEqual(dealHands(seed, 2, deck, c), want);
   }
-  // first cards to the dealer's left at cut 0 and cut 17 (dealer 3, so seat 0 is first); cross-checked in Python
+  // cross-checked in Python (hashlib and the shuffle)
+  assert.equal(cutSeed(GOLDEN_SEED, 17), "26S7-PZW5-QQBX-Z81B-EE02-ZX70-FQ");
+  assert.deepEqual(dealHands(GOLDEN_SEED, 3, deck, 17)[0].slice(0, 4), ["AH", "5S", "8C", "QH"]);
   assert.deepEqual(dealHands(GOLDEN_SEED, 3, deck, 0)[0].slice(0, 2), [deck[47], deck[0]]);
-  assert.deepEqual(dealHands(GOLDEN_SEED, 3, deck, 17)[0].slice(0, 4), ["JH", "8C", "6D", "QS"]);
-  const all = new Set(Array.from({ length: 52 }, (_, c) => JSON.stringify(dealHands(GOLDEN_SEED, 0, deck, c))));
-  assert.equal(all.size, 52, "every cut gives a different deal");
+  const mine = new Set(Array.from({ length: 52 }, (_, c) => [...dealHands(GOLDEN_SEED, 0, deck, c)[0]].sort().join("")));
+  assert.equal(mine.size, 52, "every cut gives you a different hand, not the same four hands passed round");
   for (const bad of [-1, 52, 1.5, "3", NaN]) assert.throws(() => dealHands(GOLDEN_SEED, 0, deck, bad), /A cut is 0 to 51/);
   assert.throws(() => dealOut(GOLDEN_SEED, 0, euchre.DECK, 5, 24), /A cut is 0 to 23/);
 });
@@ -201,26 +209,32 @@ rmSync(dir, { recursive: true, force: true });
 
 // ---------------------------------------------------------------- the ledger (F2-F6)
 
-await test("ledger constants are within 0.2 of a fresh measurement over 50,000 other deals (all four seats)", () => {
+await test("ledger constants are within 4 standard errors of a fresh measurement over 50,000 other deals", () => {
   const m = measure(50000, (i) => encode([i, 0x2026, 0x1019, 0xfa1]));
   let worst = [0, ""];
-  const near = (a, b, what) => { assert.ok(Math.abs(a - b) <= 0.2, `${what}: ledger ${a}, measured ${b}`); if (Math.abs(a - b) > worst[0]) worst = [Math.abs(a - b), what]; };
-  for (const [k, v] of Object.entries(EXPECT.high)) v.forEach((x, i) => near(x, m.high[k][i], `high[${k}][${i}]`));
-  assert.deepEqual(Object.keys(EXPECT.high).sort(), Object.keys(m.high).sort());
-  for (const d of ["plain", "jokers"]) {
-    const E = EXPECT.shapes[d], M = Object.fromEntries(m.shapes[d]), listed = E.slice(0, -1);
-    for (const [s, p] of listed) near(p, M[s] ?? 0, `${d} shape ${s}`);
-    assert.equal(E.at(-1)[0], "other");
-    near(E.at(-1)[1], 100 - listed.reduce((a, [s]) => a + (M[s] ?? 0), 0), `${d} other shapes`);
-    near(E.reduce((a, [, p]) => a + p, 0), 100, `${d} shapes add up`);
-    for (let i = 1; i < listed.length; i++) assert.ok(listed[i][1] <= listed[i - 1][1], `${d} shapes, most common first`);
-    EXPECT.spades[d].forEach((x, i) => near(x, m.spades[d][i], `${d} spades bucket ${i}`));
-    EXPECT.nil[d].forEach((x, i) => near(x, m.nil[d][i], `${d} nil ${i ? "bots' rule" : "plain rule"}`));
+  const near = (a, [b, se], what) => { // 0.006: the constants are rounded to 2 decimals
+    const tol = Math.max(4 * se, 0.006);
+    assert.ok(Math.abs(a - b) <= tol, `${what}: ledger ${a}, measured ${b.toFixed(3)} ± ${se.toFixed(3)}`);
+    if (Math.abs(a - b) / tol > worst[0]) worst = [Math.abs(a - b) / tol, `${what}: ${a} vs ${b.toFixed(3)} ± ${se.toFixed(3)}`];
+  };
+  for (const [k, v] of Object.entries(EXPECT.high)) {
+    near(v[0], m.get("hc" + k), `high ${k}, yours`); near(v[1], m.sd("hc" + k, "hq" + k), `high ${k}, yours (sd)`);
+    near(v[2], m.get("o" + k), `high ${k}, the other three`); near(v[3], m.sd("o" + k, "oq" + k), `high ${k}, the other three (sd)`);
   }
-  near(EXPECT.queen, m.queen, "queen of spades"); EXPECT.jacks.forEach((x, i) => near(x, m.jacks[i], "euchre jacks"));
-  // and the review's figures (REVIEW_RULES F2/F3): the bots' rule nil-able 1.12% regular, 0.20% Jokers
-  near(EXPECT.nil.plain[1], 1.12, "regular deck, bots' rule"); near(EXPECT.nil.jokers[1], 0.2, "Jokers deck, bots' rule");
-  console.log(`   largest gap ${worst[0].toFixed(2)} (${worst[1]})`);
+  for (const d of ["plain", "jokers"]) {
+    const E = EXPECT.shapes[d];
+    assert.equal(E.at(-1)[0], "other");
+    for (const [s, p] of E.slice(0, -1)) near(p, m.get(`sh.${d}.${s}`, 100), `${d} shape ${s}`);
+    near(E.at(-1)[1], m.get(`sho.${d}`, 100), `${d} other shapes`);
+    assert.ok(Math.abs(E.reduce((a, [, p]) => a + p, 0) - 100) < 0.02, `${d} shapes add up`);
+    for (let i = 2; i < E.length - 1; i++) assert.ok(E[i][1] <= E[i - 1][1], `${d} shapes, most common first`);
+    EXPECT.spades[d].forEach((x, i) => near(x, m.get(`sp.${d}.${i}`, 100), `${d} spades bucket ${i}`));
+    near(EXPECT.nil[d][0], m.get(`nil.${d}`, 100), `${d} nil, plain rule`); near(EXPECT.nil[d][1], m.get(`nb.${d}`, 100), `${d} nil, Standard bots' rule`);
+  }
+  near(EXPECT.queen, m.get("queen", 100), "queen of spades"); near(EXPECT.jacks[0], m.get("jk"), "euchre jacks"); near(EXPECT.jacks[1], m.sd("jk", "jkq"), "euchre jacks (sd)");
+  // and the first review's figures (REVIEW_RULES F2/F3): the bots' rule nil-able 1.12% regular, 0.20% Jokers
+  assert.ok(Math.abs(EXPECT.nil.plain[1] - 1.12) < 0.03 && Math.abs(EXPECT.nil.jokers[1] - 0.2) < 0.02);
+  console.log(`   closest: ${(100 * worst[0]).toFixed(0)}% of its tolerance (${worst[1]})`);
 });
 
 await test("ledger.js never shuffles: no Math.random, no sort(random)", () => {
@@ -255,11 +269,11 @@ await test("ledger entry: one small record per deal (high cards, the other three
   assert.ok(JSON.stringify(entry({ hand: h[0], others: h.slice(1), game: "spades", rules: R.jokers })).length < 140, "a thousand of them fit easily in the save");
 });
 
-await test("ledger view: empty under 20 hands; sections hidden under 200 with the reason; every row has a 95% band", () => {
+await test("ledger view: empty under 20 hands; sections hidden under 200 with the reason; every row has a 3-standard-error band", () => {
   assert.deepEqual(view([]), { n: 0, empty: true, sections: [] });
   assert.equal(view(entries(19)).empty, true);
   const few = view(entries(150));
-  assert.equal(few.empty, false); assert.equal(few.n, 150);
+  assert.equal(few.empty, false); assert.equal(few.n, 150); assert.equal(few.note, NOTE);
   assert.ok(few.sections.length >= 5 && !few.sections.some((s) => s.id === "shapes-jokers" && s.n === 0));
   for (const s of few.sections) { assert.equal(s.hidden, true); assert.deepEqual(s.rows, []); assert.match(s.note, /Shows after 200 hands \(\d+ so far\)/); }
   assert.equal(view([...entries(30), null, { g: "h", j: 0, hc: 4, sh: "4432" }]).n, 30, "records from before the ledger rewrite are skipped");
@@ -271,6 +285,7 @@ await test("ledger view: empty under 20 hands; sections hidden under 200 with th
     for (const r of s.rows) {
       for (const k of ["label", "mine", "expected", "lo", "hi"]) assert.ok(k in r, `${s.id} ${r.label}: ${k}`);
       assert.ok(r.lo <= r.expected && r.expected <= r.hi, `${s.id} ${r.label}: band around expected`);
+      if (s.unit === "%" && r.lo > 0 && r.hi < 100) assert.ok(Math.abs(r.hi - r.expected - 300 * Math.sqrt((r.expected / 100) * (1 - r.expected / 100) / r.n)) < 0.01, `${s.id} ${r.label}: 3 standard errors`);
     }
   }
   const sec = (id) => v.sections.find((s) => s.id === id);
