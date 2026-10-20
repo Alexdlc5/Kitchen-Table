@@ -160,6 +160,8 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     });
     await report(`${game}-hand`, seen);
     await report(`${game}-sheet`, await page.evaluate(AUDIT, "sheet"));
+    // reopening the app on the score sheet shows it again; it never scores the same hand twice
+    await report(`${game}-reopen`, await page.evaluate(async () => { const n = kt.G.history.length, sc = JSON.stringify(kt.G.totals); kt.ACT.resume(); await new Promise((r) => setTimeout(r, 200)); return [kt.G.history.length !== n || JSON.stringify(kt.G.totals) !== sc ? "the hand was scored again" : null, kt.screen !== "sheet" ? `on ${kt.screen}, not the sheet` : null]; }));
     await page.evaluate(() => { kt.G.over = 0; kt.ACT.next(); });
     await page.waitForTimeout(300);
     await report(`${game}-results`, await page.evaluate(AUDIT, "results"));
@@ -211,6 +213,17 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     return out;
   });
   await report("asks-first", asks);
+  // F2-F6: the Fair deal page from ledger.view(): 250 real deals from the real dealer fill every section with numbers
+  const fair = await page.evaluate(async () => {
+    const { newSeed } = await import("./dealer.js"), cards = await import("./cards.js"), ledger = await import("./ledger.js"), keep = kt.S.deals;
+    kt.S.deals = [];
+    for (let i = 0; i < 250; i++) { const h = cards.dealHands(newSeed(), 3, cards.newDeck()); kt.S.deals.push(ledger.entry({ hand: h[0], others: h.slice(1), game: i % 2 ? "spades" : "hearts", rules: { nil: 100 }, standing: ["ahead", "level", "behind"][i % 3] })); }
+    await kt.go("stats"); await new Promise((r) => setTimeout(r, 300));
+    const text = document.getElementById("stats").textContent, rows = document.querySelectorAll("#stats .bars .b").length;
+    kt.S.deals = keep;
+    return [/NaN|undefined/.test(text) && "NaN or undefined on the page", rows < 20 && `only ${rows} rows drawn`];
+  });
+  await report("fair-deal", [...fair, ...(await page.evaluate(AUDIT, "stats"))]);
   await b.close();
 }
 server.close();

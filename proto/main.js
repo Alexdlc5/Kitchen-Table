@@ -2,15 +2,16 @@
 // dealer.js; this file only shows the table and asks the humans. Every screen is drawn from the save (S) and the game (G).
 import { platform, track, setTelemetry } from "./platform.js";
 import { LANGS, CHOSEN } from "./i18n.js";
-import { newSeed } from "./dealer.js";
-import { rulesFor, team, partner, newDeck, SUITS } from "./cards.js";
+import { newSeed, fingerprint } from "./dealer.js";
+import { rulesFor, team, partner, SUITS } from "./cards.js";
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
 import * as euchre from "./euchre.js";
 import * as ohhell from "./ohhell.js";
 import * as whist from "./whist.js";
 import * as more from "./more-games.js";
-import { decide, nilRisk, nilForbidden } from "./ai.js";
+import { decide } from "./ai.js";
+import * as ledger from "./ledger.js";
 import { face, cardName, titleProps, tableProp } from "./art.js";
 import { THEMES, themeBack, themeStyle } from "./themes.js";
 import { speech } from "./speech.js";
@@ -251,7 +252,7 @@ function startHand() {
   G.totals ??= structuredClone(G.st.totals);
   if (net) net.send({ t: "start", seed: G.st.seed, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
   G.reasons = {}; G.looked = {}; whyNow = null; closePeek();
-  if (G.st.hands[0].length === 13) recordDeal(G.st.hands[0], G.game, G.rules); // the ledger compares full 13-card hands
+  recordDeal(); // every game, every hand size: the ledger sorts them out
   S.cur = G; save();
   sound.shuffle();
   G.justDealt = true;
@@ -260,15 +261,7 @@ function startHand() {
 }
 // R2: when blind nil is open to a person, their cards stay face down until they look or bid it
 const canBlind = (s) => G.game === "spades" && !!G.rules.blindNil && G.st.phase === "bid" && G.st.bids[s] === null && G.st.hands[s].length === 13 && G.st.totals.score[1 - team(s)] - G.st.totals.score[team(s)] >= G.rules.blindNilDown;
-const faceDown = (s) => G.seats[s].kind === "human" && !G.looked?.[s] && canBlind(s);
-function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals (seat 0 only, as dealt)
-  if (game === "euchre") return; // the ledger compares 13-card hands with a full deck; five from twenty-four would skew it
-  const j = game === "spades" && rules.jokers, E = (c) => spades.eff(c, j);
-  const len = "SHDC".split("").map((s) => hand.filter((c) => (game === "spades" ? E(c) : c[1]) === s).length);
-  S.deals.push({ g: game[0], j: j ? 1 : 0, hc: hand.filter((c) => "AKQJ".includes(c[0])).length, sh: [...len].sort((a, b) => b - a).join(""), sp: len[0],
-    qs: hand.includes("QS") ? 1 : 0, nil: game === "spades" && !nilForbidden(hand, rules) && nilRisk(hand, rules) <= 0.22 ? 1 : 0 });
-  if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
-}
+const faceDown = (s) => G.seats[s].kind === "human" && !G.looked?.[s] && (pending?.seat === s && pending.kind === "bid" ? pending.legal.some((a) => a.blind) : canBlind(s)); // the engine's word once it's asking
 
 const humans = () => G.seats.filter((s) => s.kind !== "bot").length; // "remote": a person at another device
 async function run() {
@@ -311,7 +304,9 @@ async function run() {
     save();
   }
   handLive = false;
-  if (my === runId) finishHand();
+  if (my !== runId) return;
+  if (G.history.at(-1)?.seed === st.seed) { renderSheet(); return show("sheet"); } // reopened on the score sheet: the hand is already scored
+  finishHand();
 }
 async function played(seat, card) {
   sound.card(); if (G.seats[seat].kind === "human" && S.opt.haptics) platform.haptic();
@@ -581,7 +576,7 @@ function finishHand() {
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
   else if (more.NAMES[G.game]) more.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
   if (G.game === "euchre" && lines[0].team !== null) { if (lines[0].team === team(me)) sound.made(); else if (lines[0].kind.includes("uchre")) sound.set(); }
-  G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
+  G.history.push({ seed: st.seed, fp: fingerprint(st.seed), cut: st.cut ?? 0, size: st.size, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
   if (G.over !== null && net) { net.leave(); net = null; }
@@ -627,7 +622,7 @@ function renderSheet() {
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
   const goal = G.over === null ? goalLine() : "";
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h1>Hand ${h.n}</h1>${table}${sp ? "" : `<h3>Game</h3>${totals}`}${goal ? `<p class="goal">${esc(goal)}</p>` : ""}
-    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span></p>
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span> · cut ${h.cut ?? 0} · fingerprint <span class="seed">${h.fp ?? fingerprint(h.seed)}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
     ${trialPlate()}<button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
 }
@@ -669,45 +664,39 @@ function renderResults() {
     <button class="btn ghost" data-act="go" data-to="title">Done</button></div>`;
 }
 
-// ---------------------------------------------------------------- the fair deal, shown (DESIGN.md §7)
-const SHAPES = { 4432: 21.55, 5332: 15.52, 5431: 12.93, 5422: 10.58, 4333: 10.54, 6322: 5.64, 6421: 4.7, 6331: 3.45, 5521: 3.17, 4441: 2.99 };
-function choose(n, k) { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return r; }
-let nilExpect = null;
+// ---------------------------------------------------------------- the fair deal, shown (DESIGN.md §7): drawn from ledger.view()
+// Each section compares your deals with constants measured from the real dealer; the shaded band is where a fair deck lands
+// 95% of the time for that many hands, so "in the band" is the honest answer, not "on the line".
+function standing(seat) { // where the score stood for this seat when the cards were dealt
+  const sc = G.totals.score, low = G.game === "hearts", better = (a, b) => (low ? a < b : a > b);
+  if (TEAMS(G.game)) { const us = sc[team(seat)], them = sc[1 - team(seat)]; return us === them ? "level" : us > them ? "ahead" : "behind"; }
+  const mine = sc[seat], best = sc.filter((_, s) => s !== seat).reduce((a, b) => (better(a, b) ? a : b));
+  return mine === best ? "level" : better(mine, best) ? "ahead" : "behind";
+}
+function recordDeal() { // every deal, as dealt (before any pass): yours, the other three, the game, and the score at the deal
+  const st = G.st;
+  S.deals.push(ledger.entry({ hand: [...st.hands[0]], others: [1, 2, 3].map((s) => [...st.hands[s]]), game: G.game, rules: G.rules, standing: standing(0) }));
+  if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
+}
 function renderStats() {
-  const d = S.deals, n = d.length, pct = (x) => (n ? ((100 * x) / n).toFixed(1) : "—");
-  const bar = (label, mine, exp, max = 30) => `<div class="b"><span>${label}</span><span class="t"><i style="width:${Math.min(100, (mine / max) * 100)}%"></i><u style="left:${Math.min(100, (exp / max) * 100)}%"></u></span><span>${mine.toFixed(1)}%</span></div>`;
-  const hc = n ? d.reduce((a, x) => a + x.hc, 0) / n : 0;
-  const shapes = Object.entries(SHAPES).map(([sh, e]) => bar(sh.split("").join("-"), n ? (100 * d.filter((x) => x.sh === sh).length) / n : 0, e)).join("");
-  const plain = d.filter((x) => !x.j), np = plain.length;
-  const spades = [0, 1, 2, 3, 4, 5, 6].map((k) => bar(`${k}${k === 6 ? "+" : ""} spades`, np ? (100 * plain.filter((x) => (k === 6 ? x.sp >= 6 : x.sp === k)).length) / np : 0,
-    k === 6 ? 100 * (1 - [0, 1, 2, 3, 4, 5].reduce((a, j) => a + (choose(13, j) * choose(39, 13 - j)) / choose(52, 13), 0)) : (100 * choose(13, k) * choose(39, 13 - k)) / choose(52, 13), 35)).join("");
-  const h = d.filter((x) => x.g === "h"), s = d.filter((x) => x.g === "s");
-  if (nilExpect === null) { // expected share of nil-able hands, from 20,000 fresh deals
-    const r = rulesFor(cfg, "spades", "standard"), deck = newDeck(); let k = 0;
-    for (let i = 0; i < 20000; i++) { const hand = [...deck].sort(() => Math.random() - 0.5).slice(0, 13); if (!nilForbidden(hand, r) && nilRisk(hand, r) <= 0.22) k++; }
-    nilExpect = (100 * k) / 20000;
-  }
+  const v = ledger.view(S.deals);
+  const intro = `<div class="paper"><p>Every hand comes from its seed and nothing else. The seed is on every score sheet: type it into our website to see the same four hands.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}</div>`;
+  const num = (x, unit) => (unit === "%" ? `${x.toFixed(1)}%` : x.toFixed(2));
+  const section = (s) => {
+    if (s.hidden) return `<div class="paper"><h2>${esc(s.title)}</h2><p class="muted">${esc(s.note)}</p></div>`;
+    const top = Math.max(...s.rows.flatMap((r) => [r.mine ?? 0, r.hi ?? 0, r.expected ?? 0])) * 1.15 || 1, at = (x) => Math.min(100, (100 * x) / top);
+    const row = (r) => `<div class="b"><span>${esc(r.label)}</span><span class="t" aria-hidden="true"><s style="left:${at(r.lo)}%;width:${at(r.hi) - at(r.lo)}%"></s>${r.mine == null ? "" : `<i style="width:${at(r.mine)}%"></i>`}<u style="left:${at(r.expected)}%"></u></span><span>${r.mine == null ? "—" : num(r.mine, s.unit)}</span>
+      <span class="vh">${esc(r.label)}: ${r.mine == null ? "no hands yet" : num(r.mine, s.unit)}. A fair deck: ${num(r.expected, s.unit)}, usually between ${num(r.lo, s.unit)} and ${num(r.hi, s.unit)}.</span></div>`;
+    return `<div class="paper"><h2>${esc(s.title)}</h2><p class="muted">${esc(s.note)}</p><div class="bars">${s.rows.map(row).join("")}</div></div>`;
+  };
   const rec = Object.entries(S.record).map(([g, r]) => `<tr><td>${GAME_NAME[g]}</td><td class="n">${r.won} of ${r.played}</td><td class="n">${g === "hearts" ? (r.best ?? "—") : "streak " + r.streak}</td></tr>`).join("");
-  const intro = `<div class="paper"><p>Every hand comes from its seed and nothing else. The seed is on every score sheet: type it into our website to see the same four hands.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}`;
-  if (n < 20) { // P1-12: a first look shows what a fair deck gives, never a row of zeros
-    $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>${intro}</div>
-      <div class="paper"><h2>Your deals go here</h2><p>Play a few hands and your own deals appear here, next to what a fair deck gives${n ? ` (${n} so far; they show from 20)` : ""}.</p>
-        <p>A fair deck gives each hand <b>4.00</b> aces, kings, queens and jacks on average, and the queen of spades lands in one Hearts hand in four.</p></div>
-      <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
-    return;
-  }
-  $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>
-    ${intro}
-    <p class="muted">Your last ${n} deal${n === 1 ? "" : "s"}. The green bar is you; the black line is what a fair deck gives on average. Small samples wobble.</p></div>
-    <div class="paper"><h2>High cards</h2><p>Aces, kings, queens and jacks per hand: <b>${hc.toFixed(2)}</b> (a fair deck averages <b>4.00</b>)</p></div>
-    <div class="paper"><h2>Hand shapes</h2><div class="bars">${shapes}</div></div>
-    <div class="paper"><h2>Spades in your hand</h2><div class="bars">${spades}</div></div>
-    <div class="paper"><h2>Hearts</h2><p>Queen of spades dealt to you: <b>${h.length ? ((100 * h.filter((x) => x.qs).length) / h.length).toFixed(1) : "—"}%</b> of ${h.length} hands (fair: 25%)</p></div>
-    <div class="paper"><h2>Spades</h2><p>Hands you could bid nil on: <b>${s.length ? ((100 * s.filter((x) => x.nil).length) / s.length).toFixed(1) : "—"}%</b> of ${s.length} (fair: ${nilExpect.toFixed(1)}%)</p></div>
+  $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>${intro}
+    ${v.empty ? `<div class="paper"><h2>Your deals go here</h2><p>Play a few hands and your own deals appear here, next to what a fair deck gives${v.n ? ` (${v.n} so far; they show from 20)` : ""}.</p>
+      <p>A fair deck gives each 13-card hand <b>4.00</b> aces, kings, queens and jacks on average, and the queen of spades lands in one Hearts hand in four.</p></div>`
+    : `<p class="paper muted">Your last ${v.n} deals. The green bar is you, the black line is a fair deck's average, and the shaded band is where a fair deck lands 95% of the time for that many hands.</p>${v.sections.map(section).join("")}`}
     ${rec ? `<div class="paper pad"><h2>Your games</h2><table>${rec}</table></div>` : ""}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
-
 // ---------------------------------------------------------------- options, caregiver, unlock, how to play
 const TEXT_SIZES = [["normal", "Normal"], ["large", "Large"], ["xl", "Extra large"]];
 // P1-13: the phone's own text size (Dynamic Type), read through WebKit's system body font (17px at the default size). Followed
@@ -1092,7 +1081,14 @@ const ACT = {
   family: () => familyTable(),
   next: () => { if (G.over !== null) { renderResults(); show("results"); } else startHand(); },
   again: () => newGame(G.game),
-  seedinfo: () => dialog(`<h2>The seed</h2><p>Every hand comes from this seed and nothing else. Type it into our website to see the same four hands.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
+  seedinfo: async () => { // the hand's own check: verify.html deals it again from the seed and the cut, and checks the fingerprint first
+    const h = G.history.at(-1), game = G.game === "spades" && G.rules.jokers ? "jokers" : G.game;
+    const url = `${platform.site}/verify.html?seed=${h.seed}&cut=${h.cut ?? 0}&fp=${h.fp ?? fingerprint(h.seed)}&game=${game}&dealer=${h.dealer}${h.size ? `&size=${h.size}` : ""}`;
+    const v = await dialog(`<h2>The seed</h2><p>Every hand comes from this seed and nothing else. Type it into our website to see the same four hands.</p>
+      <p>The fingerprint is the seed's SHA-256, cut short. Our website checks it against the seed before it deals.</p>
+      <div class="stack">${S.care.lock ? "" : `<button class="btn" data-dlg="check">Check this hand on our website</button>`}<button class="btn big" data-dlg="">Got it</button></div>`, { user: true });
+    if (v === "check") gate(url, "the check-a-deal page on our website");
+  },
   allbacks: () => { showBacks = true; renderShop(); },
   trytheme: (el) => { // dress the next hand in this theme; after it, the sheet asks whether to keep it
     trial = el.dataset.v; applyLook();

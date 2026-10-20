@@ -289,7 +289,11 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 .hold { position: relative; overflow: hidden; }
 .hold i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(61,139,87,.35); }
 .bars { display: grid; gap: 4px; }
-.bars .b { display: grid; grid-template-columns: 5.5em 1fr 3.5em; gap: 8px; align-items: center; font-size: var(--fs-s); }
+.bars .b { display: grid; grid-template-columns: minmax(5.5em, 7.5em) 1fr 3.8em; gap: 8px; align-items: center; font-size: var(--fs-s); line-height: 1.2; }
+.bars .b > span:last-of-type { text-align: right; }
+/* the shaded band: where a fair deck lands 95% of the time for this many hands */
+.bars .t s { position: absolute; top: 0; bottom: 0; z-index: 1; text-decoration: none; background: repeating-linear-gradient(135deg, rgba(20,50,30,.38) 0 2px, transparent 2px 5px); }
+.bars .t u { z-index: 2; }
 .bars .t { height: 14px; background: #e6dbbd; border-radius: 7px; position: relative; overflow: hidden; }
 .bars .t i { position: absolute; left: 0; top: 0; bottom: 0; background: #3d8b57; border-radius: 7px; }
 .bars .t u { position: absolute; top: -2px; bottom: -2px; width: 3px; background: var(--ink); }
