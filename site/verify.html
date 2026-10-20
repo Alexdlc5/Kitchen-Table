@@ -30,7 +30,7 @@
   them here and this page deals the same four hands, using the same code as the app.</p>
   <label for="seed">Seed</label><input id="seed" placeholder="5W2Z-T7CS-V6A3-DHMG-7EED-NB7Q-BA" autocomplete="off" spellcheck="false">
   <label for="cut">Cut <small>(0 if the score sheet shows none)</small></label><input id="cut" type="number" inputmode="numeric" min="0" max="51" value="0">
-  <label for="fp">Fingerprint <small>(optional: the 8 characters shown before the deal)</small></label><input id="fp" placeholder="A1B2C3D4" autocomplete="off" spellcheck="false" maxlength="9">
+  <label for="fp">Fingerprint <small>(optional: the 16 characters shown before the deal)</small></label><input id="fp" placeholder="A1B2 C3D4 E5F6 7788" autocomplete="off" spellcheck="false" maxlength="23">
   <label for="game">Game</label>
   <select id="game"><option value="hearts">Hearts</option><option value="spades">Spades</option><option value="jokers">Spades with Jokers and deuces</option><option value="euchre">Euchre</option><option value="ohhell">Oh Hell</option><option value="whist">Whist</option></select>
   <div id="sizeRow"><label for="size">Cards in each hand (Oh Hell)</label>
@@ -46,10 +46,11 @@
   <h2>How the shuffle works</h2>
   <p>The seed's 128 bits seed a <b>xoshiro128**</b> generator (each 32-bit word mixed through SplitMix32 first). A
   <b>Fisher-Yates</b> shuffle then puts the cards in order, using rejection sampling so no card is favoured.</p>
-  <p><b>The cut</b> works as it does at a real table: the top cards, as many as you cut, go to the bottom. The
-  <b>fingerprint</b> is the first 8 characters of the SHA-256 of the seed's 16 bytes. The app shows it before you cut,
-  so the seed is fixed before anyone knows the cut: the app can't pick a seed to suit it. Any SHA-256 tool gives the
-  same fingerprint; this page shows the seed's bytes so you can check.</p>
+  <p><b>Your cut is mixed into the shuffle.</b> With a cut, the cards are shuffled from the first 16 bytes of the
+  SHA-256 of the seed's 16 bytes followed by one more byte, the cut, so each cut gives an unrelated deal. A cut of 0
+  (no cut) shuffles from the seed itself. The <b>fingerprint</b> is the first 16 characters of the SHA-256 of the
+  seed's 16 bytes. The app shows it before you cut, so the seed was fixed before anyone knew your cut. Any SHA-256 tool
+  gives the same answers; this page shows the bytes so you can check.</p>
   <p>Cards are dealt one at a time, starting left of the dealer. In Hearts, these are the hands before passing. In
   Euchre, each player gets five and the last four are the kitty, its top card turned up. In Oh Hell, the next card
   after the hands is turned for trump. In Whist, the dealer's last card is trump.</p>
@@ -58,13 +59,16 @@
   <p><b>Can every order of the deck come up?</b> No, and that's fine. A seed is one of 2<sup>128</sup> (about
   3.4×10<sup>38</sup>) numbers, and a deck can be ordered about 8×10<sup>67</sup> ways, so most orders can never be
   dealt. Every seed is equally likely, and every card is equally likely to land in every seat.</p>
+  <p><b>Does this page prove the app ran this code?</b> No page can. It proves that this seed and cut give these hands.
+  That the app deals the same way is shown by its open source, which anyone can read, run and test. That is the real
+  guarantee.</p>
   <h3>dealer.js</h3><pre id="src"></pre>
   <h3>cards.js</h3><pre id="src2"></pre>
 </div>
 </main>
 <script type="module">
 import { fingerprint, seedBytes, sha256 } from "./dealer.js";
-import { SUITS, RANKS, newDeck, dealOut } from "./cards.js";
+import { SUITS, RANKS, newDeck, dealOut, cutSeed } from "./cards.js";
 const $ = (id) => document.getElementById(id), SYM = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const SEATS = ["You", "Left of you", "Across from you", "Right of you"];
 // each game's deck and cards per hand, exactly as the app deals them
@@ -77,8 +81,8 @@ const run = () => {
   try {
     const seed = $("seed").value, game = $("game").value, dealer = +$("dealer").value, fp = fingerprint(seed);
     const want = $("fp").value.toUpperCase().replace(/[\s-]/g, ""), cut = $("cut").value.trim() === "" ? 0 : Number($("cut").value);
-    if (want && !/^[0-9A-F]{8}$/.test(want)) throw new Error("A fingerprint is 8 characters, 0-9 and A-F");
-    if (want && want !== fp) throw new Error(`This seed's fingerprint is ${fp}, not ${want}: this is not the seed that was fixed before the cut.`);
+    if (want && !/^[0-9A-F]{16}$/.test(want)) throw new Error("A fingerprint is 16 characters, 0-9 and A-F");
+    if (want && want !== fp.replace(/ /g, "")) throw new Error(`This seed's fingerprint is ${fp}, not ${want.match(/.{4}/g).join(" ")}: this is not the seed that was fixed before the cut.`);
     const deck = (DECK[game] || newDeck)(), size = typeof SIZE[game] === "function" ? SIZE[game]() : SIZE[game] || 13;
     const d = dealOut(seed, dealer, deck, size, cut);
     $("hands").innerHTML = d.hands.map((h, s) => `<div class="hand"><b>${SEATS[s]}${s === dealer ? " (dealer)" : ""}</b>${[...h].sort((a, b) => order(a) - order(b)).map(show).join(" ")}</div>`).join("");
@@ -86,8 +90,9 @@ const run = () => {
     $("more").innerHTML = game === "euchre" ? `Kitty: ${d.rest.map(show).join(" ")}. Turned up: ${show(d.rest[0])}.`
       : game === "ohhell" ? (d.rest.length ? `Turned for trump: ${show(d.rest[0])}.` : "All 52 cards are dealt: no trump this hand.")
       : game === "whist" ? `Trump: the dealer's last card, ${show(d.hands[dealer][12])}.` : "";
-    const bytes = seedBytes(seed);
-    $("proof").innerHTML = `The seed as 16 bytes: <code>${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}</code><br>SHA-256 of those bytes: <code>${sha256(bytes)}</code>`;
+    const bytes = seedBytes(seed), hex = (b) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    $("proof").innerHTML = `The seed as 16 bytes: <code>${hex(bytes)}</code><br>SHA-256 of those bytes: <code>${sha256(bytes)}</code>` +
+      (cut ? `<br>With your cut, <code>${hex(bytes)}${hex([cut])}</code> hashes to <code>${sha256(Uint8Array.of(...bytes, cut))}</code>, and its first 16 bytes are the seed the cards were shuffled from: <code>${cutSeed(seed, cut)}</code>` : "");
     check.className = want ? "ok" : "";
     check.textContent = want ? `Fingerprint matches (${fp}): the seed was fixed before the cut.` : `This seed's fingerprint is ${fp}. If the app showed it before you cut, the seed was fixed before the cut.`;
     box.hidden = false; out.textContent = "";
