@@ -55,10 +55,14 @@ else {
     for (const k of ["support_url", "privacy_policy_url"]) if (!/^https?:\/\//.test(d[k] || "")) say(`${f}: ${k} must be a full URL`);
   }
   for (const l of LOCALES) if (!seen.some((s) => s === l || s.startsWith(l + "-"))) say(`missing listing for ${l}`);
-  const pngs = existsSync(`${DIR}/screens`) ? readdirSync(`${DIR}/screens`).filter((f) => f.endsWith(".png")) : [];
-  shots = pngs.length;
-  if (shots < 1 || shots > 10) say(`${shots} screenshots in ${DIR}/screens (Apple: 1 to 10)`);
-  for (const f of pngs) { const h = readFileSync(`${DIR}/screens/${f}`).subarray(16, 24), w = h.readUInt32BE(0), ht = h.readUInt32BE(4); if (w !== 1206 || ht !== 2622) say(`${DIR}/screens/${f}: ${w}x${ht}, must be 1206x2622`); }
+  // iPhone 6.1" (Dynamic Island, medium) in screens/, iPad 13" in screens/ipad/ (the app runs on iPad, so App Store Connect asks for both)
+  for (const [sub, W, H] of [["", 1206, 2622], ["/ipad", 2064, 2752]]) {
+    const d = `${DIR}/screens${sub}`, pngs = existsSync(d) ? readdirSync(d).filter((f) => f.endsWith(".png")) : [];
+    if (!sub) shots = pngs.length;
+    if (pngs.length < 1 || pngs.length > 10) say(`${pngs.length} screenshots in ${d} (Apple: 1 to 10)`);
+    for (const f of pngs) { const h = readFileSync(`${d}/${f}`).subarray(16, 24), w = h.readUInt32BE(0), ht = h.readUInt32BE(4); if (w !== W || ht !== H) say(`${d}/${f}: ${w}x${ht}, must be ${W}x${H}`); }
+  }
+  if (existsSync(`${DIR}/search-asset.png`)) { const h = readFileSync(`${DIR}/search-asset.png`).subarray(16, 24); if (h.readUInt32BE(0) !== 3840 || h.readUInt32BE(4) !== 2560) say(`${DIR}/search-asset.png must be 3840x2560`); }
 }
 console.log(bad ? `${bad} problem(s)` : `store ok: no ad SDK (${iosDeps.length} iOS dependency files), ${existsSync(PM) ? "privacy manifest says no tracking" : "no privacy manifest yet"}, ${cfg.products.length} permanent products, ${files.length} listings, ${shots} screenshots`);
 process.exit(bad ? 1 : 0);

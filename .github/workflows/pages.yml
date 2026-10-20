@@ -1,0 +1,29 @@
+name: site
+# Publishes site/ (home, privacy, terms, support, verify a deal) to GitHub Pages: the support and privacy URLs App Store
+# Connect needs. Manual on purpose, so main never goes red before Pages is turned on (docs/store/SUBMISSION.md, step 1):
+#   gh workflow run pages.yml --ref main
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The support page has a real address
+        run: "! grep -n OWNER_EMAIL site/*.html || { echo 'replace OWNER_EMAIL in site/support.html first'; exit 1; }"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
