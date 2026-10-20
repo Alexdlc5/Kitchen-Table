@@ -30,9 +30,11 @@ jobs:
         run: |
           node sim/sim.mjs --check --game spades --hands 20000
           node sim/sim.mjs --check --game spades --preset kitchen --hands 20000
+          node sim/sim.mjs --check --game spades --preset kitchen --custom blindSwap=2 --hands 20000
           node sim/sim.mjs --check --game hearts --hands 20000
           node sim/sim.mjs --check --game euchre --hands 20000
           node sim/sim.mjs --check --game euchre --preset kitchen --hands 20000
           node sim/sim.mjs --check --game ohhell --hands 20000
           node sim/sim.mjs --check --game ohhell --preset tournament --hands 20000
           node sim/sim.mjs --check --game whist --hands 20000
+          node sim/sim.mjs --check --game whist --preset kitchen --hands 20000
