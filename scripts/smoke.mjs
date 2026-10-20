@@ -19,7 +19,7 @@ const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf
 const shots = arg("--shots"), LANG = arg("--lang"), SE = process.argv.includes("--se"), COMFORT = process.argv.includes("--comfort"), IPAD = process.argv.includes("--ipad");
 if (shots) mkdirSync(shots, { recursive: true });
 const VW = IPAD ? 820 : SE ? 375 : 402, VH = IPAD ? 1180 : SE ? 667 : 874, DPR = SE || IPAD ? 2 : 3;
-const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards"];
+const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards", "ack"];
 
 // in the page: buttons on the current screen that are off screen or too small to tap
 const AUDIT = (id) => {
@@ -83,7 +83,9 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     await page.evaluate(async (id) => { await kt.go(id); }, id);
     await page.waitForTimeout(300);
     const shown = await page.evaluate((id) => document.getElementById(id).classList.contains("on") && document.getElementById(id).innerHTML.length > 50, id);
-    await report(id, [!shown && "not shown", ...(await page.evaluate(AUDIT, id))]);
+    const focus = id === "ack" && (await page.evaluate(() => document.activeElement?.matches("#ack h1") ? null : "heading does not have focus"));
+    const licences = id === "ack" && (await page.evaluate(() => document.querySelectorAll("#ack .licence").length < 3 && "licence texts missing (run scripts/build-web.mjs first)"));
+    await report(id, [!shown && "not shown", focus, licences, ...(await page.evaluate(AUDIT, id))]);
   }
   for (const game of ["hearts", "spades", "euchre", "ohhell", "whist"]) {
     await page.evaluate((g) => kt.newGame(g), game);

@@ -554,9 +554,19 @@ function renderOptions() {
       <div class="row"><span>Language</span><select data-act="lang"><option value="">Phone setting</option>${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${o.lang === k ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
     <div class="paper">${toggle("opt:analytics", o.analytics === true, "Share anonymous usage numbers")}
       <div class="row"><button class="btn" data-act="restore">Restore purchases</button></div>
-      ${S.care.lock ? "" : `<div class="row"><button class="link" style="color:var(--ink)" data-act="link" data-url="privacy.html">Privacy</button><button class="link" style="color:var(--ink)" data-act="link" data-url="terms.html">Terms</button><button class="link" style="color:var(--ink)" data-act="link" data-url="index.html">Support</button></div>`}
+      <div class="row">${S.care.lock ? "" : `<button class="link" style="color:var(--ink)" data-act="link" data-url="privacy.html">Privacy</button><button class="link" style="color:var(--ink)" data-act="link" data-url="terms.html">Terms</button><button class="link" style="color:var(--ink)" data-act="link" data-url="index.html">Support</button>`}<button class="link" style="color:var(--ink)" data-act="go" data-to="ack">Acknowledgements</button></div>
       <p class="muted">${BRAND} ${platform.version}. No ads, ever. No account. Your games stay on this device.</p></div>
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+}
+
+// the open-source software in the app, each with its licence (scripts/build-web.mjs writes the list from node_modules)
+let licences = null;
+async function renderAck() {
+  licences ??= await fetch("../www/licenses.json").then((r) => r.json()).catch(() => null);
+  $("#ack").innerHTML = `<div class="stack"><h1 tabindex="-1">Acknowledgements</h1>
+    <div class="paper"><p>${BRAND} is built with open-source software. Thank you to everyone who made it.</p></div>
+    ${licences ? licences.map((l) => `<div class="paper"><h2>${l.names.map(esc).join("<br>")}</h2><pre class="licence">${esc(l.text)}</pre></div>`).join("") : `<div class="paper"><p class="muted">The licence list is added when the app is built (scripts/build-web.mjs).</p></div>`}
+    <button class="btn ghost" data-act="go" data-to="options">Back</button></div>`;
 }
 
 function renderCaregiver() {
@@ -782,8 +792,8 @@ function describeTable() {
 }
 
 // ---------------------------------------------------------------- taps
-const RENDER = { shop: renderShop, boards: renderBoards, title: renderTitle, picker: renderPicker, setup: renderSetup, options: renderOptions, caregiver: renderCaregiver, stats: renderStats, unlock: renderUnlock, howto: renderHowto };
-async function go(to) { await RENDER[to]?.(); show(to); }
+const RENDER = { shop: renderShop, boards: renderBoards, title: renderTitle, picker: renderPicker, setup: renderSetup, options: renderOptions, caregiver: renderCaregiver, stats: renderStats, unlock: renderUnlock, howto: renderHowto, ack: renderAck };
+async function go(to) { await RENDER[to]?.(); show(to); if (to === "ack") $("#ack h1").focus(); }
 const ACT = {
   go: (el) => go(el.dataset.to),
   noop: () => {},
