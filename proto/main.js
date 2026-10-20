@@ -286,7 +286,8 @@ async function run() {
       if (my !== runId) return;
       if (net && !net.host) { net.send({ t: "act", seat: s, a: action }); action = (await net.did(s)) ?? action; }
     } else if (seat.kind === "remote" && net?.alive(seat.player)) { // the host hears the guest; a guest hears the host
-      action = net.host ? await net.intent(s, seat.player, (a) => (st.phase === "pass" ? Array.isArray(a) && new Set(a).size === 3 && a.every((c) => st.hands[s].includes(c)) : m.legal(st).includes(a))) : await net.did(s);
+      const n = { pass: 3, exchange: G.rules.blindSwap }[st.phase], ok = m.legal(st); // a pass or the blind nil exchange is an array of n of your own cards
+      action = net.host ? await net.intent(s, seat.player, (a) => (n ? Array.isArray(a) && a.length === n && new Set(a).size === n && a.every((c) => ok.includes(c)) : ok.includes(a))) : await net.did(s);
       if (my !== runId) return;
     }
     if (action === null) { // a bot, or the seat of someone who left
@@ -607,6 +608,7 @@ function renderSheet() {
       case "set": return `Bid ${l.bid}, took ${l.took}: set`;
       case "nil": return `${who(l)}: nil ${l.made ? "made" : "broken"}`;
       case "blindNil": return `${who(l)}: blind nil ${l.made ? "made" : "broken"}`;
+      case "nilBags": return `${who(l)}'s broken nil: ${l.took} bag${l.took === 1 ? "" : "s"}`;
       case "bags": return `No bid, ${l.took} bags`;
       case "boston": return "Boston: all 13 tricks";
       case "bagPenalty": return "Too many bags: penalty";
