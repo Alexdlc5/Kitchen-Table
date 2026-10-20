@@ -31,7 +31,7 @@ really sample it; the test fails if a look-ahead decision never sampled a world.
 | **Easy** | Rule-based heuristics, counts only the last trick, bids from a simple point count | Bids ±1 off; forgets which suits are void after 4+ tricks; plays a middle card where the lowest would do; doesn't count spades left | Any §3-§7 sin; an illegal play |
 | **Standard** | Heuristics + full card counting (cards played, known voids), bag awareness, nil cover, moon detection | Occasionally misjudges a finesse; conservative bids | Any sin |
 | **Expert** | Standard + Monte Carlo look-ahead: samples 24 deals consistent with everything public (voids, plays, passed cards), plays each candidate out with the Standard policy and scores it with the game end in view (a hand that ends the game is worth ±1000). Card play and **Spades bidding** both look ahead: each candidate bid (within 2.5 of the hand count, never below the spades that can't lose, nil when the hand's nil risk is ≤ 0.45) is bid, the later seats bid like Standard, and the hand is played out | — | Any sin; peeking (samples never use hidden cards) |
-| **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). In Hearts it reads the play the same way: everyone sheds the Q♠ at the first safe chance and a heart before any other discard, so a player who was void and threw anything else, or played another spade under a winning A♠/K♠, while the queen was out is dealt no queen (and, for a non-point discard, no hearts) in its samples; this reading is right 99.7% (queen) and 96.6% (hearts) of the time against Standard. It also **reads the scoreboard** in Hearts: in its playouts, points it gives away count more the closer that player is to winning (the weight falls by e for every 10 points above the lowest rival), so it hits the leader. It **passes by look-ahead** in Hearts (every 3-card pass from the 5 cards most worth passing, 30 deals each) and **calls by look-ahead** in Euchre (every legal call, alone or not, 120 deals that fit the calls so far, the later calls made like Standard; Euchre play also uses 120 deals). For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
+| **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). In Hearts it reads the play the same way: everyone sheds the Q♠ at the first safe chance and a heart before any other discard, so a player who was void and threw anything else, or played another spade under a winning A♠/K♠, while the queen was out is dealt no queen (and, for a non-point discard, no hearts) in its samples; this reading is right 99.7% (queen) and 96.6% (hearts) of the time against Standard. It also **reads the scoreboard** in Hearts: in its playouts, points it gives away count more the closer that player is to winning (the weight falls by e for every 10 points above the lowest rival), so it hits the leader. It **passes by look-ahead** in Hearts (every 3-card pass from the 5 cards most worth passing, 30 deals each) and plays Hearts with twice the samples (120). In Euchre, Expert and Extreme both **call by look-ahead** (every legal call, alone or not, the later calls made like Standard): Expert over 48 deals, Extreme over 120 that fit the calls so far, and Extreme plays with 120 deals too. For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
 
 A look-ahead **overrules the heuristic only when it is sure**: every option is played out in the same sampled deals, and
 another option replaces the heuristic's choice only if its average gain over that choice, deal by deal, is larger than
@@ -87,9 +87,10 @@ a fixed style; the player can swap partners ("can't get a new partner" was a com
 Bots: `proto/ai-euchre.js` (dispatched from `ai.decide()`/`sins()`/`know()`), same four levels: Easy calls from a
 noisy hand count, forgets old tricks and slips a card; Standard counts every card and the upcard's whereabouts;
 Expert and Extreme sample the hidden hands (the dealer holds a picked-up upcard until it's played; the rest is the
-kitty) and play each card out; Extreme keeps only deals that fit every call and pass, samples twice as many (120), and
-calls by look-ahead: each legal call (pass, order or name a suit, alone or not) is made in each deal, the later calls
-follow Standard, the hand is played out, and the call changes only when it is surely better. Predicates are in `sins()`;
+kitty) and play each card out. Both also call by look-ahead: each legal call (pass, order or name a suit, alone or not)
+is made in each sampled deal, the later calls follow Standard, the hand is played out, and the call changes only when it
+is surely better (Expert 48 deals; Extreme 120 deals that fit every call and pass, and 120 deals in play too). Calling is
+where Euchre is won: once Standard stopped wasting its bower (E10), Expert's play look-ahead alone was even with it. Predicates are in `sins()`;
 scenarios in `sim/test_ai_euchre.mjs`, every level (Easy 12 times).
 
 | ID | Sin | Scenario test |
@@ -195,8 +196,14 @@ laptop play exactly the same hands whatever `--workers` is (review T2).
 | Game | Extreme vs Expert | Expert vs Standard | Standard vs Easy |
 |---|---|---|---|
 | Spades | 66.2% | 84.9% | 73.4% |
-| Euchre | 63.8% | 58.6% | 58.5% |
-| Hearts | HEARTS_X | 50.9% | 50.8% |
+| Euchre | **52.4%, under the 55% target** | 69.1% | 60.3% |
+| Hearts | **27.8%, under the 28% target** | 50.9% | 50.8% |
 
-At Standard over 100K hands per game and preset: 0 sins shipped, 0 caught by the guard. Blind nil (Kitchen, exchange 2)
+Euchre Extreme vs Expert misses its 55%: once Standard stopped wasting the bower (E10), Expert's play look-ahead alone
+was even with it (50.9%), so Expert calls by look-ahead too; that puts Expert at 69.1% over Standard, and Extreme's extra
+samples and call reading keep it ahead of Expert (52.4%, 63.8% when Expert only looked ahead in play). Hearts Extreme
+misses its 28%: Expert already beats three Standards half the time, and more samples, reading the play,
+the scoreboard objective and look-ahead passing together add under 3 points (variants and numbers in PR #16). Open
+item: a stronger playout policy or an exact endgame search. At Standard over 100K hands per game and preset: 0 sins
+shipped, 0 caught by the guard. Blind nil (Kitchen, exchange 2)
 69.4% made; with the exchange off, 26.8%.
