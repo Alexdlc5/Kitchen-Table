@@ -305,14 +305,14 @@ function expertPlay(v, base, rng, tune, extreme) {
   return best === base.action ? base : { action: best, reason: "expert_lookahead" };
 }
 
-// Extreme calls by look-ahead (and with twice the samples): deal the other hands and the kitty's three hidden cards
-// (fitting every call so far), let everyone after me call like Standard, play it out, and keep the call, alone or not,
-// with the best result in those deals (the game end counts). It overrules the hand count only when it is sure: the
-// gain over the count's call must beat its own standard error.
-function extremeBid(v, base, rng, tune) {
+// Expert and Extreme call by look-ahead: deal the other hands and the kitty's three hidden cards, let everyone after
+// me call like Standard, play it out, and keep the call, alone or not, with the best result in those deals (the game end
+// counts). It overrules the hand count only when it is sure: the gain over the count's call must beat its own standard
+// error. Expert uses 48 deals; Extreme 120, each fitting every call so far.
+function lookBid(v, base, rng, tune, extreme) {
   const options = legalFor(v).filter((a) => !sins(v, a).length), b = options.findIndex((a) => a.call === base.action.call && !!a.alone === !!base.action.alone);
   if (options.length <= 1 || b < 0) return base;
-  const K = know(v), others = [1, 2, 3].map((k) => (v.seat + k) % 4), me = team(v.seat), n = 2 * tune.extremeSamples;
+  const K = know(v), others = [1, 2, 3].map((k) => (v.seat + k) % 4), me = team(v.seat), n = 2 * (extreme ? tune.extremeSamples : tune.expertSamples);
   const sum = options.map(() => 0), sq = options.map(() => 0);
   let samples = 0;
   for (let i = 0; i < n; i++) {
@@ -322,7 +322,7 @@ function extremeBid(v, base, rng, tune) {
       for (let j = pool.length - 1; j > 0; j--) { const k = Math.floor(rng() * (j + 1)); [pool[j], pool[k]] = [pool[k], pool[j]]; }
       hands = [[], [], [], []]; hands[v.seat] = [...v.hand];
       others.forEach((s, k) => (hands[s] = pool.slice(5 * k, 5 * k + 5)));
-      if (attempt >= 60 || fitsCalls(v, hands)) break;
+      if (!extreme || attempt >= 60 || fitsCalls(v, hands)) break;
     }
     samples++;
     const val = options.map((a) => {
@@ -342,7 +342,7 @@ function extremeBid(v, base, rng, tune) {
     const m = sum[k] / samples, se = Math.sqrt(Math.max(0, sq[k] / samples - m * m) / samples);
     if (m > se && (best === b || m > sum[best] / samples)) best = k;
   }
-  return best === b ? base : { action: options[best], reason: "extreme_lookahead_call" };
+  return best === b ? base : { action: options[best], reason: "lookahead_call" };
 }
 
 // ---------------------------------------------------------------- entry point
@@ -354,7 +354,7 @@ export function decide(v, level = "standard", rng = Math.random, tune = {}) {
   if (v.phase === "discard") return { action: discardChoice(v.hand, v.trump), reason: "discard_short" };
   if (v.phase === "bid1" || v.phase === "bid2") {
     let d = bid(v, level, rng, tune);
-    if (level === "extreme" && !sins(v, d.action).length) d = extremeBid(v, d, rng, tune);
+    if ((level === "expert" || level === "extreme") && !sins(v, d.action).length) d = lookBid(v, d, rng, tune, level === "extreme");
     if (!sins(v, d.action).length) return d;
     const clean = legalFor(v).filter((a) => !a.alone && !sins(v, a).length);
     return { action: clean.find((a) => a.call === "pass") || clean[0], reason: `${d.reason}:sin_guard`, guarded: true };
