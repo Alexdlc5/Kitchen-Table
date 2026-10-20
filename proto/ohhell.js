@@ -1,8 +1,7 @@
 // Oh Hell (Up and Down the River): pure functions over a plain state object, same shape as spades.js.
 // Every player for themselves. The hand size walks a sequence (13 down to 1 and back, ...); after the deal the next card
 // is turned for trump (none when all 52 are dealt). Bid exactly what you'll take. Actions: {bid} while bidding, a card.
-import { deal } from "./dealer.js";
-import { newDeck, winnerIndex, followable, next } from "./cards.js";
+import { newDeck, dealOut, winnerIndex, followable, next } from "./cards.js";
 
 export const eff = (c) => c[1];
 export const pow = (c) => "23456789TJQKA".indexOf(c[0]) + 2;
@@ -16,10 +15,9 @@ export function sequence(rules) {
 // a tie for first after the last hand plays on at the last size
 export const handSize = (rules, handNo) => { const s = sequence(rules); return s[Math.min(handNo, s.length - 1)]; };
 
-export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0], hands: 0 }, handNo = 0) {
-  const size = handSize(rules, handNo), deck = newDeck(), p = deal(seed, 52), hands = [[], [], [], []];
-  for (let k = 0; k < 4 * size; k++) hands[(dealer + 1 + k) % 4].push(deck[p[k]]); // round-robin from the dealer's left
-  const trumpCard = 4 * size < 52 ? deck[p[4 * size]] : null;
+export function newHand(rules, seed, dealer, totals = { score: [0, 0, 0, 0], hands: 0 }, handNo = 0, cut = 0) {
+  const size = handSize(rules, handNo), { hands, rest } = dealOut(seed, dealer, newDeck(), size, cut); // round-robin from the dealer's left, after the cut
+  const trumpCard = rest[0] ?? null; // the next card is turned; none when all 52 are dealt
   return {
     game: "ohhell", rules, seed, dealer, handNo, size, totals: structuredClone(totals), trumpCard, trump: trumpCard && trumpCard[1],
     phase: "bid", turn: next(dealer), hands, bids: [null, null, null, null],

@@ -77,14 +77,17 @@ async function measure(bt, comfort) {
   }, comfort);
   await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast`);
   await page.waitForFunction(() => window.kt, null, { timeout: 15000 });
-  // play seat 0 by hand until it is asked for a card with three cards already on the table
+  // play seat 0 by hand until it is asked for a card with three cards already on the table. Whoever deals first (it comes from the
+  // seed) and however the cards fall, a hand can pass with seat 0 never playing last, so finished hands deal the next one
   await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     kt.newGame("hearts");
-    for (let t = 0; t < 2000; t++) {
+    for (let t = 0; t < 6000; t++) {
       const p = kt.pending;
       if (p && p.kind === "play" && kt.G.st.trick.length === 3) return;
       if (p) p.resolve(p.kind === "pass" ? p.legal.slice(0, 3) : p.legal[0]);
+      else if (kt.screen === "sheet") kt.ACT.next();
+      else if (kt.screen === "results") kt.newGame("hearts");
       await sleep(10);
     }
     throw new Error("never reached a full trick on seat 0's turn");
