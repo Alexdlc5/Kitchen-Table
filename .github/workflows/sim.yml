@@ -14,6 +14,8 @@ jobs:
           node-version: 22
       - name: dealer isolation, golden deal, house rules, legal play, scoring tables
         run: node sim/test_sim.mjs
+      - name: fingerprint and cut goldens; verify.html deals what the app deals; ledger constants re-measured
+        run: node sim/test_fair.mjs
       - name: every AI_SPEC sin as a scenario at every level; views show nothing hidden
         run: node sim/test_ai.mjs
       - name: Euchre rules, bowers, every house rule, scoring tables; every Euchre sin at every level
