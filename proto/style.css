@@ -229,6 +229,7 @@ html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #1389
 .dialog .answer { font: italic 400 var(--fs-l)/1.35 var(--serif); }
 /* a tight table (an iPhone SE at Extra large text): the bar keeps Menu's icon, the panels use regular-height buttons */
 #table.tight #menuBtn span { display: none; }
+#table.mypanel #seats .s-me { visibility: hidden; } /* your own panel (a bid, a call) stands in your plate's place until you answer */
 
 #table.tight #center { gap: 6px; }
 #table.tight #center .btn.big { min-height: var(--tap); font: 700 var(--fs)/1.15 var(--serif); }

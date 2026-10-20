@@ -21,6 +21,13 @@ const server = createServer((req, res) => {
 }).listen(0);
 const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const shots = arg("--shots"), LANG = arg("--lang"), TEXT = arg("--text"), SE = process.argv.includes("--se"), COMFORT = process.argv.includes("--comfort"), IPAD = process.argv.includes("--ipad");
+// the fonts the app ships (build-web.mjs bundles these files), served here in place of Google Fonts, so every machine lays out the
+// same text the phone does. --no-fonts: none at all, the browser's fallbacks (wider on Linux), to shake out layouts that only just fit
+const NOFONTS = process.argv.includes("--no-fonts");
+const FACES = [["alegreya", "Alegreya", 500, "normal"], ["alegreya", "Alegreya", 700, "normal"], ["alegreya", "Alegreya", 400, "italic"],
+  ["alegreya-sans", "Alegreya Sans", 400, "normal"], ["alegreya-sans", "Alegreya Sans", 500, "normal"], ["alegreya-sans", "Alegreya Sans", 700, "normal"], ["alegreya-sans", "Alegreya Sans", 800, "normal"]];
+const fonts = (page) => page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => (NOFONTS ? r.abort() : r.fulfill({ contentType: "text/css",
+  body: FACES.map(([f, fam, w, s]) => `@font-face { font-family: "${fam}"; font-weight: ${w}; font-style: ${s}; font-display: block; src: url(http://localhost:${server.address().port}/node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2) format("woff2"); }`).join("\n") })));
 if (shots) mkdirSync(shots, { recursive: true });
 const VW = IPAD ? 820 : SE ? 375 : 402, VH = IPAD ? 1180 : SE ? 667 : 874, DPR = SE || IPAD ? 2 : 3;
 const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards"];
@@ -58,7 +65,7 @@ const AUDIT = (id) => {
 // passover 2: nothing in the middle (a pad, the say line, the turned card, the chip) sits on a seat, and every seat's name shows
 function SEATS_CLEAR() {
   const out = [], hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
-  const seats = [...document.querySelectorAll("#seats .seat")];
+  const seats = [...document.querySelectorAll("#seats .seat")].filter((s) => getComputedStyle(s).visibility !== "hidden"); // your plate steps aside for your own panel
   for (const e of document.querySelectorAll("#center > *, #say > *, #trump > *, #scoreChip"))
     for (const s of seats) if (hit(e.getBoundingClientRect(), s.getBoundingClientRect())) out.push(`covers ${s.querySelector("b").textContent}'s seat: ${(e.getAttribute("aria-label") || e.textContent).trim().slice(0, 24)}`);
   for (const s of seats) { // a card in flight (dealt, or swept to the winner) passes over plates on purpose
@@ -110,6 +117,7 @@ let failed = 0;
 for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   const b = await bt.launch();
   const page = await b.newPage({ viewport: { width: VW, height: VH }, deviceScaleFactor: DPR });
+  await fonts(page);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("response", (r) => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
@@ -117,6 +125,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   if (COMFORT || TEXT) await page.addInitScript(([c, t]) => localStorage.setItem("kt.save", JSON.stringify({ reset: 1, opt: { comfort: c, ...(t ? { text: t, textAuto: false } : {}) } })), [COMFORT, TEXT]);
   await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast&cut${LANG ? "&lang=" + LANG : ""}`);
   await page.waitForFunction(() => window.kt, null, { timeout: 15000 });
+  await page.evaluate(() => document.fonts.ready);
   // every sentence the live region shows is logged with when it was written (kt.said.log); P0-3: none may be replaced before it
   // could be read. And nothing else may write the live region behind the queue's back.
   await page.evaluate(() => { window.writes = 0; new MutationObserver(() => writes++).observe(document.getElementById("announce"), { childList: true, characterData: true, subtree: true }); });
@@ -290,7 +299,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   // shown for its whole reading time and the bots wait for it: nothing is dropped, and the cards never outrun the words
   if (name === "webkit") {
     const vp = await b.newPage({ viewport: { width: VW, height: VH } });
-    vp.on("pageerror", (e) => errors.push(e.message));
+    vp.on("pageerror", (e) => errors.push(e.message)); await fonts(vp);
     await vp.addInitScript(() => { window.Capacitor = { Plugins: { ScreenReader: { isEnabled: async () => ({ value: true }), addListener: () => {} } } }; });
     await vp.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast`);
     await vp.waitForFunction(() => window.kt);

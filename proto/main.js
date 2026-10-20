@@ -457,7 +457,10 @@ function drawTable(justPlayed = -1) {
   setAttr(pill, "aria-label", trump ? `Trump is ${SUIT_WORD[trump].toLowerCase()}.` : "No trump this hand.");
   const tt = $("#trump"), c1 = setHTML(tt, turned ? more.trumpTile(st, svgFor, G.seats.map((x) => x.name)) : "");
   setStyle(tt, "bottom", meBottom + "px");
-  const c2 = setHTML($("#center"), centre(mine)), say = sayLine(mine, comfort), c3 = setHTML($("#say"), say ? `<div class="say">${esc(say)}</div>` : "");
+  const panel = centre(mine), c2 = setHTML($("#center"), panel), say = sayLine(mine, comfort), c3 = setHTML($("#say"), say ? `<div class="say">${esc(say)}</div>` : "");
+  // Comfort, or a tight table: while one of your own panels is up (a bid, a call), it takes your plate's place, which has nothing
+  // to say until you've answered, so the panel has the room down to your hand whatever the text size
+  tb.classList.toggle("mypanel", !!mine && !!panel && (comfort || tight));
   // the score chip: what it shows (initials when the words are big and the screen is small), and all of it for VoiceOver
   const sc = G.totals.score, us = team(me), low = G.game === "hearts", rank = 1 + sc.filter((x, s) => s !== me && (low ? x < sc[me] : x > sc[me])).length;
   const c4 = setText($("#scoreChip"), TEAMS(G.game) ? `Us ${sc[us]} · Them ${sc[1 - us]}` : tight ? `You ${sc[me]} · ${["1st", "2nd", "3rd", "4th"][rank - 1]}` : G.seats.map((x, s) => `${s === me ? "You" : x.name} ${sc[s]}`).join(" · "));
@@ -469,7 +472,7 @@ function drawTable(justPlayed = -1) {
 function crowded() { // one layout read, only when what's in the middle has just changed
   const box = (e) => e.getBoundingClientRect(), hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
   const mine = [...document.querySelectorAll("#center > *, #say > *, #trump > *, #scoreChip")].map(box).filter((q) => q.height);
-  const theirs = [...document.querySelectorAll("#seats .seat, #trick .card, #hand"), document.querySelector(".bar #menuBtn")].filter((e) => !e.getAnimations().length).map(box).filter((q) => q.height);
+  const theirs = [...document.querySelectorAll("#seats .seat, #trick .card, #hand"), document.querySelector(".bar #menuBtn")].filter((e) => !e.getAnimations().length && getComputedStyle(e).visibility !== "hidden").map(box).filter((q) => q.height);
   const touch = (list) => list.some((a, i) => list.some((b, j) => j > i && hit(a, b)));
   const seats = [...document.querySelectorAll("#seats .seat")].map(box), bar = [...document.querySelectorAll(".bar > :not([hidden])")].map(box);
   // and so are two plates that touch (long words at a big text size), pills in the bar that touch, or a chip on two lines
