@@ -242,6 +242,11 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 .row.stepper { gap: 8px; justify-content: center; flex-wrap: nowrap; }
 .chip { font: 700 var(--fs-l)/1.2 var(--serif); min-width: 2.4ch; padding: 4px 10px; text-align: center; border-radius: 6px; color: var(--ink);
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--paper)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-1); }
+/* the cut: a squared-up deck, wide enough to tap where you'd cut it */
+.deck { display: flex; justify-content: center; align-items: center; width: 100%; min-height: calc(var(--tap) * 2.2); margin: 6px 0 4px; padding: 10px 0; border: 0; border-radius: 10px; background: none; }
+.deck img { flex: none; width: 15%; height: auto; aspect-ratio: 5 / 7; margin: 0 -2.6%; border-radius: 5px; box-shadow: 0 2px 4px rgba(40,20,6,.35); }
+.fp { white-space: nowrap; }
+.deck:focus-visible { outline: 3px solid var(--brass-d); outline-offset: 2px; }
 .lasttrick { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
 .lasttrick > span { display: grid; gap: 4px; justify-items: center; }
 .lasttrick .card { width: 56px; height: 78px; } .lasttrick small { font-size: var(--fs-s); }

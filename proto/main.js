@@ -245,12 +245,14 @@ function newGame(game, fixed = null) {
   track("game_start", { game, preset: L.preset, level: L.opps });
   startHand();
 }
-function startHand() {
+async function startHand() {
   if (net && !net.host) return guestHand();
-  const m = MOD[G.game];
-  G.st = m.newHand(G.rules, newSeed(), G.dealer, G.totals, G.handNo);
+  const m = MOD[G.game], seed = (G.nextSeed ??= newSeed()); // kept until it's dealt: a fingerprint, once shown, is never swapped for another
+  const cut = G.seats[G.viewer]?.kind === "human" && !net ? await cutDeck(seed) : 0;
+  G.st = m.newHand(G.rules, seed, G.dealer, G.totals, G.handNo, cut);
+  G.st.cut ??= cut; delete G.nextSeed;
   G.totals ??= structuredClone(G.st.totals);
-  if (net) net.send({ t: "start", seed: G.st.seed, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
+  if (net) net.send({ t: "start", seed: G.st.seed, cut, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
   G.reasons = {}; G.looked = {}; whyNow = null; closePeek();
   recordDeal(); // every game, every hand size: the ledger sorts them out
   S.cur = G; save();
@@ -259,6 +261,25 @@ function startHand() {
   announce(`Hand ${G.handNo + 1}. New cards are dealt.${G.game === "euchre" ? ` ${G.seats[G.st.dealer].name} deals; the upcard is the ${cardName(G.st.up)}.` : ""} ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}${faceDown(G.viewer) ? " Your team is behind, so your cards are dealt face down: you may bid blind nil before you look." : ""}`, { interrupt: true });
   run();
 }
+// F1: the cut. The fingerprint (the seed's SHA-256, cut short) is shown first, so the shuffle is fixed before the player cuts;
+// the deal is the shuffle rotated by the cut. Only offered for a game whose newHand(…, handNo, cut) really deals by the cut, so
+// the score sheet never prints a cut the website can't reproduce.
+const cutWorks = {};
+function cutsDeal(game) {
+  if (!(game in cutWorks)) { const m = MOD[game], s = newSeed(), deal = (c) => JSON.stringify(m.newHand(G.rules, s, 0, undefined, 0, c).hands); cutWorks[game] = deal(0) !== deal(17); }
+  return cutWorks[game];
+}
+async function cutDeck(seed) {
+  if (!cutsDeal(G.game)) return 0;
+  const n = G.game === "euchre" ? 24 : 52, fp = fingerprint(seed);
+  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed: its fingerprint is <b class="seed fp">${fp.slice(0, 4)} ${fp.slice(4)}</b>. Tap the deck where you'd like to cut it.</p>
+    <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
+    <p class="muted">The score sheet prints the fingerprint and your cut, so anyone can deal this hand again on our website.</p>`);
+  const c = typeof v === "string" && v.startsWith("cut:") ? +v.slice(4) : 1 + (Math.floor(performance.now() * 7919) % (n - 1)); // closed without a tap: the moment decides
+  announce(`You cut ${c} cards.`);
+  return c;
+}
+
 // R2: when blind nil is open to a person, their cards stay face down until they look or bid it
 const canBlind = (s) => G.game === "spades" && !!G.rules.blindNil && G.st.phase === "bid" && G.st.bids[s] === null && G.st.hands[s].length === 13 && G.st.totals.score[1 - team(s)] - G.st.totals.score[team(s)] >= G.rules.blindNilDown;
 const faceDown = (s) => G.seats[s].kind === "human" && !G.looked?.[s] && (pending?.seat === s && pending.kind === "bid" ? pending.legal.some((a) => a.blind) : canBlind(s)); // the engine's word once it's asking
@@ -1147,6 +1168,10 @@ function setSeat(s, el) { S.last.seats[s] = el.dataset.v; save(); renderSetup();
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-hold]")) { if (performance.now() - pressed > 600) dialog.done?.("tap"); return; }
   const d = e.target.closest("[data-dlg]");
+  if (d?.dataset.dlg === "cut") { // where you tap along the deck is where it's cut; a tap with no place (keyboard, Switch Control) cuts by the moment
+    const r = d.getBoundingClientRect(), n = +d.dataset.n, k = e.detail && e.clientX ? (e.clientX - r.left) / r.width : (performance.now() * 7919 % 1000) / 1000;
+    return dialog.done?.("cut:" + Math.min(n - 1, Math.max(1, Math.round(k * (n - 2)) + 1)));
+  }
   if (d) return dialog.done?.(d.dataset.dlg || null);
   const p = e.target.closest("[data-pin]");
   if (p) return pin.key?.(p.dataset.pin);
@@ -1208,7 +1233,8 @@ async function guestHand() { // a guest plays the host's deal from its own seat;
   const mine = h.seats.findIndex((x) => x.player === net.me);
   G = { game: h.game, rules: h.rules, preset: h.preset, totals: h.totals, handNo: h.handNo, dealer: h.dealer, history: h.handNo && G ? G.history : [], viewer: mine, reasons: {}, over: null,
     seats: h.seats.map((x, i) => (i === mine ? { ...x, kind: "human" } : { ...x, kind: "remote", player: net.hostId })) };
-  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo);
+  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo, h.cut ?? 0);
+  G.st.cut ??= h.cut ?? 0;
   S.cur = G; save(); sound.shuffle(); G.justDealt = true;
   run();
 }
