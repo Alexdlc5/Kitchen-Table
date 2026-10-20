@@ -2,6 +2,7 @@
 // own shop preview and store screenshot at any size. Card faces never change: they stay crisp and readable.
 // Tiers and prices live in sim/generator.json → themes; this file only paints.
 import { curve, ring, rng, mix } from "./paint.js";
+import { stock } from "./art.js";
 
 const svgURL = (w, h, body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`)}")`;
 const lamp = (a = 0.28) => `radial-gradient(ellipse 70% 55% at 50% 38%, rgba(255,222,170,${a}), transparent 70%)`;
@@ -135,7 +136,7 @@ export const THEMES = {
 
   gingham: { name: "Sunday gingham", tier: "classic", blurb: "Red check tablecloth, pie cooling on the sill.", table: `${lamp(0.2)}, ${vignette(0.35)}, ${gingham("#c0392b")}`, back: { base: "#b23a33", ink: "#f7efe2", motif: "gingham" }, accent: IVORY },
   cabin: { name: "Lake cabin", tier: "classic", blurb: "Buffalo plaid and a crackling stove.", table: `${lamp(0.18)}, ${vignette(0.45)}, ${plaid}`, back: { base: "#1d3b2c", ink: "#c9a45c", motif: "pine" }, accent: { paper: "#f7efe0", brass: "#c08a4a", line: "#d8c49e" } },
-  diner: { name: "Diner '57", tier: "classic", blurb: "Mint formica and a chrome edge.", table: `${lamp(0.2)}, radial-gradient(ellipse at 50% 42%, #cfeee0, #9fd4c0 70%, #7fb8a4)`, frame: frame("#8f979b", "#d9dfe2"), back: { base: "#2fa79a", ink: "#e9f4ef", motif: "starburst" }, accent: { paper: "#fdfaf3", brass: "#e07a6a", line: "#d6e3dd" } },
+  diner: { name: "Diner '57", tier: "classic", blurb: "Mint laminate and a chrome edge.", table: `${lamp(0.2)}, radial-gradient(ellipse at 50% 42%, #cfeee0, #9fd4c0 70%, #7fb8a4)`, frame: frame("#8f979b", "#d9dfe2"), back: { base: "#2fa79a", ink: "#e9f4ef", motif: "starburst" }, accent: { paper: "#fdfaf3", brass: "#e07a6a", line: "#d6e3dd" } },
   garden: { name: "Garden party", tier: "classic", blurb: "Chintz roses on a linen cloth.", table: `${lamp(0.18)}, ${vignette(0.3)}, ${roses()}`, back: { base: "#8fa47c", ink: "#f4dcd8", motif: "rose" }, accent: { paper: "#fdf7ef", brass: "#c98a8a", line: "#e2d3c6" } },
 
   parlor: { name: "Antique parlor", tier: "signature", blurb: "Green leather, mahogany and gold tooling.", table: leather("#2e4a36"), frame: frame("#c9a45c", "#4a1f14", 14), back: { base: "#3a1d14", ink: "#c9a45c", motif: "damask" }, accent: { paper: "#f6efdf", brass: "#b8924c", line: "#d6c49c" } },
@@ -174,9 +175,13 @@ export function themeBack(id) {
     <text x="50" y="94" text-anchor="middle" font-family="Alegreya Sans, sans-serif" font-weight="800" font-size="7" letter-spacing="1" fill="#5a3c10">1952</text>
     ${[22, 118].map((y) => `<rect x="14" y="${y - 2}" width="72" height="4" fill="${ink}" opacity=".6"/>`).join("")}`;
   if (motif === "memphis") m += `<path d="M18 30 q8 -10 16 0 t16 0 t16 0" fill="none" stroke="${ink}" stroke-width="3" stroke-linecap="round"/><path d="M60 60 l16 28 h-32z" fill="#f6a5b4"/><circle cx="30" cy="100" r="9" fill="#5b8de0"/><rect x="58" y="100" width="16" height="16" fill="#2fa79a"/>`;
-  return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="${uid}"><rect x="10" y="10" width="80" height="120" rx="5"/></clipPath></defs>` +
-    `<rect x="1" y="1" width="98" height="138" rx="9" fill="${edge}" stroke="${mix(edge, "#000000", 0.25)}" stroke-width="1.5"/><rect x="10" y="10" width="80" height="120" rx="5" fill="${base}"/>` +
-    `<g clip-path="url(#${uid})">${m}</g></svg>`;
+  // the back is printed card stock: a faint linen weave over the print, and the printed field sits a hair below its border
+  // (shade on its top-left inner edge, light on its bottom-right)
+  const rows = (k, d) => Array.from({ length: k }, (_, i) => d(10.5 + i * 2)).join("");
+  const linen = `<path d="${rows(60, (y) => `M10 ${y}H90`)}" stroke="#fff" stroke-opacity=".07" stroke-width=".55"/><path d="${rows(40, (x) => `M${x} 10V130`)}" stroke="#000" stroke-opacity=".06" stroke-width=".55"/>`;
+  const field = `<path d="M10.5 118V15A4.5 4.5 0 0 1 15 10.5H86" fill="none" stroke="#000" stroke-opacity=".22" stroke-width="1"/><path d="M89.5 22V125A4.5 4.5 0 0 1 85 129.5H14" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg">${stock(edge, mix(edge, "#000000", 0.25), mix(edge, "#000000", 0.4), mix(edge, "#ffffff", 0.55))}<defs><clipPath id="${uid}"><rect x="10" y="10" width="80" height="120" rx="5"/></clipPath></defs>` +
+    `<rect x="10" y="10" width="80" height="120" rx="5" fill="${base}"/><g clip-path="url(#${uid})">${m}${linen}${field}</g></svg>`;
 }
 
 // the CSS a theme puts on the page (main.js applies it): the surface, its frame, and the accent variables

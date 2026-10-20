@@ -11,6 +11,8 @@ copyFileSync("sim/generator.json", `${out}/generator.json`);
 const FONTS = [["alegreya", "Alegreya", 500, "normal"], ["alegreya", "Alegreya", 700, "normal"], ["alegreya", "Alegreya", 400, "italic"],
   ["alegreya-sans", "Alegreya Sans", 400, "normal"], ["alegreya-sans", "Alegreya Sans", 500, "normal"], ["alegreya-sans", "Alegreya Sans", 700, "normal"], ["alegreya-sans", "Alegreya Sans", 800, "normal"]];
 for (const [f, , w, s] of FONTS) copyFileSync(`node_modules/@fontsource/${f}/files/${f}-latin-${w}-${s}.woff2`, `${out}/fonts/${f}-${w}-${s}.woff2`);
+// the SIL Open Font License asks that the licence travel with the fonts
+for (const f of new Set(FONTS.map(([f]) => f))) copyFileSync(`node_modules/@fontsource/${f}/LICENSE`, `${out}/fonts/OFL-${f}.txt`);
 // Acknowledgements (Options › About): what the iOS app ships and each licence's full text (plus any NOTICE), read from node_modules
 const fileIn = (dir, re) => { const f = readdirSync(dir).find((f) => re.test(f)); return f && readFileSync(`${dir}/${f}`, "utf8").replace(/\r\n/g, "\n").trim(); };
 const ack = Object.keys(JSON.parse(readFileSync("package.json", "utf8")).dependencies)
@@ -52,6 +54,6 @@ for (const f of readdirSync(out).filter((f) => /\.(js|html)$/.test(f)))
     if (!existsSync(`${out}/${dep}`)) throw new Error(`${f} imports ./${dep}, which is not in ${out}/`);
 // a DOM id main.js asks for must exist in index.html, or be one main.js draws itself (otherwise "of null" at boot)
 const mainSrc = readFileSync("proto/main.js", "utf8");
-for (const [, id] of mainSrc.matchAll(/$("#([w-]+)")/g))
+for (const [, id] of mainSrc.matchAll(/\$\("#([\w-]+)/g))
   if (!html.includes(`id="${id}"`) && !mainSrc.includes(`id="${id}"`)) throw new Error(`main.js uses #${id}, which is not in index.html`);
 console.log("www/ ready");

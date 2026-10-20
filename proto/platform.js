@@ -25,9 +25,9 @@ export function setTelemetry(on, { first = false } = {}) {
   telemetry = !!on;
   try { FirebaseAnalytics?.setEnabled({ enabled: telemetry }).catch(() => {}); } catch {}
   try { FirebaseCrashlytics?.setEnabled({ enabled: telemetry }).catch(() => {}); } catch {}
-  if (first && FirebaseAnalytics) // the answer itself, once, with nothing attached
-    FirebaseAnalytics.setEnabled({ enabled: true }).then(() => FirebaseAnalytics.logEvent({ name: "consent", params: { telemetry: telemetry ? "yes" : "no" } }))
-      .then(() => { if (!telemetry) return FirebaseAnalytics.setEnabled({ enabled: false }); }).catch(() => {});
+  // a "yes" is logged once, with nothing attached. A "no" sends nothing at all: no event may leave the phone after a refusal
+  // (GDPR / ePrivacy), so refusals are not counted
+  if (first && telemetry && FirebaseAnalytics) FirebaseAnalytics.logEvent({ name: "consent", params: { telemetry: "yes" } }).catch(() => {});
 }
 export function track(name, params = {}) {
   log.push([Date.now(), name, params]); if (log.length > 100) log.shift(); // local debug ring, never sent

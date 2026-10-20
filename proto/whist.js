@@ -7,8 +7,8 @@ export const eff = (c) => c[1];
 export const pow = (c) => "23456789TJQKA".indexOf(c[0]) + 2;
 export const HONOURS = ["A", "K", "Q", "J"];
 
-export function newHand(rules, seed, dealer, totals = { score: [0, 0] }) {
-  const hands = dealHands(seed, dealer, newDeck()), trumpCard = hands[dealer][12]; // the 52nd card dealt goes to the dealer
+export function newHand(rules, seed, dealer, totals = { score: [0, 0] }, handNo = 0, cut = 0) { // handNo unused: cut sits 6th in every game
+  const hands = dealHands(seed, dealer, newDeck(), cut), trumpCard = hands[dealer][12]; // the 52nd card dealt goes to the dealer
   return {
     game: "whist", rules, seed, dealer, totals: structuredClone(totals), trumpCard, trump: trumpCard[1],
     phase: "play", turn: next(dealer), hands, dealt: hands.map((h) => [...h]),

@@ -2,16 +2,17 @@
 // dealer.js; this file only shows the table and asks the humans. Every screen is drawn from the save (S) and the game (G).
 import { platform, track, setTelemetry } from "./platform.js";
 import { LANGS, CHOSEN } from "./i18n.js";
-import { newSeed } from "./dealer.js";
-import { rulesFor, team, partner, newDeck, SUITS } from "./cards.js";
+import { newSeed, fingerprint, seedBytes } from "./dealer.js";
+import { rulesFor, team, partner, SUITS } from "./cards.js";
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
 import * as euchre from "./euchre.js";
 import * as ohhell from "./ohhell.js";
 import * as whist from "./whist.js";
 import * as more from "./more-games.js";
-import { decide, nilRisk, nilForbidden } from "./ai.js";
-import { face, cardName, titleProps } from "./art.js";
+import { decide } from "./ai.js";
+import * as ledger from "./ledger.js";
+import { face, cardName, titleProps, tableProp } from "./art.js";
 import { THEMES, themeBack, themeStyle } from "./themes.js";
 import { speech } from "./speech.js";
 import { SCENES, tuckBox, rosette, stamp } from "./scenes.js";
@@ -31,9 +32,9 @@ const KEY = "kt.save", RESET = 1; // bump RESET for an "as a new player" TestFli
 const fresh = () => ({
   v: 1, reset: RESET, hands: 0, consentAsked: false,
   opt: { sound: true, loud: false, haptics: true, comfort: false, four: false, confirm: false, speed: "normal", lang: CHOSEN, analytics: null,
-    theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1 },
+    theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1, cut: false },
   last: { game: "hearts", preset: "standard", custom: {}, partner: "standard", opps: "standard", seats: ["you", "bot", "bot", "bot"] },
-  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades", "euchre"], straight: false, euchre: 1 },
+  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades", "euchre"], straight: false, euchre: 1, cut: false },
 });
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); if (S.reset !== RESET) S = fresh(); } catch { S = fresh(); }
@@ -51,7 +52,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const css = (v) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v));
 const speed = () => (qs.has("fast") ? 0.02 : S.opt.comfort ? 1.7 : { relaxed: 1.7, normal: 1, fast: 0.5 }[S.opt.speed] || 1); // ?fast: tests only
 const owns = (game) => cfg.games[game]?.free || platform.owns("everything");
-const toggle = (act, on, label) => `<div class="row"><span>${label}</span><button class="toggle" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"></button></div>`;
+// a switch prints its state beside the track (older eyes don't all read iOS switches); disabled when something else decides it
+const sw = (act, on, label, { disabled = false, attrs = "" } = {}) => `<button class="toggle" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}" ${attrs} ${disabled ? "disabled" : ""}><i aria-hidden="true">${on ? "On" : "Off"}</i></button>`;
+const toggle = (act, on, label, opt = {}) => `<div class="row"><span>${label}${opt.note ? ` <small class="muted">${opt.note}</small>` : ""}</span>${sw(act, on, label, opt)}</div>`;
+// a row of choices is one named radio group, so VoiceOver says which question "Standard, selected" answers
+let segN = 0;
+const seg = (act, val, opts, labelId) => `<div class="seg" data-n="${opts.length}" role="radiogroup" ${labelId ? `aria-labelledby="${labelId}"` : ""}>${opts.map(([v, name]) => `<button role="radio" data-act="${act}" data-v="${v}" aria-checked="${val === v}">${name}</button>`).join("")}</div>`;
+const segRow = (label, act, val, opts) => { const id = "sg" + ++segN; return `<div class="row"><span id="${id}">${label}</span>${seg(act, val, opts, id)}</div>`; };
 let screen = null;
 function show(id) {
   screen = id;
@@ -61,42 +68,72 @@ function show(id) {
   document.querySelectorAll(".screen").forEach((e) => e.classList.toggle("on", e.id === id));
   document.querySelectorAll(".screen:not(.on)").forEach((e) => e.setAttribute("aria-hidden", "true"));
   $("#" + id).removeAttribute("aria-hidden");
+  if ($("#dialog").hidden) focusScreen(id);
+}
+// VoiceOver's cursor and the keyboard start on the new screen's heading, never on a button of a screen that has gone
+function focusScreen(id) {
+  const sc = $("#" + id), h = $(`#${id} h1`) || sc;
+  if (sc.contains(document.activeElement)) return; // already on this screen (it was only redrawn)
+  h.tabIndex = -1; h.focus({ preventScroll: true });
+}
+// a redraw replaces the buttons: the focus goes back to the one that matches the button that had it (same action and value)
+const sig = (e) => (e?.dataset ? ["act", "v", "to", "id", "seat", "game"].map((k) => e.dataset[k] ?? "").join("|") : "");
+function refocus(s) {
+  if (!s || s === "|||||") return false;
+  const e = [...document.querySelectorAll(`#dialog:not([hidden]) [data-act], .screen.on [data-act]`)].find((x) => sig(x) === s);
+  e?.focus({ preventScroll: true });
+  return !!e;
 }
 function applyLook() {
   const root = document.documentElement;
-  root.classList.toggle("comfort", !!S.opt.comfort);
+  root.classList.toggle("comfort", !!S.opt.comfort); root.classList.toggle("four", four());
   root.style.setProperty("--speed", S.opt.speed === "fast" ? 0.6 : 1);
-  const theme = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", st = themeStyle(theme), felt = $("#felt");
+  const theme = trial || (ownsTheme(S.opt.theme) ? S.opt.theme : "walnut"), st = themeStyle(theme), felt = $("#felt"); // trial: a theme tried for one hand
   felt.style.background = st.background; felt.style.boxShadow = st.boxShadow;
   for (const [k, v] of Object.entries(st.vars)) root.style.setProperty(k, v);
   root.classList.toggle("text-l", S.opt.text === "large"); root.classList.toggle("text-xl", S.opt.text === "xl");
   speech.enabled = !!S.opt.speak; speech.rate = S.opt.speakRate || 1;
   sound.enabled = S.opt.sound; sound.setIgnoreSilent(S.opt.loud);
-  faces.clear();
-  backSvg = themeBack(ownsTheme(S.opt.back) ? S.opt.back : theme);
+  faces.clear(); look++; M = null; geo = null; tight = false;
+  backSvg = themeBack(!trial && ownsTheme(S.opt.back) ? S.opt.back : theme);
+  backImg = `<img src="data:image/svg+xml,${encodeURIComponent(backSvg)}" alt="">`; // the plates' little backs: one image node each, not an SVG tree
 }
 const ownsTheme = (id) => THEMES[id] && (THEMES[id].tier === "free" || platform.owns("theme_" + id));
 const faces = new Map();
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches; // no motion, ever, when the phone asks
-const svgFor = (c) => { const k = c + S.opt.four; if (!faces.has(k)) faces.set(k, face(c, { four: S.opt.four })); return faces.get(k); };
-const cardEl = (c, attrs = "", cls = "", label = cardName(c)) => `<button class="card ${cls}" data-card="${c}" aria-label="${label}" ${attrs}>${svgFor(c)}</button>`;
-let backSvg = ""; // the chosen card back, drawn once per change of theme
+const four = () => !!(S.opt.four || S.opt.comfort); // Comfort always deals the four-colour deck (DESIGN §6.1)
+const svgFor = (c) => { const k = c + four(); if (!faces.has(k)) faces.set(k, face(c, { four: four() })); return faces.get(k); };
+let backSvg = "", backImg = ""; // the chosen card back, drawn once per change of theme
+let look = 0, M = null, geo = null; // look: bumps with every theme/deck/text change; M: sizes read from the CSS once per look; geo: plate sizes
+let tight = false; // too little room (an iPhone SE at Extra large text): the table's compact forms, until the size or look changes
 
 // R2: nothing may pop up between the deal and the last trick. dialog() refuses unless the player opened it themselves.
 let handLive = false;
 const blocked = []; // ?debug: what tried to interrupt a hand (smoke.mjs fails on any)
-function dialog(html, { user = false } = {}) {
+// pause: the bots wait while it's open (the menu's "Paused", a Why? answer); kind: what it is, for tests
+function dialog(html, { user = false, pause = false, kind = "" } = {}) {
   if (handLive && !user) { blocked.push(html.slice(0, 60)); return Promise.resolve(null); }
-  $("#dialogBody").innerHTML = html; $("#dialog").hidden = false;
-  return new Promise((res) => { dialog.done = (v) => { $("#dialog").hidden = true; dialog.done = null; res(v); }; });
+  dialog.pause = pause; dialog.kind = kind;
+  const a = document.activeElement, opener = $("#dialog").contains(a) ? dialog.opener : a, key = $("#dialog").contains(a) ? dialog.key : sig(a); // a dialog opened from a dialog gives focus back to the first opener
+  $("#dialogBody").innerHTML = html; $("#dialog").hidden = false; $("main").inert = true; dialog.opener = opener; dialog.key = key;
+  const h = $("#dialogBody h2");
+  if (h) { h.id = "dialogTitle"; h.tabIndex = -1; h.focus(); } // labelled by its heading, which VoiceOver reads first
+  return new Promise((res) => { dialog.done = (v) => {
+    $("#dialog").hidden = true; $("main").inert = false; dialog.done = null; dialog.pause = false; dialog.kind = ""; res(v);
+    queueMicrotask(() => { if (!dialog.done) { if (opener?.isConnected && !opener.closest("[aria-hidden=true]")) opener.focus(); else if (!refocus(key)) focusScreen(screen); } });
+  }; });
 }
 
-// R9: an outbound link only after a grown-up check (press and hold), never while the caregiver lock is on
+let peekOpen = false; // the score sheet opened from the chip; it closes itself when the hand or the game ends
+const closePeek = () => { if (peekOpen) dialog.done?.(null); };
+
+// R9: an outbound link only after a grown-up check (press and hold: a finger, or Space or Enter), never while the caregiver
+// lock is on. Switch Control can't hold, so a press that arrives without one gets a second, plain "Open" question instead.
 async function gate(url, what) {
   if (S.care.lock) return;
   const ok = await dialog(`<h2>Leaving ${BRAND}</h2><p>This opens ${esc(what)} in Safari. Press and hold the button for two seconds.</p>
     <div class="stack"><button class="btn big hold" data-hold="2000">Hold to open<i></i></button><button class="btn" data-dlg="">Stay here</button></div>`, { user: true });
-  if (ok === "hold") platform.openUrl(url);
+  if (ok === "hold" || (ok === "tap" && (await dialog(`<h2>Open Safari?</h2><p>This leaves ${BRAND} for ${esc(what)}.</p><div class="stack"><button class="btn" data-dlg="open">Open Safari</button><button class="btn big" data-dlg="">Stay here</button></div>`, { user: true })) === "open")) platform.openUrl(url);
 }
 
 // ---------------------------------------------------------------- what a bot's play means, for the "Why?" button
@@ -136,14 +173,14 @@ function renderTitle() {
   const lock = S.care.lock, game = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
   const fan = ["AS", "AH", "AD", "AC"].map((c, i) => `<span class="ace" style="--i:${i}; transform: rotate(${(i - 1.5) * 12}deg) translateY(${Math.abs(i - 1.5) * 6}px)" data-act="flip" aria-hidden="true"><span class="face">${svgFor(c)}</span><span class="back">${backSvg}</span></span>`).join("");
   $("#title").innerHTML = `<div class="stack title">
-    <p class="kicker" data-act="kicker">Play a game of cards at…</p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
+    <p class="kicker" data-act="kicker"><span>Play a game of cards at…</span></p><h1 class="wordmark">${cfg.brand.wordmark}</h1>
     <div class="hero"><div class="props">${titleProps()}</div><div class="fan">${fan}</div></div>
     <button class="btn big" data-act="deal" data-game="${game}">${S.cur ? "Back to the table" : `Deal: ${GAME_NAME[game]}`}</button>
     <div class="grid2">
       <button class="btn" data-act="go" data-to="picker">Games and rules</button>
       <button class="btn" data-act="go" data-to="boards">Leaderboards</button>
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="shop">Table shop</button>
-      <button class="btn" data-act="go" data-to="stats">Fair deal</button>
+      <button class="btn" data-act="go" data-to="stats">Is the deal fair?</button>
       <button class="btn" data-act="go" data-to="howto">How to play</button>
       <button class="btn" data-act="${lock ? "care" : "go"}" data-to="options">Options</button>
     </div>
@@ -154,87 +191,120 @@ function renderTitle() {
 
 function renderPicker() { // playable games two to a shelf, then the closed boxes of what's coming
   const playable = Object.keys(cfg.games).filter((g) => !cfg.games[g].release && S.care.games.includes(g));
-  const coming = [...Object.keys(cfg.games).filter((g) => cfg.games[g].release).map((g) => [g, GAME_NAME[g], `${GAME_NAME[g]}, coming soon, free with Everything`]),
+  const coming = [...Object.keys(cfg.games).filter((g) => cfg.games[g].release).map((g) => [g, GAME_NAME[g], `${GAME_NAME[g]}: coming soon. Included in Everything.`]),
     ...Object.entries(more.ROADMAP).map(([g, [name, said]]) => [g, name, `${said}, coming soon`])];
   const box = (g) => {
     const locked = !owns(g), sub = g === "hearts" ? "Free forever" : locked ? "Part of Everything" : "Ready to play";
-    return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}</span></button>`;
+    return `<button class="box" data-act="openbox" data-game="${g}" aria-label="${GAME_NAME[g]}, ${sub}${locked ? ", locked" : ""}">${tuckBox(g, GAME_NAME[g], { locked })}<span class="boxcap">${sub}<b class="play" aria-hidden="true">${locked ? "Have a look ›" : "Play ›"}</b></span></button>`;
   };
   const shelves = [];
   for (let i = 0; i < playable.length; i += 2) shelves.push(`<div class="shelf">${playable.slice(i, i + 2).map(box).join("")}</div>`);
   const rows = shelves.join("") + `<h2 class="shelfsign">Coming to the table</h2><div class="shelf soon">${coming.map(([g, name, said]) => `<div class="box soon" role="img" aria-label="${said}">${tuckBox(g, name, { soon: true })}</div>`).join("")}</div>`;
   const unlockRow = !platform.owns("everything") && !S.opt.comfort && !S.care.lock ? `<button class="btn" data-act="go" data-to="unlock">Unlock everything · $6.99 once</button>` : "";
-  $("#picker").innerHTML = `<div class="stack"><h1 class="sign">The game cupboard</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
+  $("#picker").innerHTML = `<div class="stack"><h1 class="sign">Games and rules</h1>${rows}${unlockRow}<button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 
 let setupGame = "hearts";
+const explain = (d) => d.explain.replace(/\s*0 (turns it off|means [^.]*)\.$/, ""); // the control itself says "Off"
+const customFor = (g) => (S.last.customBy ??= {})[g] ?? {}; // Custom rules are kept per game ("Points to win" isn't the same rule in Spades and Euchre)
+const optsOf = (d) => d.type === "choice" ? d.choices : Array.from({ length: (d.range[1] - d.range[0]) / d.step + 1 }, (_, i) => d.range[0] + i * d.step);
 function renderSetup() {
-  const g = setupGame, L = S.last, defs = cfg.rules[g];
-  const seg = (act, val, opts, names) => `<div class="seg">${opts.map((o) => `<button data-act="${act}" data-v="${o}" aria-pressed="${val === o}">${names[o]}</button>`).join("")}</div>`;
-  const seatRow = [1, 2, 3].map((s) => {
-    const who = TEAMS(g) ? (s === 2 ? "Partner" : s === 1 ? "Left" : "Right") : ["", "Left", "Across", "Right"][s];
-    return `<div class="row"><span>${who}</span>${seg("seat" + s, L.seats[s] || "bot", ["bot", "human"], { bot: "Computer", human: "Person here" })}</div>`;
-  }).join("");
-  const custom = L.preset === "custom" ? defs.map((d) => {
-    const v = L.custom[d.id] ?? d.presets.standard;
-    const ctl = d.type === "toggle" ? `<button class="toggle" role="switch" aria-checked="${!!v}" data-act="rule" data-id="${d.id}"></button>`
-      : d.type === "choice" ? `<select data-act="rulesel" data-id="${d.id}">${d.choices.map((c) => `<option ${c === v ? "selected" : ""}>${c}</option>`).join("")}</select>`
-      : `<select data-act="rulesel" data-id="${d.id}">${Array.from({ length: (d.range[1] - d.range[0]) / d.step + 1 }, (_, i) => d.range[0] + i * d.step).map((c) => `<option ${c === v ? "selected" : ""}>${c}</option>`).join("")}</select>`;
-    return `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span>${ctl}</div>`;
-  }).join("") : defs.filter((d) => d.presets[L.preset] !== d.presets.standard || L.preset === "standard").slice(0, 6).map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, rulesFor(cfg, g, L.preset)[d.id])}</b></div>`).join("");
+  const g = setupGame, L = S.last, defs = cfg.rules[g], r = rulesFor(cfg, g, L.preset, L.preset === "custom" ? customFor(g) : {}), levels = Object.entries(LEVEL_NAME);
+  const name = (d) => `${d.name}<br><small class="muted">${esc(explain(d))}</small>`;
+  let rules;
+  if (L.preset === "custom") rules = defs.map((d) => d.type === "toggle" ? `<div class="row"><span>${name(d)}</span>${sw("rule", r[d.id], d.name, { attrs: `data-id="${d.id}"` })}</div>`
+    : `<div class="row"><label for="rule-${d.id}">${name(d)}</label><select id="rule-${d.id}" data-act="rulesel" data-id="${d.id}">${optsOf(d).map((c) => `<option value="${esc(c)}" ${c === r[d.id] ? "selected" : ""}>${esc(fmt(d, c))}</option>`).join("")}</select></div>`).join("");
+  else { // a preset: one line that says what it is; every rule is one tap away
+    // Euchre always names the two house rules people argue about: stick the dealer, and who leads against a loner
+    const first = g === "euchre" ? defs.filter((d) => ["target", "stickDealer", "lonerLeft"].includes(d.id)) : (L.preset === "standard" ? defs : defs.filter((d) => d.presets[L.preset] !== d.presets.standard)).slice(0, 3);
+    const said = (d) => (d.id === "lonerLeft" ? `Against a loner: ${r.lonerLeft ? "the loner's left leads" : "left of the dealer leads"}` : `${esc(d.name)}: ${esc(fmt(d, r[d.id]))}`);
+    rules = `<details class="rules"><summary><span><b>${PRESET_NAME[L.preset]} rules</b> · ${first.map(said).join(" · ")}</span><span class="see">See all ${defs.length}</span></summary>
+      ${defs.map((d) => `<div class="row"><span>${name(d)}</span><b>${esc(fmt(d, r[d.id]))}</b></div>`).join("")}</details>`;
+  }
+  const seatRow = [1, 2, 3].map((s) => segRow((TEAMS(g) ? ["", "Left", "Partner", "Right"] : ["", "Left", "Across", "Right"])[s], "seat" + s, L.seats[s] || "bot", [["bot", "Computer"], ["human", "Person here"]])).join("");
   $("#setup").innerHTML = `<div class="stack">
     <h1>${GAME_NAME[g]}</h1>
-    <div class="paper"><h2>House rules</h2><div class="grid2">${seg("preset", L.preset, ["standard", "kitchen", "tournament", "custom"], PRESET_NAME)}</div>${custom}</div>
+    <div class="paper"><h2 id="rulesH">House rules</h2>${seg("preset", L.preset, Object.entries(PRESET_NAME), "rulesH").replace('class="seg"', 'class="seg presets"')}${rules}</div>
     <div class="paper"><h2>Players</h2>
-      ${TEAMS(g) ? `<div class="row"><span>Partner plays</span>${seg("partner", L.partner, ["easy", "standard", "expert", "extreme"], LEVEL_NAME)}</div>` : ""}
-      <div class="row"><span>${TEAMS(g) ? "Opponents play" : "Computer players"}</span>${seg("opps", L.opps, ["easy", "standard", "expert", "extreme"], LEVEL_NAME)}</div>
+      ${TEAMS(g) ? segRow("Partner plays", "partner", L.partner, levels) : ""}${segRow(TEAMS(g) ? "Opponents play" : "Computer players", "opps", L.opps, levels)}
       <p class="muted">Pass and play: pick "Person here" and hand the phone around.</p>${seatRow}</div>
-    <button class="btn big" data-act="deal" data-game="${g}">Deal</button>
+    <div class="dealbar"><button class="btn big" data-act="deal" data-game="${g}">Deal</button></div>
     <button class="btn ghost" data-act="go" data-to="picker">Back</button></div>`;
 }
-const fmt = (d, v) => (d.type === "toggle" ? (v ? "On" : "Off") : d.id === "moon" ? { add: "+26 to others", choose: "Shooter chooses", off: "Off" }[v] : d.id === "passing" ? v.replaceAll(",", ", ") : v === 0 ? "Off" : v);
+const fmt = (d, v) => (d.type === "toggle" ? (v ? "On" : "Off") : d.id === "moon" ? { add: "+26 to others", choose: "Shooter chooses", auto: "+26, unless that loses", off: "Off" }[v] ?? v
+  : d.id === "passing" ? v.replaceAll(",", ", ") : v === 0 || v === "off" ? "Off" : typeof v === "string" ? v[0].toUpperCase() + v.slice(1) : v);
 
 // ---------------------------------------------------------------- the game
-let G = null, runId = 0, pending = null, showTrick = null, why = {};
+let G = null, runId = 0, pending = null, showTrick = null, whyNow = null;
 function newGame(game, fixed = null) {
+  closePeek(); tight = false;
   const L = S.last;
   L.game = game;
-  const rules = rulesFor(cfg, game, L.preset, L.preset === "custom" ? L.custom : {});
+  const rules = rulesFor(cfg, game, L.preset, L.preset === "custom" ? customFor(game) : {});
   const seats = fixed || [0, 1, 2, 3].map((s) => {
     const kind = s === 0 || L.seats[s] === "human" ? "human" : "bot", level = TEAMS(game) && s === 2 ? L.partner : L.opps;
     return { kind, level, name: kind === "human" ? (s === 0 ? "You" : `Player ${s + 1}`) : BOTS[level][s - 1] };
   });
   G = { game, rules, preset: L.preset, seats, totals: undefined, // the first hand starts from its own game's empty totals
     handNo: 0, dealer: 3, history: [], st: null, viewer: 0, reasons: {}, over: null };
+  // F2-5 (rules passover 2): the first dealer is drawn from the game's first seed, not always the seat on your right (dealing is
+  // worth a little in Whist and Euchre). The sheet prints who dealt.
+  G.nextSeed = newSeed(); G.dealer = seedBytes(G.nextSeed)[15] % 4;
   track("game_start", { game, preset: L.preset, level: L.opps });
   startHand();
 }
-function startHand() {
+async function startHand() {
   if (net && !net.host) return guestHand();
-  const m = MOD[G.game];
-  G.st = m.newHand(G.rules, newSeed(), G.dealer, G.totals, G.handNo);
+  const m = MOD[G.game], seed = (G.nextSeed ??= newSeed()); // kept until it's dealt: a fingerprint, once shown, is never swapped for another
+  const n = G.game === "euchre" ? 24 : 52, mine = G.seats[G.viewer]?.kind === "human" && !net && ((qs.has("fast") && qs.has("cut")) || (S.opt.comfort ? S.care.cut : S.opt.cut));
+  const [cut, by] = !cutsDeal(G.game) ? [0, ""] : mine ? await cutDeck(seed, n) : [dealerCut(n), "app"]; // by: who cut, "you" or "app"
+  G.st = m.newHand(G.rules, seed, G.dealer, G.totals, G.handNo, cut);
+  G.st.cut ??= cut; G.st.cutBy = by; delete G.nextSeed;
   G.totals ??= structuredClone(G.st.totals);
-  if (net) net.send({ t: "start", seed: G.st.seed, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
-  G.reasons = {}; why = {};
-  if (G.st.hands[0].length === 13) recordDeal(G.st.hands[0], G.game, G.rules); // the ledger compares full 13-card hands
+  if (net) net.send({ t: "start", seed: G.st.seed, cut, game: G.game, rules: G.rules, preset: G.preset, seats: G.seats, dealer: G.dealer, handNo: G.handNo, totals: G.totals });
+  G.reasons = {}; G.looked = {}; whyNow = null; closePeek();
+  recordDeal(); // every game, every hand size: the ledger sorts them out
   S.cur = G; save();
   sound.shuffle();
   G.justDealt = true;
-  announce(`Hand ${G.handNo + 1}. New cards are dealt.${G.game === "euchre" ? ` ${G.seats[G.st.dealer].name} deals; the upcard is the ${cardName(G.st.up)}.` : ""} ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}`, { interrupt: true });
+  announce(`Hand ${G.handNo + 1}. New cards are dealt.${G.game === "euchre" ? ` ${G.seats[G.st.dealer].name} deals; the upcard is the ${cardName(G.st.up)}.` : ""} ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}${faceDown(G.viewer) ? " Your team is behind, so your cards are dealt face down: you may bid blind nil before you look." : ""}`, { interrupt: true });
   run();
 }
-function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals (seat 0 only, as dealt)
-  if (game === "euchre") return; // the ledger compares 13-card hands with a full deck; five from twenty-four would skew it
-  const j = game === "spades" && rules.jokers, E = (c) => spades.eff(c, j);
-  const len = "SHDC".split("").map((s) => hand.filter((c) => (game === "spades" ? E(c) : c[1]) === s).length);
-  S.deals.push({ g: game[0], j: j ? 1 : 0, hc: hand.filter((c) => "AKQJ".includes(c[0])).length, sh: [...len].sort((a, b) => b - a).join(""), sp: len[0],
-    qs: hand.includes("QS") ? 1 : 0, nil: game === "spades" && !nilForbidden(hand, rules) && nilRisk(hand, rules) <= 0.22 ? 1 : 0 });
-  if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
+// F1: the cut. The fingerprint (the seed's SHA-256, cut short) is shown first, so the seed is fixed before the player cuts;
+// the deal is the shuffle rotated by the cut. Only offered for a game whose newHand(…, handNo, cut) really deals by the cut, so
+// the score sheet never prints a cut the website can't reproduce.
+const cutWorks = {};
+function cutsDeal(game) {
+  if (!(game in cutWorks)) { const m = MOD[game], s = newSeed(), deal = (c) => JSON.stringify(m.newHand(G.rules, s, 0, undefined, 0, c).hands); cutWorks[game] = deal(0) !== deal(17); }
+  return cutWorks[game];
 }
+// P1-5 (passover 2): the app cuts at random unless you've asked to cut yourself (Options; the caregiver's switch in Comfort).
+// Either way the cut and the fingerprint go on the score sheet, so every hand can be checked.
+const dealerCut = (n) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % (n - 1));
+async function cutDeck(seed, n) { // on the table itself, before the cards come out
+  const fp = fingerprint(seed);
+  show("table"); $("#table").classList.add("predeal");
+  const v = await dialog(`<h2>Cut the deck</h2><p>The seed is fixed before you cut: its fingerprint is <b class="seed fp">${fpHTML(fp)}</b>, printed on the score sheet. Your cut is mixed into the shuffle. Tap the deck where you'd like to cut it.</p>
+    <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
+    <div class="stack"><button class="btn" data-dlg="dealer">Let the app cut</button></div>`);
+  $("#table").classList.remove("predeal");
+  const yours = typeof v === "string" && v.startsWith("cut:"), c = yours ? +v.slice(4) : dealerCut(n);
+  announce(yours ? `You cut ${c} cards.` : `The app cut ${c} cards.`);
+  return [c, yours ? "you" : "app"];
+}
+// a fingerprint in groups of four ("A1B2 C3D4 …"), whichever length dealer.js gives; groups never break across lines
+const fpGroups = (fp) => String(fp).replace(/\s/g, "").match(/.{1,4}/g).join(" ");
+const fpHTML = (fp) => fpGroups(fp).split(" ").map((g) => `<span>${g}</span>`).join(" ");
+
+// R2: when blind nil is open to a person, their cards stay face down until they look or bid it
+const canBlind = (s) => G.game === "spades" && !!G.rules.blindNil && G.st.phase === "bid" && G.st.bids[s] === null && G.st.hands[s].length === 13 && G.st.totals.score[1 - team(s)] - G.st.totals.score[team(s)] >= G.rules.blindNilDown;
+const faceDown = (s) => G.seats[s].kind === "human" && !G.looked?.[s] && (pending?.seat === s && pending.kind === "bid" ? pending.legal.some((a) => a.blind) : canBlind(s)); // the engine's word once it's asking
 
 const humans = () => G.seats.filter((s) => s.kind !== "bot").length; // "remote": a person at another device
 async function run() {
   const my = ++runId, m = MOD[G.game], st = G.st;
+  pending = null; // a question from a loop that's been replaced is nobody's to answer, and must not draw this hand's choices
+  if (!$("#handoff").hidden) { $("#handoff").hidden = true; cover(false); } // a cover left up by the last game's loop belongs to nobody now
   show("table"); handLive = st.phase !== "done"; drawTable();
   if (G.justDealt) { G.justDealt = false; await dealIn(); }
   while (st.phase !== "done") {
@@ -248,12 +318,15 @@ async function run() {
       if (my !== runId) return;
       if (net && !net.host) { net.send({ t: "act", seat: s, a: action }); action = (await net.did(s)) ?? action; }
     } else if (seat.kind === "remote" && net?.alive(seat.player)) { // the host hears the guest; a guest hears the host
-      action = net.host ? await net.intent(s, seat.player, (a) => (st.phase === "pass" ? Array.isArray(a) && new Set(a).size === 3 && a.every((c) => st.hands[s].includes(c)) : m.legal(st).includes(a))) : await net.did(s);
+      const n = { pass: 3, exchange: G.rules.blindSwap }[st.phase], ok = m.legal(st); // a pass or the blind nil exchange is an array of n of your own cards
+      action = net.host ? await net.intent(s, seat.player, (a) => (n ? Array.isArray(a) && a.length === n && new Set(a).size === n && a.every((c) => ok.includes(c)) : ok.includes(a))) : await net.did(s);
       if (my !== runId) return;
     }
     if (action === null) { // a bot, or the seat of someone who left
       await wait((st.phase === "play" ? 520 : 380) * speed());
       await speech.idle(); // when the table is read aloud, the bots wait for the voice to finish
+      if (vo) await said.idle(); // and for VoiceOver to finish reading the last thing that happened
+      while (dialog.pause && dialog.done) await wait(120); // and while the player reads a Why? answer, or has paused
       if (my !== runId) return;
       const d = decide(m.view(st, s), seat.level);
       action = d.action; G.reasons[s] = d.reason;
@@ -264,22 +337,27 @@ async function run() {
     if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? (G.game === "spades" ? "nil" : "zero") : action.bid}.${more.bidsDone(G.game, st)}`);
     if (G.game === "euchre" && phase !== "play") euchreSay(s, action, phase);
     if (phase === "pass" && st.phase === "play") announce(`Cards passed. You received ${(st.received[G.viewer] || []).map(cardName).join(", ")}.`);
+    if (phase === "exchange") { const to = partner(s), n = action.length, me = G.viewer; // R3: the blind nil exchange, said from where you sit
+      announce(to === me ? `${seat.name} passed you the ${cardList(action)}.` : s === me ? `You passed the ${cardList(action)} to ${G.seats[to].name}.` : `${seat.name} passed ${n} card${n === 1 ? "" : "s"} to ${G.seats[to].name}.`); }
     if (st.history.length > before) await played(s, action);
     else drawTable();
     save();
   }
   handLive = false;
-  if (my === runId) finishHand();
+  if (my !== runId) return;
+  if (G.history.at(-1)?.seed === st.seed) { renderSheet(); return show("sheet"); } // reopened on the score sheet: the hand is already scored
+  finishHand();
 }
 async function played(seat, card) {
   sound.card(); if (G.seats[seat].kind === "human" && S.opt.haptics) platform.haptic();
-  const st = G.st, done = !st.trick.length;
-  announce(`${G.seats[seat].name} played the ${cardName(card)}.`);
-  if (done) {
-    const w = st.turn, ours = TEAMS(G.game) ? team(w) === team(G.viewer) : w === G.viewer;
-    announce(`${w === G.viewer ? "You take" : G.seats[w].name + " takes"} the trick.`);
+  const st = G.st, done = !st.trick.length, name = G.seats[seat].name;
+  whyNow = null; // a Why? answer stays up until the next card
+  if (done) { // one sentence for the end of a trick, so the last card is never lost under "takes the trick"
+    const w = st.turn, ours = TEAMS(G.game) ? team(w) === team(G.viewer) : w === G.viewer, takes = G.seats[w].name === "You" ? "take" : "takes";
+    announce(w === seat ? `${name} played the ${cardName(card)} and ${takes} the trick.` : `${name} played the ${cardName(card)}. ${G.seats[w].name} ${takes} the trick.`);
     if (ours && S.opt.haptics) platform.haptic("medium");
-  }
+    G.lastWon = w;
+  } else announce(`${name} played the ${cardName(card)}.`);
   showTrick = done ? st.lastTrick : st.trick;
   drawTable(seat);
   if (!done) return;
@@ -313,105 +391,225 @@ function confetti() { // a few cards drift down past the winner's name; decorati
 
 // where each seat sits relative to whoever is holding the phone: 0 bottom, 1 left, 2 top, 3 right
 const pos = (seat) => (seat - G.viewer + 4) % 4;
-const offset = (p, k = 0.62) => { const cw = css("--tcw"); return [[0, cw * k * 0.9], [-cw * k, 0], [0, -cw * k * 0.9], [cw * k, 0]][p]; };
+const offset = (p, k = 0.62) => { const cw = sizes().tcw; return [[0, cw * k * 0.9], [-cw * k, 0], [0, -cw * k * 0.9], [cw * k, 0]][p]; };
+
+// ---------------------------------------------------------------- the table, patched in place: the plates are built once per game, viewer
+// and look; a played card's node is removed, nothing is rebuilt; every size it needs is read before the first write (scripts/soak.mjs)
+const sizes = () => (M ??= { cw: css("--cw"), tcw: css("--tcw"), tap: css("--tap"), fsS: css("--fs-s"), safeB: parseFloat(getComputedStyle($("#hand")).bottom) - 8 });
+const tpl = document.createElement("template");
+const make = (html) => { tpl.innerHTML = html; return tpl.content.firstElementChild; };
+const setHTML = (e, h) => { if (e._h === h) return false; e._h = h; e.innerHTML = h; return true; };
+const setText = (e, t) => { if (e.textContent === t) return false; e.textContent = t; return true; };
+const setStyle = (e, k, v) => { const c = (e._s ??= {}); if (c[k] !== v) { c[k] = v; if (k[0] === "-") e.style.setProperty(k, v); else e.style[k] = v; } };
+const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
+let seatKey = "";
 
 function drawTable(justPlayed = -1) {
-  if (!G) return;
-  const st = G.st, m = MOD[G.game], me = G.viewer, isSp = G.game === "spades", isEu = G.game === "euchre";
-  // seats
-  const plate = (s) => {
-    const p = pos(s), seat = G.seats[s], cls = ["s-me", "s-left", "s-top", "s-right"][p];
-    const bid = isSp ? (st.bids[s] === null ? "" : st.bids[s] === 0 ? (st.blind[s] ? "Blind nil" : "Nil") : `Bid ${st.bids[s]}`) : "";
-    const status = isEu ? euchreStatus(s) : more.plateStatus(G.game, st, s) ?? (isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`);
-    const pips = seat.kind === "bot" ? `<span class="pips" aria-label="${LEVEL_NAME[seat.level]}">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : "";
-    const tag = TEAMS(G.game) && s === partner(me) && !S.opt.comfort ? "<span>Partner</span>" : "";
-    const whyLine = why[s] && G.reasons[s] ? `<span class="why">${WHY[G.reasons[s].split(":")[0]] || ""}</span>` : "";
-    return `<button class="seat ${cls} ${st.turn === s && st.phase !== "done" ? "turn" : ""}" data-act="why" data-seat="${s}" aria-label="${esc(seat.name)}"><b>${esc(seat.name)}</b>${tag || status ? `<span class="st">${tag}${status}</span>` : ""}${pips}${p ? `<span class="backs" aria-hidden="true">${backSvg.repeat(Math.min(3, st.hands[s].length))}</span>` : ""}${whyLine}</button>`;
-  };
+  if (!G?.st || !$("#handoff").hidden) return; // while the pass-the-phone cover is up, nothing of anyone's hand is drawn under it
+  const st = G.st, me = G.viewer, Z = sizes(), comfort = !!S.opt.comfort, mine = pending && pending.seat === me ? pending : null;
   $("#readBtn").hidden = !S.opt.speak;
-  $("#seats").innerHTML = [0, 1, 2, 3].map(plate).join("");
-  // trick
-  const tr = showTrick || st.trick;
-  $("#trick").innerHTML = tr.map((t) => { const [x, y] = offset(pos(t.seat)); return cardEl(t.card, `tabindex="-1" style="transform: translate(${x}px, ${y}px) rotate(${(t.seat * 7) % 11 - 5}deg)"`); }).join("");
-  if (justPlayed >= 0) {
-    const el = [...document.querySelectorAll("#trick .card")].find((e, i) => tr[i].seat === justPlayed);
-    if (el) { const [x, y] = offset(pos(justPlayed), 3); el.animate([{ translate: `${x}px ${y}px`, opacity: 0.4 }, { translate: "0 0", opacity: 1 }], { duration: 240 * speed(), easing: "ease-out" }); }
+  // seats: words patched; the plates themselves only when the game, the viewer or the look changes
+  const key = `${G.game}|${me}|${look}|${G.seats.map((x) => x.kind + x.level + x.name).join()}`;
+  if (key !== seatKey) { seatKey = key; geo = null; $("#seats").innerHTML = [0, 1, 2, 3].map(plateShell).join(""); }
+  const plates = $("#seats").children;
+  for (let s = 0; s < 4; s++) if (patchPlate(plates[s], s, mine)) geo = null;
+  const hh = drawHand(mine, Z);
+  // the room between the seats and the hand: plate sizes come from the last layout, unless their words just changed
+  const platesMoved = !geo;
+  if (!geo) geo = { free0: Math.max(...[2, ...(comfort ? [1, 3] : [])].map((p) => plates[(me + p) % 4].getBoundingClientRect().bottom)), meH: plates[me].offsetHeight,
+    sideW: Math.max(plates[(me + 1) % 4].offsetWidth, plates[(me + 3) % 4].offsetWidth), sideH: Math.max(plates[(me + 1) % 4].offsetHeight, plates[(me + 3) % 4].offsetHeight) };
+  const meBottom = Z.safeB + hh + 18, free1 = innerHeight - meBottom - geo.meH, free0 = geo.free0, ipad = innerWidth >= 700;
+  setStyle(plates[me], "bottom", meBottom + "px");
+  // the trick: in Comfort a row of named cards under the seats (it never competes with the big hand); on iPad the cards sit out
+  // toward their players, with a name under each; elsewhere close around the middle
+  let mid, tw = Z.tcw, place;
+  if (comfort) {
+    tw = Math.max(44, Math.min(Z.tcw, (free1 - free0 - 20 - Z.fsS * 1.3) / 1.4));
+    mid = free0 + 8 + tw * 0.7;
+    place = (p) => [([3, 0, 1, 2][p] - 1.5) * (tw + 10), 0, 0]; // left, across, right, you
+  } else {
+    mid = (free0 + free1) / 2;
+    const d = ipad ? Math.max(Z.tcw * 0.62, Math.min(innerWidth * 0.17, (free1 - free0) * 0.22)) : Z.tcw * 0.62;
+    place = (p) => [...[[0, d * 0.9], [-d, 0], [0, -d * 0.9], [d, 0]][p], 1];
   }
-  // hand
-  const hand = [...st.hands[me]].sort(isEu ? sortE : isSp ? sortS : sortH);
-  const mine = pending && pending.seat === me ? pending : null;
-  const legal = mine?.kind === "play" ? new Set(mine.legal) : null;
-  $("#hand").innerHTML = hand.map((c) => {
-    const enabled = mine && (["pass", "farmer", "discard"].includes(mine.kind) || (legal && legal.has(c))), dim = legal && !legal.has(c); // dim only what you can't play now
-    return cardEl(c, `data-act="card" ${enabled ? "" : "disabled"}`, `${mine?.sel?.includes(c) ? "sel" : ""} ${dim ? "dim" : ""}`, `${cardName(c)}${dim ? ", can't play now" : mine?.sel?.includes(c) ? ", selected" : ""}`);
-  }).join("");
-  const hh = layoutHand();
-  const mePlate = document.querySelector(".s-me");
-  mePlate.style.bottom = `calc(var(--safe-b) + ${hh + 18}px)`;
-  $("#trump").innerHTML = !more.NAMES[G.game] ? "" : more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
-  // the trick and the side seats sit in the middle of whatever room the top seat and the hand leave
-  const free0 = Math.max(...[".s-top", ...(S.opt.comfort ? [".s-left", ".s-right"] : [])].map((q) => document.querySelector(q).getBoundingClientRect().bottom)), free1 = mePlate.getBoundingClientRect().top;
-  $("#table").style.setProperty("--free0", free0 + "px"); $("#table").style.setProperty("--mid", (free0 + free1) / 2 + "px");
-  // centre: bids, passing, the moon choice, or a word from the table
-  $("#center").innerHTML = centre(mine);
-  // score chip
-  $("#scoreChip").textContent = TEAMS(G.game) ? `Us ${G.totals.score[team(me)]} · Them ${G.totals.score[1 - team(me)]}${isEu && st.trump ? ` · ${SUIT_SIGN[st.trump]} trump` : ""}` : G.seats.map((x, s) => `${s === me ? "You" : x.name[0]} ${G.totals.score[s]}`).join(" · ");
+  const tb = $("#table"), box = $("#trick"), tr = showTrick || st.trick;
+  setStyle(tb, "--free0", free0 + "px"); setStyle(tb, "--free1", free1 + "px"); setStyle(tb, "--mid", mid + "px"); setStyle(box, "--tw", tw + "px");
+  setStyle(tb, "--slotX", Math.abs(place(1)[0]) + tw / 2 + "px"); // how far the side cards of the trick reach from the middle: the side plates stop short of it
+  setStyle(tb, "--sideW", geo.sideW + "px"); // your plate is never wider than the gap between the side seats: its words wrap instead
+  setStyle(tb, "--side", Math.min(mid + Z.tcw * 0.9, innerHeight - Z.safeB - 8 - hh - geo.sideH - 6) + "px"); // side seats beside the trick, rising only to clear your hand
+  box.classList.toggle("named", comfort || ipad);
+  const keys = new Set(tr.map((t) => t.seat + t.card + look));
+  for (const e of [...box.children]) if (!keys.has(e.dataset.k)) e.remove();
+  for (const t of tr) {
+    const k = t.seat + t.card + look, [x, y, tilt] = place(pos(t.seat)), name = esc(G.seats[t.seat].name);
+    let e = box.querySelector(`[data-k="${k}"]`);
+    if (!e) {
+      e = box.appendChild(make(`<span class="card" role="img" data-k="${k}" aria-label="${name}: ${cardName(t.card)}">${svgFor(t.card)}<span class="who" aria-hidden="true">${name}</span></span>`));
+      if (t.seat === justPlayed) { const [fx, fy] = offset(pos(t.seat), 3); e.animate([{ translate: `${fx}px ${fy}px`, opacity: 0.4 }, { translate: "0 0", opacity: 1 }], { duration: 240 * speed(), easing: "ease-out" }); }
+    }
+    setStyle(e, "transform", `translate(${x}px, ${y}px) rotate(${tilt ? ((t.seat * 7) % 11) - 5 : 0}deg)`);
+  }
+  // trump, always in sight: a pill in the bar (Euchre once it's called, Oh Hell, Whist), and the turned card itself beside your
+  // plate when there's room for it at table size
+  const trump = (G.game === "euchre" || more.NAMES[G.game]) && st.trump, pill = $("#trumpPill"), turned = !!more.NAMES[G.game] && st.trumpCard && !comfort && !tight;
+  pill.hidden = !(trump || (more.NAMES[G.game] && !st.trump));
+  setHTML(pill, trump ? `<small>Trump</small><b class="s${trump}">${SUIT_SIGN[trump]}</b>` : "<small>No trump</small>");
+  setAttr(pill, "aria-label", trump ? `Trump is ${SUIT_WORD[trump].toLowerCase()}.` : "No trump this hand.");
+  const tt = $("#trump"), c1 = setHTML(tt, turned ? more.trumpTile(st, svgFor, G.seats.map((x) => x.name)) : "");
+  setStyle(tt, "bottom", meBottom + "px");
+  const panel = centre(mine), c2 = setHTML($("#center"), panel), say = sayLine(mine, comfort), c3 = setHTML($("#say"), say ? `<div class="say">${esc(say)}</div>` : "");
+  // Comfort, or a tight table: while one of your own panels is up (a bid, a call), it takes your plate's place, which has nothing
+  // to say until you've answered, so the panel has the room down to your hand whatever the text size
+  tb.classList.toggle("mypanel", !!mine && !!panel && (comfort || tight));
+  // the score chip: what it shows (initials when the words are big and the screen is small), and all of it for VoiceOver
+  const sc = G.totals.score, us = team(me), low = G.game === "hearts", rank = 1 + sc.filter((x, s) => s !== me && (low ? x < sc[me] : x > sc[me])).length;
+  const c4 = setText($("#scoreChip"), TEAMS(G.game) ? `Us ${sc[us]} · Them ${sc[1 - us]}` : tight ? `You ${sc[me]} · ${["1st", "2nd", "3rd", "4th"][rank - 1]}` : G.seats.map((x, s) => `${s === me ? "You" : x.name} ${sc[s]}`).join(" · "));
+  $("#table").classList.toggle("tight", tight);
+  setAttr($("#scoreChip"), "aria-label", `Score: ${TEAMS(G.game) ? `us ${sc[us]}, them ${sc[1 - us]}` : G.seats.map((x, s) => `${s === me ? "you" : x.name} ${sc[s]}`).join(", ")}.${trump ? ` ${SUIT_WORD[trump]} are trump.` : ""} Double-tap for details.`);
+  // when a panel, the say line, the turned card or the chip lands on a seat, the trick or the hand, switch to the compact forms
+  if (!tight && (c1 || c2 || c3 || c4 || platesMoved) && crowded()) { tight = true; geo = null; return drawTable(justPlayed); }
 }
+function crowded() { // one layout read, only when what's in the middle has just changed
+  const box = (e) => e.getBoundingClientRect(), hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+  const mine = [...document.querySelectorAll("#center > *, #say > *, #trump > *, #scoreChip")].map(box).filter((q) => q.height);
+  const theirs = [...document.querySelectorAll("#seats .seat, #trick .card, #hand"), document.querySelector(".bar #menuBtn")].filter((e) => !e.getAnimations().length && getComputedStyle(e).visibility !== "hidden").map(box).filter((q) => q.height);
+  const touch = (list) => list.some((a, i) => list.some((b, j) => j > i && hit(a, b)));
+  const seats = [...document.querySelectorAll("#seats .seat")].map(box), bar = [...document.querySelectorAll(".bar > :not([hidden])")].map(box);
+  // and so are two plates that touch (long words at a big text size), pills in the bar that touch, or a chip on two lines
+  const lines = document.createRange(); lines.selectNodeContents($("#scoreChip"));
+  return new Set([...lines.getClientRects()].map((q) => Math.round(q.top))).size > 1 || mine.some((p) => theirs.some((t) => hit(p, t))) || touch(seats) || touch(bar);
+}
+// an answer that opens on its own (Why?, a suggestion) where no line fits beside the cards; the bots wait while it's open
+const answerBox = (title, text) => dialog(`<h2>${esc(title)}</h2><p class="answer">${esc(text)}</p><button class="btn big" data-dlg="">OK</button>`, { user: true, pause: true, kind: "why" });
+const dialogP = (html, o) => dialog(html, { ...o, pause: true });
+
+// a seat plate: name, what they've done, level pips, the backs of their cards, and a Why? tab after a bot plays. Pinned in size:
+// nothing that appears later (a bid, the Why? tab) makes it grow. VoiceOver reads one sentence with all of it.
+function plateShell(s) {
+  const seat = G.seats[s], p = pos(s), bot = seat.kind === "bot", tag = bot ? "button" : "div";
+  return `<${tag} class="seat ${["s-me", "s-left", "s-top", "s-right"][p]}"${bot ? ` data-act="why" data-seat="${s}"` : ""}><span class="vh"></span><b aria-hidden="true">${esc(seat.name)}</b><span class="st" aria-hidden="true"></span>${p ? "" : `<span class="ask" aria-hidden="true"></span>`}${bot ? `<span class="pips" aria-hidden="true">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : ""}${p ? `<span class="backs" aria-hidden="true"></span>` : ""}${bot ? `<span class="whytab" aria-hidden="true" hidden>Why?</span>` : ""}</${tag}>`;
+}
+const whyOf = (s) => G.seats[s].kind === "bot" && G.reasons[s] && WHY[G.reasons[s].split(":")[0]];
+function patchPlate(e, s, mine) { // true when its words changed (its size may have)
+  const st = G.st, bits = statusBits(s), turn = st.turn === s && st.phase !== "done";
+  let moved = false;
+  e.classList.toggle("turn", turn);
+  const h = bits.map((b) => `<span>${esc(b)}</span>`).join("");
+  if (e._st !== h) { e._st = h; e.querySelector(".st").innerHTML = h; moved = true; }
+  const bk = e.querySelector(".backs"), n = Math.min(3, st.hands[s].length);
+  if (bk && bk._n !== n) { bk._n = n; bk.innerHTML = backImg.repeat(n); }
+  const wt = e.querySelector(".whytab");
+  if (wt) wt.hidden = !whyOf(s);
+  const ask = e.querySelector(".ask"); // Comfort (and a tight table): "Tap a card" rides on your own plate, where the eye already is
+  if (ask) { const t = (S.opt.comfort || tight) && mine?.kind === "play" ? (mine.sel?.length ? "Tap it again" : "Tap a card") : ""; if (ask.textContent !== t) { ask.textContent = t; moved = true; } }
+  setText(e.querySelector(".vh"), seatSentence(s, bits, turn));
+  return moved;
+}
+function statusBits(s) {
+  const st = G.st, tag = TEAMS(G.game) && s === partner(G.viewer) && !S.opt.comfort ? ["Partner"] : [];
+  const bits = G.game === "euchre" ? euchreStatus(s) : more.plateStatus(G.game, st, s) ?? (G.game === "spades"
+    ? (st.bids[s] === null ? [] : [st.bids[s] === 0 ? (st.blind[s] ? "Blind nil" : "Nil") : `Bid ${st.bids[s]}`, `took ${st.tricks[s]}`])
+    : [pts(st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0))]);
+  return [...tag, ...bits];
+}
+const SIGN_WORD = { "♠": "spades", "♥": "hearts", "♦": "diamonds", "♣": "clubs" };
+const pts = (n) => `${n} ${Math.abs(n) === 1 ? "pt" : "pts"}`;
+function seatSentence(s, bits, turn) { // "June, opponent, Standard. Bid nil, took 0. June's turn. Double-tap to hear why."
+  const seat = G.seats[s], me = G.viewer, name = seat.name;
+  const who = s === me ? (name === "You" ? "You" : `${name}, you`)
+    : [name, TEAMS(G.game) && s === partner(me) ? "your partner" : "opponent", seat.kind === "bot" ? LEVEL_NAME[seat.level] : seat.kind === "remote" ? "on another phone" : "playing here"].join(", ");
+  const state = bits.filter((b) => b !== "Partner").join(", ").replace(/\bpts?\b/, (p) => (p === "pt" ? "point" : "points")).replace(/[♠♥♦♣]/g, (c) => SIGN_WORD[c]);
+  return `${who}.${state ? ` ${state[0].toUpperCase()}${state.slice(1)}.` : ""}${turn ? (s === me ? " Your turn." : ` ${name}'s turn.`) : ""}${whyOf(s) ? " Double-tap to hear why." : ""}`;
+}
+// one line from the table, just above your plate: a Why? answer, whose turn it is, what to tap
+function sayLine(mine, comfort) {
+  if (whyNow) return whyNow.text;
+  if (comfort || tight) return whyNow && !comfort ? whyNow.text : ""; // Comfort and tight tables: the prompt rides on your plate; answers open on their own
+  const st = G.st;
+  if (mine?.kind === "play") return mine.sel?.length ? "Tap the card again to play it" : "Your turn: tap a card";
+  if (G.game !== "euchre" && st.phase === "bid" && G.seats[st.turn].kind === "bot") return `${G.seats[st.turn].name} is thinking…`;
+  if (st.phase === "pass" && !mine) return "Passing…";
+  return "";
+}
+
 const ORDER = { S: 0, H: 1, C: 2, D: 3 };
 const sortH = (a, b) => ORDER[a[1]] - ORDER[b[1]] || hearts.pow(a) - hearts.pow(b);
 const sortE = (a, b) => { const t = G.st.trump, k = (c) => (euchre.eff(c, t) === t ? -1 : ORDER[euchre.eff(c, t)]); return k(a) - k(b) || euchre.pow(a, t) - euchre.pow(b, t); }; // trump on the left
 const sortS = (a, b) => { const j = G.rules.jokers, ea = spades.eff(a, j), eb = spades.eff(b, j); return ORDER[ea] - ORDER[eb] || spades.pow(a, j) - spades.pow(b, j); };
 
-function layoutHand() { // rows so every card's visible strip is at least one tap target wide and tall
-  const el = $("#hand"), cards = [...el.children], n = cards.length, W = el.clientWidth - 24;
-  const cw = css("--cw"), ch = cw * 1.4, T = css("--tap");
+// your hand, patched: rows so every card's visible strip is at least one tap target wide and tall, as even as possible (4-3-3-3,
+// not 4-4-4-1). Comfort shows a selection with a brass outline and a tab instead of lifting the card over its neighbours.
+function drawHand(mine, Z) {
+  const box = $("#hand"), st = G.st, me = G.viewer, down = faceDown(me), kind = mine?.kind;
+  const hand = [...st.hands[me]].sort(G.game === "euchre" ? sortE : G.game === "spades" ? sortS : sortH);
+  const legal = kind === "play" || kind === "exchange" ? new Set(mine.legal) : null, any = ["pass", "farmer", "discard"].includes(kind);
+  const hint = kind === "play" && !mine.sel?.length && S.hands < 3 && !calm(); // the first few hands: the playable cards rise and settle
+  for (const e of [...box.children]) if (!hand.includes(e.dataset.card)) e.remove();
+  const n = hand.length, W = innerWidth - 24, cw = Z.cw, ch = cw * 1.4, T = Z.tap;
   let per = n;
   while (per > 1 && (W - cw) / (per - 1) < T) per--;
   const rows = Math.max(1, Math.ceil(n / Math.max(1, per)));
   per = Math.ceil(n / rows);
   const step = per > 1 ? Math.min(cw * 0.72, (W - cw) / (per - 1)) : 0, rowStep = Math.max(T, ch * 0.42);
-  const size = (r) => Math.floor(n / rows) + (r < n % rows ? 1 : 0); // rows as even as possible: 4-3-3-3, not 4-4-4-1
+  const size = (r) => Math.floor(n / rows) + (r < n % rows ? 1 : 0), f = (down ? "d" : "u") + look;
   let r = 0, k = 0;
-  cards.forEach((c, i) => {
+  hand.forEach((c, i) => {
     if (k === size(r)) { r++; k = 0; }
-    const x0 = 12 + (W - (cw + step * (size(r) - 1))) / 2;
-    c.style.left = x0 + k * step + "px"; c.style.top = r * rowStep + "px"; c.style.zIndex = i;
+    let e = box.children[i];
+    if (e?.dataset.card !== c) box.insertBefore((e = [...box.children].find((x) => x.dataset.card === c) ?? make(`<button class="card" data-card="${c}" data-act="card"></button>`)), box.children[i] ?? null);
+    if (e.dataset.f !== f) { e.dataset.f = f; e.innerHTML = down ? backSvg : svgFor(c); }
+    const sel = !!mine?.sel?.includes(c), dim = !!legal && !legal.has(c) && !down, on = !down && !!mine && (legal ? legal.has(c) : any);
+    if (e.disabled === on) e.disabled = !on;
+    e.classList.toggle("sel", sel); e.classList.toggle("dim", dim); e.classList.toggle("hint", hint && on);
+    setAttr(e, "aria-label", down ? "Face-down card" : `${cardName(c)}${dim ? ", can't play now" : sel ? ", selected" : ""}`);
+    setStyle(e, "left", 12 + (W - (cw + step * (size(r) - 1))) / 2 + k * step + "px"); setStyle(e, "top", r * rowStep + "px"); setStyle(e, "zIndex", String(i));
     k++;
   });
   const h = n ? ch + (rows - 1) * rowStep : 0;
-  el.style.height = h + "px";
+  setStyle(box, "height", h + "px");
   return h;
 }
 
 function centre(mine) {
-  const st = G.st, seatName = (s) => G.seats[s].name;
+  const st = G.st, me = G.viewer;
+  if (faceDown(me)) { // R2: blind nil is open to you, so your cards are still face down
+    const now = mine?.kind === "bid";
+    return `<div class="say">Your team is behind: you may bid blind nil before you look at your cards${now ? "" : ", when it's your turn"}.</div>
+      <div class="callpad" style="--n:${now ? 2 : 1}"><button class="btn big" data-act="look">Look at my cards</button>${now ? `<button class="btn" data-act="bid" data-v="blind">Bid blind nil</button>` : ""}</div>`;
+  }
   if (G.game === "euchre") return euchreCentre(mine);
-  if (mine?.kind === "bid" && G.game === "ohhell") return more.bidPanel(mine, st);
+  if (mine?.kind === "bid" && G.game === "ohhell") return S.opt.comfort || tight ? more.bidPanel(mine, st, suggest(mine)) : more.bidPanel(mine, st) + suggest(mine);
   if (mine?.kind === "bid") {
-    const nums = mine.legal.filter((a) => !a.blind), blind = mine.legal.some((a) => a.blind) ? `<button class="btn" data-act="bid" data-v="blind">Blind nil (before looking)</button>` : "";
-    if (S.opt.comfort) { // a stepper keeps the big hand in view: one row instead of fourteen buttons; below 1 is nil
+    const nums = mine.legal.filter((a) => !a.blind);
+    if (S.opt.comfort || tight) { // a stepper keeps the big hand in view: one row, the number on the brass Bid button itself; below 1 is nil
       const ok = nums.map((a) => a.bid);
       mine.step = Math.min(13, Math.max(0, mine.step ?? 3));
       if (!ok.includes(mine.step)) mine.step = ok.reduce((x, y) => (Math.abs(y - mine.step) < Math.abs(x - mine.step) ? y : x));
-      const v = mine.step === 0 ? "Nil" : mine.step;
-      return `<div class="row" style="gap:8px;justify-content:center;flex-wrap:nowrap">
-        <button class="btn" data-act="step" data-v="-1" aria-label="One less">−</button><b style="font-size:var(--fs-l);min-width:2ch;text-align:center">${v}</b>
-        <button class="btn" data-act="step" data-v="1" aria-label="One more">+</button><button class="btn big" data-act="bid" data-v="${mine.step}">Bid ${v === "Nil" ? "nil" : v}</button></div>${blind}`;
+      return `<div class="row stepper"><button class="btn" data-act="step" data-v="-1" aria-label="One less">−</button>
+        <button class="btn big" data-act="bid" data-v="${mine.step}">Bid ${mine.step === 0 ? "nil" : mine.step}</button><button class="btn" data-act="step" data-v="1" aria-label="One more">+</button>${suggest(mine)}</div>`;
     }
-    return `<div class="say">Your bid</div><div class="bidpad">${nums.map((a) => `<button class="btn" data-act="bid" data-v="${a.bid}">${a.bid === 0 ? "Nil" : a.bid}</button>`).join("")}</div>
-      ${mine.legal.some((a) => a.blind) ? `<button class="btn" data-act="bid" data-v="blind">Blind nil (before looking)</button>` : ""}`;
+    return `<div class="say">Your bid</div><div class="bidpad">${nums.map((a) => `<button class="btn" data-act="bid" data-v="${a.bid}">${a.bid === 0 ? "Nil" : a.bid}</button>`).join("")}</div>${suggest(mine)}`;
   }
   if (mine?.kind === "pass") {
     const dir = { 1: "left", 2: "across", 3: "right" }[st.dir];
     return `<div class="say">Pick 3 cards to pass ${dir} (${mine.sel.length}/3)</div>${mine.sel.length === 3 ? `<button class="btn big" data-act="pass">Pass ${dir}</button>` : ""}`;
   }
+  if (mine?.kind === "exchange") { // R3: the blind nil exchange, N cards across the table to your partner
+    const n = G.rules.blindSwap, to = esc(G.seats[partner(me)].name);
+    return `<div class="say">Pick ${n} card${n === 1 ? "" : "s"} to pass to ${to} (${mine.sel.length}/${n})</div>${mine.sel.length === n ? `<button class="btn big" data-act="swap">Pass to ${to}</button>` : ""}`;
+  }
   if (mine?.kind === "moon") return `<div class="say">You shot the moon!</div><button class="btn big" data-act="moon" data-v="add">Everyone else +26</button><button class="btn" data-act="moon" data-v="sub">Take 26 off my score</button>`;
-  if (mine?.kind === "play" && mine.sel?.length) return `<div class="say">Tap the card again to play it</div>`;
-  if (st.phase === "bid" && G.seats[st.turn].kind === "bot") return `<div class="say">${esc(seatName(st.turn))} is thinking…</div>`;
-  if (st.phase === "pass" && !mine) return `<div class="say">Passing…</div>`;
   return "";
 }
+// P2-6: a new bidder can ask what a Standard player would bid, and why. Comfort: a "?" at the end of the stepper row (the answer
+// shows over the seat row), since an iPhone SE has no room for another row above the big hand
+function suggest(mine) {
+  if (S.opt.comfort || tight) return `<button class="btn" data-act="suggest" aria-label="Suggest a bid">Hint</button>`;
+  if (mine.hint) return `<div class="say small">${esc(mine.hint)}</div>`;
+  return `<button class="btn ghost" data-act="suggest">Suggest a bid</button>`;
+}
 
+const ASK = { pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?" };
 function ask(seat) { // resolves with the human's action
   const st = G.st, m = MOD[G.game];
   return new Promise((resolve) => {
@@ -419,24 +617,33 @@ function ask(seat) { // resolves with the human's action
     pending = { seat, legal, kind: st.phase === "play" ? "play" : st.phase, sel: [], alone: false, resolve: (a) => { pending = null; resolve(a); } };
     drawTable();
     if (S.opt.haptics) platform.haptic("medium");
-    announce({ play: "Your turn.", bid: more.bidPrompt(G.game, st) || "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?", ...EUCHRE_ASK }[pending.kind]);
+    const k = pending.kind, n = G.rules.blindSwap;
+    announce(k === "play" ? (S.opt.comfort || S.opt.confirm ? "Your turn: tap a card, then tap it again to play it." : "Your turn: tap a card.")
+      : k === "bid" ? (faceDown(seat) ? "Your turn to bid. Your cards are face down: look at your cards, or bid blind nil." : more.bidPrompt(G.game, st) || "Your turn to bid.")
+      : k === "exchange" ? `Pass ${n} card${n === 1 ? "" : "s"} to ${G.seats[partner(seat)].name}.` : ASK[k] || EUCHRE_ASK[k]);
+    // VoiceOver and the keyboard land where the choice is (your hand, or the panel), unless they're already there
+    const a = document.activeElement, t = $("#table");
+    if (!a || a === document.body || a === t || !t.contains(a)) (["play", "pass", "discard", "farmer", "exchange"].includes(k) && !faceDown(seat) ? $("#hand") : $("#center button") || $("#hand")).focus({ preventScroll: true });
   });
 }
 async function handoff(s) {
   const el = $("#handoff");
+  $("#hand").replaceChildren(); $("#trick").replaceChildren(); // nothing of the last player's cards stays under the cover
   el.innerHTML = `<h2 class="onfelt">Pass the phone to ${esc(G.seats[s].name)}</h2><button class="btn big" data-act="handoff" data-seat="${s}">I'm ${esc(G.seats[s].name)}: show my cards</button>`;
-  el.hidden = false;
+  el.hidden = false; cover(true); el.querySelector("button").focus();
   await new Promise((r) => (handoff.done = r));
-  el.hidden = true; G.viewer = s; drawTable();
+  el.hidden = true; cover(false); G.viewer = s; drawTable();
 }
+const cover = (on) => { for (const e of $("#table").children) if (e.id !== "handoff") e.inert = on; }; // the cover is the only thing you can reach
 
 function finishHand() {
+  closePeek();
   const m = MOD[G.game], st = G.st, sc = m.score(st), me = 0;
   const lines = sc.lines;
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
   else if (more.NAMES[G.game]) more.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
   if (G.game === "euchre" && lines[0].team !== null) { if (lines[0].team === team(me)) sound.made(); else if (lines[0].kind.includes("uchre")) sound.set(); }
-  G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
+  G.history.push({ seed: st.seed, fp: fingerprint(st.seed), cut: st.cut ?? 0, cutBy: st.cutBy, size: st.size, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
   if (G.over !== null && net) { net.leave(); net = null; }
@@ -444,6 +651,15 @@ function finishHand() {
   save(); renderSheet(); show("sheet");
 }
 let sessionHands = 0;
+// "First to 500: you need 455 more" (the score sheet and the score pad)
+function goalLine() {
+  const r = G.rules, sc = G.totals.score;
+  if (TEAMS(G.game) && r.target) { const us = sc[team(G.viewer)]; return us >= r.target ? `First to ${r.target}: you're there.` : `First to ${r.target}: you need ${r.target - us} more.`; }
+  if (G.game === "hearts") return `The game ends when someone reaches ${r.endScore}. Low score wins.`;
+  return "";
+}
+// a seed breaks only between its groups of letters, never inside one
+const seedHTML = (seed) => String(seed).split("-").map((g) => `<span>${esc(g)}</span>`).join("-<wbr>");
 
 function renderSheet() {
   const h = G.history[G.history.length - 1], sp = TEAMS(G.game), bags = G.game === "spades";
@@ -454,6 +670,7 @@ function renderSheet() {
       case "set": return `Bid ${l.bid}, took ${l.took}: set`;
       case "nil": return `${who(l)}: nil ${l.made ? "made" : "broken"}`;
       case "blindNil": return `${who(l)}: blind nil ${l.made ? "made" : "broken"}`;
+      case "nilBags": return `${who(l)}'s broken nil: ${l.took} bag${l.took === 1 ? "" : "s"}`;
       case "bags": return `No bid, ${l.took} bags`;
       case "boston": return "Boston: all 13 tricks";
       case "bagPenalty": return "Too many bags: penalty";
@@ -470,10 +687,19 @@ function renderSheet() {
   const mine = sp ? h.lines.filter((l) => l.team === 0) : h.lines.filter((l) => l.seat === 0);
   const st = G.game === "euchre" ? euchreStamp(h.lines[0]) : more.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
-  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
-    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
+  const goal = G.over === null ? goalLine() : "";
+  $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h1>Hand ${h.n}</h1>${table}${sp ? "" : `<h3>Game</h3>${totals}`}${goal ? `<p class="goal">${esc(goal)}</p>` : ""}
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]})${h.n === 1 ? ", drawn from the seed" : ""} · seed <span class="seed">${seedHTML(h.seed)}</span>${h.cut ? ` · ${h.cutBy === "you" ? `you cut ${h.cut}` : `cut ${h.cut} by the app`}` : ""} · fingerprint <span class="seed">${fpHTML(h.fp ?? fingerprint(h.seed))}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
-    <button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
+    ${trialPlate()}<button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
+}
+// P1-10: a table theme tried for one hand asks, after the hand, whether to keep it (never during the hand)
+let trial = null;
+function trialPlate() {
+  if (!trial) return "";
+  const t = THEMES[trial], price = priceOf(t.tier);
+  return `<div class="paper"><h2>How was ${esc(t.name)}?</h2><p>You played that hand on it. Keep it for ${price}, or put it back.</p>
+    <div class="grid2"><button class="btn" data-act="trialback">Put it back</button><button class="btn big" data-act="trialkeep" aria-label="Keep ${esc(t.name)} for ${price}">Keep it, ${price}</button></div></div>`;
 }
 
 function renderResults() {
@@ -490,11 +716,14 @@ function renderResults() {
   track("game_end", { game: G.game, won: won ? 1 : 0, hands: G.handNo });
   const consent = S.opt.analytics === null && !S.care.lock ? `<div class="paper" id="consentCard"><h2>Help make ${cfg.brand.wordmark} better?</h2>
     <p>Share anonymous numbers like how many hands you play and which rules you pick. No ads, no tracking, nothing about you. You can change this in Options.</p>
-    <div class="row"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn big" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
+    <div class="grid2"><button class="btn" data-act="consent" data-v="no">No thanks</button><button class="btn" data-act="consent" data-v="yes">Yes, share</button></div></div>` : "";
+  // P2-8: playing for yourself, the table is ranked, winner on top (low score wins Hearts)
+  const order = sp ? [0, 1] : [0, 1, 2, 3].sort((a, b) => (G.game === "hearts" ? G.totals.score[a] - G.totals.score[b] : G.totals.score[b] - G.totals.score[a]));
+  const place = (k) => (sp ? "" : `<td class="place">${["1st", "2nd", "3rd", "4th"][k]}</td>`);
   S.cur = null; save();
   if (won && !calm()) setTimeout(confetti, 300);
   $("#results").innerHTML = `<div class="stack">${won ? `<div class="ribbon">${rosette(sp ? "Win!" : "1st")}</div>` : `<p class="kicker">Good game. There's always the next deal.</p>`}<h1>${who}</h1>${newBest.length ? `<p class="say" style="justify-self:center">New personal best: ${esc(newBest.join(", "))}</p>` : ""}
-    <div class="paper pad"><table>${(sp ? [0, 1] : [0, 1, 2, 3]).map((i) => `<tr><td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
+    <div class="paper pad"><table>${order.map((i, k) => `<tr>${place(k)}<td>${sp ? (i === 0 ? "You and " + esc(G.seats[2].name) : esc(G.seats[1].name) + " and " + esc(G.seats[3].name)) : esc(G.seats[i].name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
     <p class="muted">${G.handNo} hand${G.handNo === 1 ? "" : "s"} · ${PRESET_NAME[G.preset]} rules · ${rec.won} won of ${rec.played}</p></div>
     <button class="btn big" data-act="again">Deal again</button>
     ${consent}
@@ -502,56 +731,70 @@ function renderResults() {
     <button class="btn ghost" data-act="go" data-to="title">Done</button></div>`;
 }
 
-// ---------------------------------------------------------------- the fair deal, shown (DESIGN.md §7)
-const SHAPES = { 4432: 21.55, 5332: 15.52, 5431: 12.93, 5422: 10.58, 4333: 10.54, 6322: 5.64, 6421: 4.7, 6331: 3.45, 5521: 3.17, 4441: 2.99 };
-function choose(n, k) { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return r; }
-let nilExpect = null;
+// ---------------------------------------------------------------- the fair deal, shown (DESIGN.md §7): drawn from ledger.view()
+// Each section compares your deals with constants measured from the real dealer; the shaded band is where a fair deck lands
+// 95% of the time for that many hands, so "in the band" is the honest answer, not "on the line".
+function standing(seat) { // where the score stood for this seat when the cards were dealt
+  const sc = G.totals.score, low = G.game === "hearts", better = (a, b) => (low ? a < b : a > b);
+  if (TEAMS(G.game)) { const us = sc[team(seat)], them = sc[1 - team(seat)]; return us === them ? "level" : us > them ? "ahead" : "behind"; }
+  const mine = sc[seat], best = sc.filter((_, s) => s !== seat).reduce((a, b) => (better(a, b) ? a : b));
+  return mine === best ? "level" : better(mine, best) ? "ahead" : "behind";
+}
+function recordDeal() { // every deal, as dealt (before any pass): yours, the other three, the game, and the score at the deal
+  const st = G.st;
+  S.deals.push(ledger.entry({ hand: [...st.hands[0]], others: [1, 2, 3].map((s) => [...st.hands[s]]), game: G.game, rules: G.rules, standing: standing(0) }));
+  if (S.deals.length > 1000) S.deals.splice(0, S.deals.length - 1000);
+}
 function renderStats() {
-  const d = S.deals, n = d.length, pct = (x) => (n ? ((100 * x) / n).toFixed(1) : "—");
-  const bar = (label, mine, exp, max = 30) => `<div class="b"><span>${label}</span><span class="t"><i style="width:${Math.min(100, (mine / max) * 100)}%"></i><u style="left:${Math.min(100, (exp / max) * 100)}%"></u></span><span>${mine.toFixed(1)}%</span></div>`;
-  const hc = n ? d.reduce((a, x) => a + x.hc, 0) / n : 0;
-  const shapes = Object.entries(SHAPES).map(([sh, e]) => bar(sh.split("").join("-"), n ? (100 * d.filter((x) => x.sh === sh).length) / n : 0, e)).join("");
-  const plain = d.filter((x) => !x.j), np = plain.length;
-  const spades = [0, 1, 2, 3, 4, 5, 6].map((k) => bar(`${k}${k === 6 ? "+" : ""} spades`, np ? (100 * plain.filter((x) => (k === 6 ? x.sp >= 6 : x.sp === k)).length) / np : 0,
-    k === 6 ? 100 * (1 - [0, 1, 2, 3, 4, 5].reduce((a, j) => a + (choose(13, j) * choose(39, 13 - j)) / choose(52, 13), 0)) : (100 * choose(13, k) * choose(39, 13 - k)) / choose(52, 13), 35)).join("");
-  const h = d.filter((x) => x.g === "h"), s = d.filter((x) => x.g === "s");
-  if (nilExpect === null) { // expected share of nil-able hands, from 20,000 fresh deals
-    const r = rulesFor(cfg, "spades", "standard"), deck = newDeck(); let k = 0;
-    for (let i = 0; i < 20000; i++) { const hand = [...deck].sort(() => Math.random() - 0.5).slice(0, 13); if (!nilForbidden(hand, r) && nilRisk(hand, r) <= 0.22) k++; }
-    nilExpect = (100 * k) / 20000;
-  }
+  const v = ledger.view(S.deals);
+  const intro = `<div class="paper"><p>Every hand comes from its seed and its cut, and nothing else. Both are on every score sheet: type them into our website to see the same four hands.</p>
+    <p class="muted">The app cuts at random unless you turn on "Cut the deck myself" in Options. At a family table across two phones, the host's phone cuts.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}</div>`;
+  const num = (x, unit) => (unit === "%" ? `${x.toFixed(1)}%` : x.toFixed(2));
+  const section = (s) => {
+    if (s.hidden) return `<div class="paper"><h2>${esc(s.title)}</h2><p class="muted">${esc(s.note)}</p></div>`;
+    const top = Math.max(...s.rows.flatMap((r) => [r.mine ?? 0, r.hi ?? 0, r.expected ?? 0])) * 1.15 || 1, at = (x) => Math.min(100, (100 * x) / top);
+    const row = (r) => `<div class="b"><span>${esc(r.label)}</span><span class="t" aria-hidden="true"><s style="left:${at(r.lo)}%;width:${at(r.hi) - at(r.lo)}%"></s>${r.mine == null ? "" : `<i style="width:${at(r.mine)}%"></i>`}<u style="left:${at(r.expected)}%"></u></span><span>${r.mine == null ? "—" : num(r.mine, s.unit)}</span>
+      <span class="vh">${esc(r.label)}: ${r.mine == null ? "no hands yet" : num(r.mine, s.unit)}. A fair deck: ${num(r.expected, s.unit)}, usually between ${num(r.lo, s.unit)} and ${num(r.hi, s.unit)}.</span></div>`;
+    return `<div class="paper"><h2>${esc(s.title)}</h2><p class="muted">${esc(s.note)}</p><div class="bars">${s.rows.map(row).join("")}</div></div>`;
+  };
   const rec = Object.entries(S.record).map(([g, r]) => `<tr><td>${GAME_NAME[g]}</td><td class="n">${r.won} of ${r.played}</td><td class="n">${g === "hearts" ? (r.best ?? "—") : "streak " + r.streak}</td></tr>`).join("");
-  $("#stats").innerHTML = `<div class="stack ledger"><h1>The fair deal ledger</h1>
-    <div class="paper"><p>Every hand is shuffled from a random seed and nothing else: not your score, your streak, what you bought, or who is winning. The seed is on every score sheet, and our website re-deals any hand from it.</p>${S.care.lock ? "" : `<button class="btn" data-act="verify">Check a deal on our website</button>`}
-    <p class="muted">Your last ${n} deal${n === 1 ? "" : "s"}. The green bar is you; the black line is what a fair deck gives on average. Small samples wobble.</p></div>
-    <div class="paper"><h2>High cards</h2><p>Aces, kings, queens and jacks per hand: <b>${hc.toFixed(2)}</b> (a fair deck averages <b>4.00</b>)</p></div>
-    <div class="paper"><h2>Hand shapes</h2><div class="bars">${shapes}</div></div>
-    <div class="paper"><h2>Spades in your hand</h2><div class="bars">${spades}</div></div>
-    <div class="paper"><h2>Hearts</h2><p>Queen of spades dealt to you: <b>${h.length ? ((100 * h.filter((x) => x.qs).length) / h.length).toFixed(1) : "—"}%</b> of ${h.length} hands (fair: 25%)</p></div>
-    <div class="paper"><h2>Spades</h2><p>Hands you could bid nil on: <b>${s.length ? ((100 * s.filter((x) => x.nil).length) / s.length).toFixed(1) : "—"}%</b> of ${s.length} (fair: ${nilExpect.toFixed(1)}%)</p></div>
+  $("#stats").innerHTML = `<div class="stack ledger"><h1>Is the deal fair?</h1>${intro}
+    ${v.empty ? `<div class="paper"><h2>Your deals go here</h2><p>Play a few hands and your own deals appear here, next to what a fair deck gives${v.n ? ` (${v.n} so far; they show from 20)` : ""}.</p>
+      <p>A fair deck gives each 13-card hand <b>4.00</b> aces, kings, queens and jacks on average, and the queen of spades lands in one Hearts hand in four.</p></div>`
+    : `<p class="paper muted">Your last ${v.n} deals. The green bar is you, the black line is a fair deck's average, and the shaded band is where a fair deck almost always lands for that many hands.${v.note ? ` ${esc(v.note.replace(/^Each band is where a fair deck almost always lands\.\s*/, ""))}` : ""}</p>${v.sections.map(section).join("")}`}
     ${rec ? `<div class="paper pad"><h2>Your games</h2><table>${rec}</table></div>` : ""}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
-
 // ---------------------------------------------------------------- options, caregiver, unlock, how to play
+const TEXT_SIZES = [["normal", "Normal"], ["large", "Large"], ["xl", "Extra large"]];
+// P1-13: the phone's own text size (Dynamic Type), read through WebKit's system body font (17px at the default size). Followed
+// on every launch until the player picks a size in Options. null where the font isn't known (other browsers).
+function phoneText() {
+  const e = document.createElement("span");
+  e.style.font = "-apple-system-body";
+  if (!e.style.font) return null;
+  document.body.appendChild(e); const px = parseFloat(getComputedStyle(e).fontSize); e.remove();
+  return !px ? null : px >= 23 ? "xl" : px >= 20 ? "large" : "normal";
+}
 function renderOptions() {
-  const o = S.opt, seg = (act, val, opts) => `<div class="seg">${opts.map(([v, label]) => `<button data-act="${act}" data-v="${v}" aria-pressed="${val === v}">${label}</button>`).join("")}</div>`;
-  const owned = Object.keys(THEMES).filter(ownsTheme);
+  const o = S.opt, owned = Object.keys(THEMES).filter(ownsTheme), c = !!o.comfort, part = { disabled: true, note: "(part of Comfort)" };
   $("#options").innerHTML = `<div class="stack"><h1>Options</h1>
     <div class="paper"><h2>Accessibility</h2>
-      <div class="row"><span>Text size</span>${seg("textsize", o.text || "normal", [["normal", "Normal"], ["large", "Large"], ["xl", "Extra large"]])}</div>
-      ${toggle("opt:comfort", o.comfort, "Comfort mode: bigger cards, tap twice to play, slower table")}
-      ${toggle("opt:four", o.four, "Four-color deck (♦ blue, ♣ green)")}${toggle("opt:confirm", o.confirm || o.comfort, "Tap twice to play a card")}
+      ${segRow("Text size", "textsize", o.text || "normal", TEXT_SIZES)}<p class="muted">Starts at your iPhone's text size. Change it here.</p>
+      ${toggle("opt:comfort", c, "Comfort mode: bigger cards, tap twice to play, slower table")}
+      ${toggle("opt:four", o.four || c, "Four-color deck (♦ blue, ♣ green)", c ? part : {})}${toggle("opt:confirm", o.confirm || c, "Tap twice to play a card", c ? part : {})}
       ${toggle("opt:speak", o.speak, "Read the table aloud")}
-      ${o.speak ? `<div class="row"><span>Reading speed</span>${seg("speakrate", o.speakRate || 1, [[0.8, "Slower"], [1, "Normal"], [1.2, "Faster"]])}</div>` : ""}
+      <div class="${o.speak ? "" : "dimmed"}">${segRow("Reading speed", "speakrate", o.speakRate || 1, [[0.8, "Slower"], [1, "Normal"], [1.2, "Faster"]])}</div>
       ${toggle("opt:haptics", o.haptics, "Vibrate on your turn and when you win a trick")}
-      <p class="muted">Blind or low-vision? ${BRAND} works with VoiceOver: every card, bid and play is announced. "Read the table aloud" speaks the same things with the phone's own voice if you don't use VoiceOver, and adds a Read button at the table.</p></div>
+      <p class="muted">Blind or low-vision? ${BRAND} works with VoiceOver: every card, bid and play is announced, one at a time, and the table waits while VoiceOver reads. "Read the table aloud" speaks the same things with the phone's own voice if you don't use VoiceOver, and adds a Read button at the table.</p></div>
     <div class="paper"><h2>Table</h2>
-      <div class="row"><span>Speed</span>${seg("speed", o.speed, [["relaxed", "Relaxed"], ["normal", "Normal"], ["fast", "Fast"]])}</div>
-      <div class="row"><span>Card back</span><select data-act="back"><option value="">Matches the table</option>${owned.map((id) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${esc(THEMES[id].name)}</option>`).join("")}</select></div>
+      ${segRow("Speed", "speed", o.speed, [["relaxed", "Relaxed"], ["normal", "Normal"], ["fast", "Fast"]])}
+      ${toggle("opt:cut", o.cut, "Cut the deck myself before each deal", c ? { disabled: true, note: "(in Comfort, the caregiver decides)" } : {})}
+      <p class="muted">Off, the app cuts at random. Either way the score sheet prints the cut and the seed's fingerprint, so any hand can be checked on our website.</p>
+      <div class="row"><label for="optBack">Card back</label><select id="optBack" data-act="back"><option value="">Matches the table</option>${owned.map((id) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${esc(THEMES[id].name)}</option>`).join("")}</select></div>
       <div class="row"><span>Table theme</span><button class="btn" data-act="go" data-to="shop">${esc(THEMES[ownsTheme(o.theme) ? o.theme : "walnut"].name)} ›</button></div></div>
     <div class="paper">${toggle("opt:sound", o.sound, "Sound")}${toggle("opt:loud", o.loud, "Play sound when the phone is on silent")}
-      <div class="row"><span>Language</span><select data-act="lang"><option value="">Phone setting</option>${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${o.lang === k ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
+      <div class="row"><label for="optLang">Language</label><select id="optLang" data-act="lang"><option value="">Phone setting</option>${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${o.lang === k ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
     <div class="paper">${toggle("opt:analytics", o.analytics === true, "Share anonymous usage numbers")}
       <div class="row"><button class="btn" data-act="restore">Restore purchases</button></div>
       <div class="row">${S.care.lock ? "" : `<button class="link" style="color:var(--ink)" data-act="link" data-url="privacy.html">Privacy</button><button class="link" style="color:var(--ink)" data-act="link" data-url="terms.html">Terms</button><button class="link" style="color:var(--ink)" data-act="link" data-url="index.html">Support</button>`}<button class="link" style="color:var(--ink)" data-act="go" data-to="ack">Acknowledgements</button></div>
@@ -563,7 +806,7 @@ function renderOptions() {
 let licences = null;
 async function renderAck() {
   licences ??= await fetch("../www/licenses.json").then((r) => r.json()).catch(() => null);
-  $("#ack").innerHTML = `<div class="stack"><h1 tabindex="-1">Acknowledgements</h1>
+  $("#ack").innerHTML = `<div class="stack"><h1>Acknowledgements</h1>
     <div class="paper"><p>${BRAND} is built with open-source software. Thank you to everyone who made it.</p></div>
     ${licences ? licences.map((l) => `<div class="paper"><h2>${l.names.map(esc).join("<br>")}</h2><pre class="licence">${esc(l.text)}</pre></div>`).join("") : `<div class="paper"><p class="muted">The licence list is added when the app is built (scripts/build-web.mjs).</p></div>`}
     <button class="btn ghost" data-act="go" data-to="options">Back</button></div>`;
@@ -573,8 +816,10 @@ function renderCaregiver() {
   const c = S.care;
   $("#caregiver").innerHTML = `<div class="stack"><h1 class="dark">Caregiver</h1>
     <div class="paper note">${toggle("care:lock", c.lock, "Lock settings and purchases behind the PIN")}${toggle("opt:comfort", S.opt.comfort, "Comfort mode")}
+      ${segRow("Text size", "textsize", S.opt.text || "normal", TEXT_SIZES)}<p class="preview">This is how big the words will be.</p>
       ${toggle("care:straight", c.straight, "Open straight into a game")}
-      <div class="row"><span>Computer players</span><div class="seg">${["easy", "standard", "expert", "extreme"].map((v) => `<button data-act="carelevel" data-v="${v}" aria-pressed="${S.last.opps === v}">${LEVEL_NAME[v]}</button>`).join("")}</div></div>
+      ${toggle("care:cut", c.cut, "In Comfort, let them cut the deck before each deal")}
+      ${segRow("Computer players", "carelevel", S.last.opps, Object.entries(LEVEL_NAME))}
       ${["hearts", "spades", "euchre", "ohhell", "whist"].map((g) => toggle("care:game:" + g, c.games.includes(g), `Show ${GAME_NAME[g]}`)).join("")}</div>
     <div class="paper"><h2>Keep the game on screen</h2><p>Guided Access stops accidental swipes out of the game:</p>
       <ol><li>Settings › Accessibility › Guided Access: turn it on and set a passcode (different from this PIN).</li>
@@ -582,18 +827,21 @@ function renderCaregiver() {
       <li>To finish, triple-click again and enter the Guided Access passcode.</li></ol></div>
     <div class="paper"><h2>Buying it for someone</h2><p>Buy Everything on your own Apple Account with Family Sharing on; it appears on their iPad too. There are no subscriptions and nothing renews.</p>
       ${platform.owns("everything") ? "<p><b>Everything is unlocked on this device.</b></p>" : `<button class="btn" data-act="go" data-to="unlock">Unlock everything · $6.99 once</button>`}</div>
-    <div class="paper"><div class="row"><button class="btn" data-act="pinchange">Change PIN</button><button class="btn" data-act="resetstats">Reset stats</button></div></div>
+    <div class="paper"><div class="row"><button class="btn" data-act="pinchange">Change PIN</button><button class="btn" data-act="resetstats">Reset stats</button></div>
+      <p class="muted">Forgot the PIN? Delete and reinstall the app. Purchases come back with Restore purchases; stats don't.</p></div>
     <button class="btn ghost" data-act="go" data-to="title">Done</button></div>`;
 }
 
 async function pin(mode) { // "check" | "set": a large keypad, four digits
   let entered = "", first = null;
-  const draw = (msg) => `<h2>${msg}</h2><div class="pinshow">${"●".repeat(entered.length)}${"○".repeat(4 - entered.length)}</div>
-    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map((k) => (k === "" ? "<span></span>" : `<button class="btn" data-pin="${k}">${k}</button>`)).join("")}</div>
+  const draw = (msg) => `<h2>${msg}</h2><div class="pinshow" role="img" aria-label="${entered.length} of 4 digits">${"●".repeat(entered.length)}${"○".repeat(4 - entered.length)}</div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map((k) => (k === "" ? "<span></span>" : `<button class="btn" data-pin="${k}" ${k === "⌫" ? `aria-label="Delete"` : ""}>${k}</button>`)).join("")}</div>
+    ${mode === "check" ? `<p class="muted">Forgot it? Delete and reinstall the app. Purchases come back with Restore purchases; stats don't.</p>` : ""}
     <button class="btn ghost" style="color:var(--ink);margin-top:10px" data-dlg="">Cancel</button>`;
   let msg = mode === "set" ? "Choose a 4-digit PIN" : "Caregiver PIN";
   const p = dialog(draw(msg), { user: true });
   pin.key = (k) => {
+    const was = msg;
     if (k === "⌫") entered = entered.slice(0, -1); else if (entered.length < 4) entered += k;
     if (entered.length === 4) {
       if (mode === "check") { if (entered === S.care.pin) return dialog.done("ok"); msg = "Wrong PIN, try again"; entered = ""; }
@@ -601,34 +849,56 @@ async function pin(mode) { // "check" | "set": a large keypad, four digits
       else if (first === entered) { S.care.pin = entered; save(); return dialog.done("ok"); }
       else { first = null; entered = ""; msg = "They didn't match. Choose a PIN"; }
     }
-    $("#dialogBody").innerHTML = draw(msg);
+    $("#dialogBody").innerHTML = draw(msg); $("#dialogBody h2").id = "dialogTitle";
+    $(`#dialogBody [data-pin="${k}"]`)?.focus(); // the keyboard stays on the key it pressed
+    if (msg !== was) announce(msg); // "Wrong PIN" is heard, not just shown
   };
   return (await p) === "ok";
 }
 
 async function renderUnlock() {
-  const prices = await platform.prices(), price = prices.everything || "$6.99";
-  $("#unlock").innerHTML = `<div class="stack"><h1>Everything</h1>
-    <div class="paper"><h2>${price}, once</h2><p>Opens Spades, Euchre, Oh Hell and Whist now, and every game we add after that. No ads, no subscription, nothing that renews.</p>
+  const prices = await platform.prices(), price = prices.everything || "$6.99", box = (g) => `<span class="ubox">${tuckBox(g, GAME_NAME[g])}</span>`;
+  $("#unlock").innerHTML = `<div class="stack"><h1>All games, ${price} once</h1>
+    <div class="paper"><div class="uboxes" aria-hidden="true">${["spades", "euchre", "ohhell", "whist"].map(box).join("")}</div>
+      <p>Opens Spades, Euchre, Oh Hell and Classic Whist now, and every game we add after that. No ads, no subscription, nothing that renews.</p>
       <p>Shared with your family through Family Sharing. Hearts stays free either way.</p>
-      <p class="muted">For comparison: the big card apps charge $9.99 for 30 days without ads.</p>
-      ${platform.owns("everything") ? "<p><b>You have Everything. Thank you!</b></p>" : platform.native ? `<button class="btn big" data-act="buy" data-v="everything">Unlock for ${price}</button>` : `<p class="muted">This test build in the browser has everything unlocked.</p>`}
+      ${platform.owns("everything") ? "<p><b>You have Everything. Thank you!</b></p>" : platform.native ? `<button class="btn big" data-act="buy" data-v="everything">Unlock all games for ${price}</button>` : `<p class="muted">This test build in the browser has everything unlocked.</p>`}
       <button class="btn" data-act="restore">Restore purchases</button></div>
     <button class="btn ghost" data-act="go" data-to="picker">Not now</button></div>`;
 }
 
+// How to play: five short steps per game, and a drawn trick to show who takes it
 const HOWTO = {
-  hearts: "Avoid points. Each heart is 1 point and the queen of spades is 13. Follow the suit that was led if you can; otherwise play anything. The highest card of the suit led wins the trick. Before most hands you pass three cards. The two of clubs leads the first trick. Take every heart and the queen to shoot the moon.",
+  hearts: ["Everyone plays for themselves. Points are bad: each heart is 1, and the queen of spades is 13.",
+    "Before most hands you pass three cards: left, right, then across. Every fourth hand you keep them.",
+    "The two of clubs leads the first trick. Follow the suit that was led if you can; if you can't, play anything.",
+    "The highest card of the suit led takes the trick, with any points in it. Nobody leads a heart until hearts are broken.",
+    "Take every heart and the queen of spades to shoot the moon: everyone else gets 26. When someone reaches the end score, the lowest score wins."],
   ...more.HOWTO,
-  spades: "Partners sit across. Everyone bids how many tricks they'll take; nil means none. Follow suit if you can; spades are trump and beat any other suit. Make your team's bid for 10 points a trick; each extra trick is a bag, and too many bags cost points. Miss the bid and you lose 10 a trick.",
-  euchre: "Partners sit across, five cards each from a deck of nines to aces. The dealer turns up one card: in turn, anyone may order it up, and its suit is trump (the dealer picks it up and throws one away). If everyone passes, anyone may name another suit. The jack of trump is the highest card, the right bower; the other jack of the same colour is next, the left bower, and counts as trump. Follow suit if you can. The side that chose trump needs three of the five tricks for 1 point, all five for 2. Fall short and the other side scores 2: you've been euchred. Go alone, with your partner sitting out, and all five tricks score 4. First to 10 wins.",
+  spades: ["Partners sit across. Spades are trump: any spade beats any other suit.",
+    "Look at your cards and bid how many tricks you'll take. Your bid and your partner's make your team's bid. Nil means none at all.",
+    "Follow the suit that was led if you can; otherwise play anything, a spade included. Nobody leads a spade until spades are broken.",
+    "Make your team's bid for 10 points a trick. Each trick over the bid is a bag worth 1, and too many bags cost points.",
+    "Miss the bid and lose 10 a trick. A nil made scores 100; a nil broken loses 100. The first team to the target wins."],
+  euchre: ["Partners sit across, five cards each, from a deck of nines to aces.",
+    "The dealer turns up a card. In turn, anyone may order it up: its suit is trump, and the dealer picks it up and throws one away. If everyone passes, anyone may name another suit.",
+    "The jack of trump is the highest card (the right bower). The other jack of the same colour is next (the left bower), and counts as trump.",
+    "Follow suit if you can. The side that chose trump needs three of the five tricks for 1 point, all five for 2. Fall short and the others score 2: you've been euchred.",
+    "Go alone, with your partner sitting out, and all five tricks score 4. Who leads against a loner is a house rule: this table's is under House rules. The first side to 10 wins."],
+};
+const EXAMPLE = { // [left, across, right, you], the winner, what it shows
+  plain: [["2C", "KC", "9C", "5C"], 1, "Clubs were led, so the highest club takes the trick: the king."],
+  trump: [["9H", "KH", "TS", "AH"], 2, "Hearts were led, but spades are trump this time: the 10 of spades takes the trick."],
 };
 function renderHowto() {
-  const g = HOWTO[setupGame] && setupGame !== "hearts" ? setupGame : HOWTO[S.last.game] ? S.last.game : "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.custom);
+  const g = HOWTO[setupGame] && setupGame !== "hearts" ? setupGame : HOWTO[S.last.game] ? S.last.game : "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.preset === "custom" ? customFor(g) : {});
+  const [cards, w, says] = EXAMPLE[g === "hearts" ? "plain" : "trump"];
   $("#howto").innerHTML = `<div class="stack"><h1 class="sign">How to play</h1>
-    <div class="seg">${Object.keys(HOWTO).map((x) => `<button data-act="howto" data-v="${x}" aria-pressed="${x === g}">${GAME_NAME[x]}</button>`).join("")}</div>
-    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${more.SERVES[g] || (g === "spades" ? "about 25 minutes a game" : "about 15 minutes a game")}</p><p>${HOWTO[g]}</p></div>
-    <div class="paper recipe"><p class="from">House rules</p><h2>${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, r[d.id])}</b></div>`).join("")}</div>
+    ${seg("howto", g, Object.keys(HOWTO).map((x) => [x, GAME_NAME[x]]), "")}
+    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${more.SERVES[g] || (g === "spades" ? "about 25 minutes a game" : "about 15 minutes a game")}</p>
+      <ol class="steps">${HOWTO[g].map((s) => `<li>${s}</li>`).join("")}</ol>
+      <div class="minitrick" aria-hidden="true">${cards.map((c, i) => `<span class="card p${i} ${i === w ? "win" : ""}">${svgFor(c)}</span>`).join("")}</div><p class="muted">${says}</p></div>
+    <div class="paper recipe"><p class="from">House rules</p><h2>${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${esc(explain(d))}</small></span><b>${esc(fmt(d, r[d.id]))}</b></div>`).join("")}</div>
     <button class="btn ghost" data-act="${G && S.cur ? "resume" : "go"}" data-to="title">Back</button></div>`;
 }
 
@@ -637,28 +907,28 @@ const TIER_ORDER = ["classic", "signature", "luxe"];
 const priceOf = (tier) => `$${cfg.shop.tiers[tier].price}`;
 function themeTile(id, big = false) {
   const t = THEMES[id], mine = ownsTheme(id), using = (S.opt.theme || "walnut") === id;
-  const action = using ? `<span class="tag">In use</span>` : mine ? `<button class="btn" data-act="usetheme" data-v="${id}">Use</button>`
-    : `<button class="btn big" data-act="buytheme" data-v="${id}">${priceOf(t.tier)}</button>`;
+  const action = using ? `<span class="tag">In use</span>` : mine ? `<button class="btn" data-act="usetheme" data-v="${id}" aria-label="Use ${esc(t.name)}">Use</button>`
+    : `<button class="btn" data-act="buytheme" data-v="${id}" aria-label="Buy ${esc(t.name)}, ${priceOf(t.tier)}">${priceOf(t.tier)}</button><button class="btn ghost ink" data-act="trytheme" data-v="${id}" aria-label="Try ${esc(t.name)} at the table">Try at the table</button>`;
   return `<div class="tile ${big ? "luxe" : ""} ${using ? "using" : ""}"><span class="tprev" data-theme="${id}" aria-hidden="true"><span class="tback">${themeBack(id)}</span><span class="tface">${svgFor("AH")}</span></span>
     <span class="tname">${esc(t.name)}</span><span class="tblurb">${esc(t.blurb)}</span>${action}</div>`;
 }
 function paintPreviews(root) { // backgrounds are set from JS: their SVG data URLs carry quotes an attribute can't hold
   for (const el of root.querySelectorAll("[data-theme]")) { const st = themeStyle(el.dataset.theme); el.style.background = st.background; el.style.boxShadow = st.boxShadow; }
 }
+let showBacks = false;
 function renderShop() {
   const ids = (tier) => Object.keys(THEMES).filter((k) => THEMES[k].tier === tier);
   const mine = Object.keys(THEMES).filter(ownsTheme), table = ownsTheme(S.opt.theme) ? S.opt.theme : "walnut", backNow = ownsTheme(S.opt.back) ? S.opt.back : null;
   const swatch = (id) => `<button class="swatch ${table === id ? "on" : ""}" data-act="usetheme" data-v="${id}" aria-label="${esc(THEMES[id].name)} table${table === id ? ", in use" : ""}"><span class="tprev" data-theme="${id}"></span><small>${esc(THEMES[id].name.replace(" felt", ""))}</small></button>`;
   // the card backs you own, fanned out like a hand: tap one to play with it
-  const backs = [null, ...mine].map((id, i) => {
+  const row = innerWidth >= 700 ? 7 : S.opt.comfort ? 2 : 3, all = [null, ...mine], few = !showBacks && all.length > row + 1; // P2-9: one row of backs, the rest a tap away
+  const backs = (few ? all.slice(0, row) : all).map((id, i) => {
     const on = backNow === id, label = id ? THEMES[id].name : "Matches the table";
     return `<button class="backpick ${on ? "on" : ""}" style="--i:${i}" data-act="useback" data-v="${id || ""}" aria-label="Card back: ${esc(label)}${on ? ", selected" : ""}">${themeBack(id || table)}<small>${esc(id ? THEMES[id].name.replace(" felt", "") : "Match table")}</small></button>`;
-  }).join("");
+  }).join("") + (few ? `<button class="btn showall" data-act="allbacks">Show all ${all.length}</button>` : "");
   const forSale = TIER_ORDER.map((tier) => [tier, ids(tier).filter((id) => !ownsTheme(id))]).filter(([, list]) => list.length);
   $("#shop").innerHTML = `<div class="stack"><h1 class="sign">The table shop</h1>
-    <div class="paper thanks"><h2>Thank you for being here</h2>
-      <p>${cfg.brand.wordmark} has no ads and never will. It's made by one small team, and every theme you pick up is what keeps the cards coming: new games, new rules, and a table that stays calm. We're truly grateful. Thank you for supporting us.</p>
-      <p class="muted">Every theme is yours to keep, on every device in your Family Sharing group. Nothing renews.</p></div>
+    <div class="paper thanks"><p>No ads, ever: every table you pick up keeps the cards coming. Thank you. <span class="muted">Yours to keep on every device in your Family Sharing group; nothing renews.</span></p></div>
     <div class="paper"><h2>Your card backs</h2><p class="muted">Tap a card to deal with it. Any back goes with any table.</p><div class="backfan">${backs}</div></div>
     <div class="paper"><h2>Your tables</h2><div class="swatches">${mine.map(swatch).join("")}</div></div>
     ${forSale.map(([tier, list]) => `<div class="paper ${tier === "luxe" ? "luxebox" : ""}"><h2>${cfg.shop.tiers[tier].name} <span class="muted">· ${priceOf(tier)} each</span></h2>
@@ -673,10 +943,10 @@ function renderShop() {
 function renderBoards() {
   const fmt = (b, v) => (v == null ? "—" : b.unit ? `${v} ${b.unit}` : v);
   $("#boards").innerHTML = `<div class="stack"><h1 class="sign">The leaderboard</h1>
-    <div class="pins">${cfg.leaderboards.map((b, i) => `<div class="paper pin" style="--tilt:${[-2, 1.5, -1, 2, -1.5][i % 5]}deg"><h3>${esc(b.name)}</h3><p class="best">${fmt(b, S.best[b.id])}</p><small class="muted">${esc(b.explain)}</small>${(S.newBest || []).includes(b.name) ? `<span class="minirib">${rosette("New!")}</span>` : ""}</div>`).join("")}</div>
+    <div class="pins">${cfg.leaderboards.map((b, i) => `<div class="paper pin" style="--tilt:${[-2, 1.5, -1, 2, -1.5][i % 5]}deg"><h3>${esc(b.name)}</h3>${S.best[b.id] == null ? `<p class="none">No games yet. Your first win goes here.</p>` : `<p class="best">${fmt(b, S.best[b.id])}</p>`}<small class="muted">${esc(b.explain)}</small>${(S.newBest || []).includes(b.name) ? `<span class="minirib">${rosette("New!")}</span>` : ""}</div>`).join("")}</div>
     <p class="paper pin small" style="--tilt:1deg">Scores count for games you play alone against the computer. Pass-and-play games don't post scores.</p>
     ${platform.leaderboards ? `<button class="btn big" data-act="gc">See the Game Center leaderboards</button>`
-      : `<p class="corknote">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
+      : `<p class="paper corknote">${platform.native ? "Sign in to Game Center in Settings to compare with friends and family." : "Game Center leaderboards open from the iPhone and iPad app."}</p>`}
     <button class="btn ghost" data-act="go" data-to="title">Back</button></div>`;
 }
 // after a solo game: update the bests and post them (best = lowest for Hearts, highest elsewhere)
@@ -709,14 +979,14 @@ function euchreStatus(s) { // the seat plate: dealer, the call, sitting out, tri
   else if (st.defender === s) bits.push("Defends alone");
   else if (st.maker === null && st.calls.some((c) => c.seat === s && c.call === "pass")) bits.push("Passed");
   if ((st.phase === "play" || st.phase === "done") && st.maker !== null && !st.out.includes(s)) bits.push(`took ${st.tricks[s]}`);
-  return bits.map((b) => `<span>${b}</span>`).join("");
+  return bits;
 }
 function kittyEl() { // the kitty on the felt: face-down cards under the upcard; after round one the upcard lies turned down, sideways
   const st = G.st, down = st.phase === "bid2";
-  return `<div class="kitty ${down ? "down" : ""}" role="img" aria-label="${down ? `The ${cardName(st.up)} was turned down` : `Upcard: the ${cardName(st.up)}`}"><span class="kb">${backSvg}</span><span class="kb">${backSvg}</span><span class="up">${svgFor(st.up)}</span></div>`;
+  return `<div class="kitty ${down ? "down" : ""} ${tight ? "small" : ""}" role="img" aria-label="${down ? `The ${cardName(st.up)} was turned down` : `Upcard: the ${cardName(st.up)}`}"><span class="kb">${backSvg}</span><span class="kb">${backSvg}</span><span class="up">${svgFor(st.up)}</span></div>`;
 }
-function euchreCentre(mine) { // the kitty sits beside the prompt; Comfort drops it (the prompt names the upcard) to keep the big hand clear
-  const st = G.st, big = S.opt.comfort, kitty = ["bid1", "bid2", "farmer"].includes(st.phase) && !big ? kittyEl() : "";
+function euchreCentre(mine) { // the upcard sits beside the prompt at hand-card size (smaller on a tight table); Comfort lays the pad out in wide rows
+  const st = G.st, big = S.opt.comfort || tight, kitty = ["bid1", "bid2", "farmer"].includes(st.phase) ? kittyEl() : "";
   const top = (say) => `<div class="eurow">${kitty}<div class="say">${say}</div></div>`;
   if (mine?.kind === "bid1" || mine?.kind === "bid2") {
     const r1 = mine.kind === "bid1", canPass = mine.legal.some((a) => a.call === "pass");
@@ -728,15 +998,15 @@ function euchreCentre(mine) { // the kitty sits beside the prompt; Comfort drops
     const pass = canPass ? `<button class="btn" data-act="call" data-v="pass">Pass</button>` : "";
     const toggle = onlyAlone ? `<span class="say">${r1 ? "Ordering your partner up means going alone" : "Alone"}</span>` : `<button class="btn" data-act="alone" aria-pressed="${mine.alone}">Go alone: ${mine.alone ? "yes" : "no"}</button>`;
     const row = big && !r1 ? calls : [...calls, ...(pass ? ["pass"] : [])]; // Comfort: three wide suit buttons; Pass moves down beside Go alone
-    return `${top(say)}<div class="callpad" style="--n:${row.length}">${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>
-      <div class="callpad" style="--n:${big && !r1 && pass ? 2 : 1}">${toggle}${big && !r1 ? pass : ""}</div>`;
+    const first = tight ? `<div class="callpad" style="--n:${row.length + 1}">${kitty}${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>` // tight: the upcard leads the row; the buttons say the rest
+      : `${top(say)}<div class="callpad" style="--n:${row.length}">${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>`;
+    return `${first}<div class="callpad" style="--n:${big && !r1 && pass ? 2 : 1}">${toggle}${big && !r1 ? pass : ""}</div>`;
   }
   if (mine?.kind === "discard") return `<div class="say">${mine.sel?.length ? "Tap it again to throw it away" : `You picked up the ${cardName(st.up)}. Tap a card to throw away.`}</div>`;
   if (mine?.kind === "farmer") return `${top(`Farmer's hand! Pick three cards to swap with the kitty (${mine.sel.length}/3)`)}
     <div class="callpad" style="--n:2">${mine.sel.length === 3 ? `<button class="btn big" data-act="farmer" data-v="swap">Swap these three</button>` : ""}<button class="btn" data-act="farmer" data-v="keep">Keep my hand</button></div>`;
   if (mine?.kind === "defend") return `<div class="say">${esc(G.seats[st.maker].name)} is going alone. Defend alone?</div>
     <div class="callpad" style="--n:2"><button class="btn big" data-act="defend" data-v="yes">Defend alone</button><button class="btn" data-act="defend" data-v="no">With my partner</button></div>`;
-  if (mine?.kind === "play" && mine.sel?.length) return `<div class="say">Tap the card again to play it</div>`;
   if (st.phase !== "play" && st.phase !== "done" && G.seats[st.turn].kind === "bot") return top(`${esc(G.seats[st.turn].name)} is thinking…`);
   return kitty;
 }
@@ -771,43 +1041,68 @@ function euchreStamp(l) { // from the side of whoever holds the phone first (sea
 // ---------------------------------------------------------------- spoken table and VoiceOver announcements
 
 const SUIT_WORD = { S: "Spades", H: "Hearts", D: "Diamonds", C: "Clubs" };
+const cardList = (cs) => cs.map(cardName).join(cs.length === 2 ? " and " : ", ");
+// VoiceOver reads the live region: one sentence at a time, each left up for as long as it takes to read (about 60 ms a
+// character), so a new one waits its turn instead of replacing the last. With VoiceOver on, the bots wait for the queue (run()).
+const said = { q: [], log: [], dropped: 0, busy: false, idle: () => new Promise((done) => { const t = () => (said.busy ? setTimeout(t, 100) : done()); t(); }) };
+const readMs = (t) => Math.max(1000, 60 * t.length);
+// whether VoiceOver is running: @capacitor/screen-reader on the phone (asked at start, told when it's switched on or off, and
+// asked again whenever the app comes back to the front); ?vo in tests
+let vo = qs.has("vo");
+const SR = window.Capacitor?.Plugins?.ScreenReader, voCheck = () => { try { SR?.isEnabled?.().then((r) => (vo = !!r?.value || qs.has("vo")), () => {}); } catch {} };
+try { voCheck(); SR?.addListener?.("stateChange", (r) => (vo = !!r?.value || qs.has("vo"))); addEventListener("visibilitychange", () => document.hidden || voCheck()); } catch {}
 function announce(text, { interrupt = false } = {}) {
-  $("#announce").textContent = text; // VoiceOver reads the live region
+  if (!text) return;
   speech.say(text, { interrupt });
+  if (interrupt) said.q.length = 0; // a new hand: what's waiting from the last one goes; what's being read finishes
+  said.q.push(text);
+  if (!vo && said.q.length > 4) said.dropped += said.q.splice(0, said.q.length - 4).length; // ponytail: nothing waits on the queue without VoiceOver, so its backlog stays short
+  if (!said.busy) (async () => { said.busy = true; while (said.q.length) { const t = said.q.shift(); $("#announce").textContent = t; if (DEBUG) said.log.push([performance.now(), t]); await wait(readMs(t)); } said.busy = false; })();
+}
+function lastTrick() { // the Read button and the menu: the trick that was just swept away
+  const t = G.st.lastTrick;
+  if (!t?.length) return "No trick has been played yet this hand.";
+  return `Last trick: ${t.map((x) => `${G.seats[x.seat].name}, the ${cardName(x.card)}`).join("; ")}. ${G.seats[G.lastWon ?? t[0].seat].name} took it.`;
 }
 function describeHand(seat) {
+  if (faceDown(seat)) return "Your cards are face down.";
   const st = G.st, j = G.game === "spades" && G.rules.jokers, eff = (c) => (G.game === "spades" ? spades.eff(c, j) : G.game === "euchre" ? euchre.eff(c, st.trump) : c[1]);
   return "SHDC".split("").map((s) => { const cs = st.hands[seat].filter((c) => eff(c) === s); return cs.length ? `${SUIT_WORD[s]}: ${cs.map((c) => cardName(c).replace(/ of \w+$/, "")).join(", ")}.` : `No ${SUIT_WORD[s].toLowerCase()}.`; }).join(" ");
 }
 function describeTable() {
   const st = G.st, parts = [];
   if (st.trick.length) parts.push(st.trick.map((t) => `${G.seats[t.seat].name} played the ${cardName(t.card)}`).join(", ") + ".");
-  else parts.push("No cards on the table.");
+  else parts.push(`No cards on the table. ${lastTrick()}`);
   if (G.game === "euchre") parts.push(euchreTable());
   else if (st.trump !== undefined) parts.push(st.trump ? `Trump is ${SUIT_WORD[st.trump].toLowerCase()}.` : "No trump this hand.");
   if (st.bids) parts.push(G.seats.map((x, s) => `${x.name} bid ${st.bids[s] === null ? "nothing yet" : st.bids[s] === 0 ? "nil" : st.bids[s]} and has ${st.tricks[s]}`).join(". ") + ".");
   if (pending && pending.seat === G.viewer && EUCHRE_ASK[pending.kind]) parts.push(EUCHRE_ASK[pending.kind]);
-  else if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : "");
+  else if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : pending.kind === "exchange" ? `Pass ${G.rules.blindSwap} cards to your partner.` : "");
   return parts.join(" ");
 }
 
 // ---------------------------------------------------------------- taps
 const RENDER = { shop: renderShop, boards: renderBoards, title: renderTitle, picker: renderPicker, setup: renderSetup, options: renderOptions, caregiver: renderCaregiver, stats: renderStats, unlock: renderUnlock, howto: renderHowto, ack: renderAck };
-async function go(to) { await RENDER[to]?.(); show(to); if (to === "ack") $("#ack h1").focus(); }
+async function go(to) { await RENDER[to]?.(); show(to); }
 const ACT = {
   go: (el) => go(el.dataset.to),
   noop: () => {},
   deal: (el) => { if (S.cur && G) return run(); const g = el.dataset.game; if (!owns(g)) return go("unlock"); newGame(g); },
   setup: (el) => { setupGame = el.dataset.game; go("setup"); },
-  preset: (el) => { S.last.preset = el.dataset.v; save(); renderSetup(); },
+  preset: (el) => { // R9: Custom starts from the rules of the preset you were on
+    const v = el.dataset.v, L = S.last;
+    if (v === "custom" && L.preset !== "custom") { const { preset, ...vals } = rulesFor(cfg, setupGame, L.preset); (L.customBy ??= {})[setupGame] = vals; }
+    L.preset = v; save(); renderSetup();
+  },
   partner: (el) => { S.last.partner = el.dataset.v; save(); renderSetup(); },
   opps: (el) => { S.last.opps = el.dataset.v; save(); renderSetup(); },
   seat1: (el) => setSeat(1, el), seat2: (el) => setSeat(2, el), seat3: (el) => setSeat(3, el),
-  rule: (el) => { const d = cfg.rules[setupGame].find((x) => x.id === el.dataset.id); S.last.custom[d.id] = !(S.last.custom[d.id] ?? d.presets.standard); save(); renderSetup(); },
+  rule: (el) => { const d = cfg.rules[setupGame].find((x) => x.id === el.dataset.id), c = ((S.last.customBy ??= {})[setupGame] ??= {}); c[d.id] = !(c[d.id] ?? d.presets.standard); save(); renderSetup(); },
   card: (el) => {
     if (!pending || el.disabled) return;
     const c = el.dataset.card;
     if (pending.kind === "pass") { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < 3) pending.sel.push(c); return drawTable(); }
+    if (pending.kind === "exchange" && pending.legal.includes(c)) { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < G.rules.blindSwap) pending.sel.push(c); return drawTable(); }
     if (pending.kind === "farmer") { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < 3) pending.sel.push(c); return drawTable(); }
     if (pending.kind === "discard" && (S.opt.comfort || S.opt.confirm) && pending.sel[0] !== c) { pending.sel = [c]; speech.say(cardName(c) + ". Tap again to discard it.", { interrupt: true }); return drawTable(); }
     if (pending.kind === "discard") return pending.resolve(c);
@@ -816,8 +1111,19 @@ const ACT = {
     pending.resolve(c);
   },
   step: (el) => { if (pending?.kind === "bid") { pending.dir = +el.dataset.v; pending.step += pending.dir; drawTable(); } },
-  bid: (el) => pending?.kind === "bid" && pending.resolve(el.dataset.v === "blind" ? { bid: 0, blind: true } : { bid: +el.dataset.v }),
+  bid: (el) => { if (pending?.kind !== "bid") return; whyNow = null; pending.resolve(el.dataset.v === "blind" ? { bid: 0, blind: true } : { bid: +el.dataset.v }); },
   pass: () => pending?.kind === "pass" && pending.sel.length === 3 && pending.resolve([...pending.sel]),
+  swap: () => pending?.kind === "exchange" && pending.sel.length === G.rules.blindSwap && pending.resolve([...pending.sel]),
+  look: () => { (G.looked ??= {})[G.viewer] = true; announce("Your cards are face up."); drawTable(); $("#hand").focus(); },
+  suggest: () => { // what a Standard player would bid with this hand, and why
+    const p = pending;
+    if (p?.kind !== "bid") return;
+    const d = decide(MOD[G.game].view(G.st, p.seat), "standard"), b = d.action.bid, why = WHY[String(d.reason).split(":")[0]];
+    p.hint = `A Standard player would bid ${b === 0 ? (G.game === "spades" ? "nil" : "0") : b}${why ? `: “${why}”` : "."}`; p.step = b;
+    drawTable();
+    if (S.opt.comfort || tight) return answerBox("A suggestion", p.hint); // no room beside the pad: it opens on its own, and the table waits
+    announce(p.hint);
+  },
   moon: (el) => pending?.kind === "moon" && pending.resolve(el.dataset.v),
   // Euchre: calling trump, going alone, defending alone, a farmer's hand
   call: (el) => { if (pending?.kind !== "bid1" && pending?.kind !== "bid2") return; const call = el.dataset.v, alone = call !== "pass" && (pending.alone || !pending.legal.some((a) => a.call === call && !a.alone)); pending.resolve(call === "pass" ? { call } : { call, alone }); },
@@ -825,16 +1131,36 @@ const ACT = {
   defend: (el) => pending?.kind === "defend" && pending.resolve({ defend: el.dataset.v === "yes" }),
   farmer: (el) => pending?.kind === "farmer" && (el.dataset.v === "keep" ? pending.resolve({ swap: null }) : pending.sel.length === 3 && pending.resolve({ swap: [...pending.sel] })),
   handoff: () => handoff.done?.(),
-  why: (el) => { const s = +el.dataset.seat; if (G.seats[s].kind !== "bot") return; why[s] = !why[s]; drawTable(); },
-  peek: () => { const p = $("#peek"); if (!p.hidden) { p.hidden = true; return; } const last = G.history.slice(-5).reverse();
-    p.innerHTML = `<div class="pad"><h3>Score</h3><table>${TEAMS(G.game) ? [0, 1].map((t) => `<tr><td>${t === 0 ? "Us" : "Them"}</td><td class="n">${G.totals.score[t]}</td>${G.totals.bags ? `<td class="n">${G.totals.bags[t]} bags</td>` : ""}</tr>`).join("") : G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${G.totals.score[i]}</td></tr>`).join("")}</table>
-      ${last.length ? `<p class="muted">Last seed: <span class="seed">${last[0].seed}</span></p>` : ""}<button class="btn" data-act="peek">Close</button></div>`; p.hidden = false; },
+  why: (el) => { // the bot's reason, in the line above your plate until the next card (never inside the plate, which would grow);
+    const s = +el.dataset.seat, r = whyOf(s), name = G.seats[s].name; // where that line would cover a seat, it opens on its own
+    if (!r) return;
+    if (S.opt.comfort || tight) return answerBox(name, `“${r}”`);
+    const w = (whyNow = { seat: s, text: `${name}: “${r}”` });
+    drawTable();
+    if (tight) { whyNow = null; drawTable(); return answerBox(name, `“${r}”`); } // it didn't fit after all
+    announce(w.text);
+    setTimeout(() => { if (whyNow === w) { whyNow = null; drawTable(); } }, 6000);
+  },
+  peek: async () => { // the score pad as a sheet of its own: it never sits over a seat, and it's closed when the hand ends
+    const sc = G.totals.score, last = G.history.at(-1), goal = goalLine();
+    const rows = TEAMS(G.game) ? [0, 1].map((t) => `<tr><td>${t === team(G.viewer) ? "Us" : "Them"}</td><td class="n">${sc[t]}</td>${G.totals.bags ? `<td class="n">${G.totals.bags[t]} bag${G.totals.bags[t] === 1 ? "" : "s"}</td>` : ""}</tr>`).join("")
+      : G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${sc[i]}</td></tr>`).join("");
+    peekOpen = true;
+    await dialog(`<h2>Score</h2><div class="pad"><table>${rows}</table>${goal ? `<p>${esc(goal)}</p>` : ""}<p class="muted">Hand ${G.handNo + 1}${last ? ` · last seed <span class="seed">${seedHTML(last.seed)}</span>` : ""}</p></div>
+      <button class="btn big" data-dlg="">Back to the table</button>`, { user: true });
+    peekOpen = false;
+  },
   menu: async () => {
-    const v = await dialog(`<h2>Paused</h2><div class="stack"><button class="btn big" data-dlg="">Keep playing</button><button class="btn" data-dlg="howto">How to play</button><button class="btn" data-dlg="leave">Save and leave</button>${S.care.lock ? "" : `<button class="btn" data-dlg="quit">End this game</button>`}</div>`, { user: true });
+    const v = await dialogP(`<h2>Paused</h2><div class="stack"><button class="btn big" data-dlg="">Keep playing</button><button class="btn" data-dlg="last">Last trick</button><button class="btn" data-dlg="howto">How to play</button><button class="btn" data-dlg="leave">Save and leave</button>${S.care.lock ? "" : `<button class="btn" data-dlg="quit">End this game</button>`}</div>`, { user: true });
+    if (v === "last") {
+      const t = G.st.lastTrick || [];
+      return dialog(`<h2>Last trick</h2>${t.length ? `<div class="lasttrick" aria-hidden="true">${t.map((x) => `<span><span class="card">${svgFor(x.card)}</span><small>${esc(G.seats[x.seat].name)}</small></span>`).join("")}</div>` : ""}<p>${esc(lastTrick())}</p><button class="btn big" data-dlg="">Back to the table</button>`, { user: true });
+    }
     if (v === "howto") { runId++; renderHowto(); show("howto"); }
     if (v === "leave" || v === "quit") {
-      if (S.opt.comfort && !(await dialog(`<h2>Leave the table?</h2><div class="stack"><button class="btn big" data-dlg="yes">Yes, leave</button><button class="btn" data-dlg="">No, keep playing</button></div>`, { user: true }))) return;
-      runId++; pending = null; handLive = false; net?.leave(); net = null;
+      if (v === "quit" && !(await dialog(`<h2>End this game?</h2><p>Scores for this game are lost. "Save and leave" keeps your place instead.</p><div class="stack"><button class="btn" data-dlg="yes">End the game</button><button class="btn big" data-dlg="">Keep playing</button></div>`, { user: true }))) return;
+      if (v === "leave" && S.opt.comfort && !(await dialog(`<h2>Leave the table?</h2><div class="stack"><button class="btn big" data-dlg="yes">Yes, leave</button><button class="btn" data-dlg="">No, keep playing</button></div>`, { user: true }))) return;
+      runId++; pending = null; handLive = false; net?.leave(); net = null; if (trial) { trial = null; applyLook(); }
       if (v === "quit") { S.cur = null; G = null; }
       save(); go("title");
     }
@@ -844,7 +1170,23 @@ const ACT = {
   family: () => familyTable(),
   next: () => { if (G.over !== null) { renderResults(); show("results"); } else startHand(); },
   again: () => newGame(G.game),
-  seedinfo: () => dialog(`<h2>The seed</h2><p>Each hand is shuffled from this code and nothing else. Type it into the "verify a deal" page on our website and you'll see exactly the same four hands. Nobody, including us, can steer a deal.</p><button class="btn big" data-dlg="">Got it</button>`, { user: true }),
+  seedinfo: async () => { // the hand's own check: verify.html deals it again from the seed and the cut, and checks the fingerprint first
+    const h = G.history.at(-1), game = G.game === "spades" && G.rules.jokers ? "jokers" : G.game;
+    const url = `${platform.site}/verify.html?seed=${h.seed}&cut=${h.cut ?? 0}&fp=${String(h.fp ?? fingerprint(h.seed)).replace(/\s/g, "")}&game=${game}&dealer=${h.dealer}${h.size ? `&size=${h.size}` : ""}`;
+    const v = await dialog(`<h2>The seed</h2><p>Every hand comes from this seed and your cut, and nothing else. Type them into our website to see the same four hands.</p>
+      <p>The fingerprint is the seed's SHA-256, cut short. Our website checks it against the seed before it deals.</p>
+      <div class="stack">${S.care.lock ? "" : `<button class="btn" data-dlg="check">Check this hand on our website</button>`}<button class="btn big" data-dlg="">Got it</button></div>`, { user: true });
+    if (v === "check") gate(url, "the check-a-deal page on our website");
+  },
+  allbacks: () => { showBacks = true; renderShop(); },
+  trytheme: (el) => { // dress the next hand in this theme; after it, the sheet asks whether to keep it
+    trial = el.dataset.v; applyLook();
+    if (S.cur && G) return run();
+    const g = owns(S.last.game) && S.care.games.includes(S.last.game) ? S.last.game : "hearts";
+    newGame(g);
+  },
+  trialback: () => { trial = null; applyLook(); renderSheet(); announce("Put back. Your own table is out again."); },
+  trialkeep: async () => { const id = trial; if (!platform.native || (await platform.buy("theme_" + id))) { S.opt.theme = id; save(); } trial = null; applyLook(); renderSheet(); },
   verify: () => gate(platform.site + "/verify.html", "our verify-a-deal page"),
   link: (el) => gate(platform.site + "/" + el.dataset.url, "our website"),
   consent: (el) => { S.opt.analytics = el.dataset.v === "yes"; setTelemetry(S.opt.analytics, { first: true }); save(); $("#consentCard")?.remove(); },
@@ -867,7 +1209,7 @@ const ACT = {
     if (!calm()) await el.animate([{ transform: "translateY(0) rotateY(0)" }, { transform: "translateY(-18px) rotateY(90deg)" }, { transform: "translateY(-12px) rotateY(0)" }], { duration: 360, easing: "ease-out" }).finished.catch(() => {});
     renderShop(); speech.say("Card back chosen.");
   },
-  usetheme: (el) => { S.opt.theme = el.dataset.v; save(); applyLook(); renderShop(); },
+  usetheme: (el) => { S.opt.theme = el.dataset.v; trial = null; save(); applyLook(); renderShop(); },
   buytheme: async (el) => {
     const id = el.dataset.v;
     if (!platform.native) return ACT.usetheme(el);
@@ -876,7 +1218,7 @@ const ACT = {
       await dialog(`<h2>Thank you!</h2><p><b>${esc(THEMES[id].name)}</b> is yours to keep, on every device in your family. Your support keeps ${cfg.brand.wordmark} free of ads and helps us bring the next game to the table. We're so grateful.</p><button class="btn big" data-dlg="">Back to the shop</button>`, { user: true });
     }
   },
-  textsize: (el) => { S.opt.text = el.dataset.v; save(); applyLook(); renderOptions(); },
+  textsize: (el) => { S.opt.text = el.dataset.v; S.opt.textAuto = false; save(); applyLook(); if (screen === "caregiver") renderCaregiver(); else renderOptions(); },
   speakrate: (el) => { S.opt.speakRate = +el.dataset.v; save(); applyLook(); renderOptions(); speech.say("This is how fast I'll read.", { interrupt: true }); },
   gc: () => platform.showLeaderboards(),
   read: () => speech.say(describeTable() + " " + describeHand(G.viewer), { interrupt: true }),
@@ -892,35 +1234,48 @@ const ACT = {
 function setSeat(s, el) { S.last.seats[s] = el.dataset.v; save(); renderSetup(); }
 
 document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-hold]")) { if (performance.now() - pressed > 600) dialog.done?.("tap"); return; }
   const d = e.target.closest("[data-dlg]");
+  if (d?.dataset.dlg === "cut") { // where you tap along the deck is where it's cut; a tap with no place (keyboard, Switch Control) cuts by the moment
+    const r = d.getBoundingClientRect(), n = +d.dataset.n, k = e.detail && e.clientX ? (e.clientX - r.left) / r.width : (performance.now() * 7919 % 1000) / 1000;
+    return dialog.done?.("cut:" + Math.min(n - 1, Math.max(1, Math.round(k * (n - 2)) + 1)));
+  }
   if (d) return dialog.done?.(d.dataset.dlg || null);
   const p = e.target.closest("[data-pin]");
   if (p) return pin.key?.(p.dataset.pin);
   const el = e.target.closest("[data-act]");
-  if (!el) return;
-  const act = el.dataset.act;
+  if (!el || el.disabled) return;
+  const act = el.dataset.act, s = sig(el);
+  queueMicrotask(() => { const a = document.activeElement; if (!a || a === document.body || !a.isConnected) refocus(s); });
   if (act.startsWith("opt:")) { const k = act.slice(4); S.opt[k] = k === "analytics" ? !(S.opt.analytics === true) : !S.opt[k]; if (k === "analytics") setTelemetry(S.opt.analytics); save(); applyLook(); return screen === "caregiver" ? renderCaregiver() : renderOptions(); }
   if (act.startsWith("care:")) { const k = act.slice(5); if (k.startsWith("game:")) { const g = k.slice(5), a = S.care.games; S.care.games = a.includes(g) ? a.filter((x) => x !== g) : [...a, g]; if (!S.care.games.length) S.care.games = ["hearts"]; } else S.care[k] = !S.care[k]; save(); return renderCaregiver(); }
   ACT[act]?.(el, e);
 });
 document.addEventListener("change", (e) => {
   const el = e.target, act = el.dataset.act;
-  if (act === "rulesel") { const d = cfg.rules[setupGame].find((x) => x.id === el.dataset.id); S.last.custom[d.id] = typeof d.presets.standard === "number" ? +el.value : el.value; save(); }
+  if (act === "rulesel") { const d = cfg.rules[setupGame].find((x) => x.id === el.dataset.id); ((S.last.customBy ??= {})[setupGame] ??= {})[d.id] = typeof d.presets.standard === "number" ? +el.value : el.value; save(); }
   if (act === "back") { S.opt.back = el.value || null; save(); applyLook(); }
   if (act === "lang") { S.opt.lang = el.value || null; save(); location.reload(); }
 });
-// press-and-hold buttons (the grown-up gate)
-document.addEventListener("pointerdown", (e) => {
-  const el = e.target.closest("[data-hold]");
-  if (!el) return;
+// press-and-hold buttons (the grown-up gate): a finger held down, or Space or Enter held down
+let pressed = -1e9; // when a real press last began or ended: a click that comes without one is Switch Control (or VoiceOver)
+function hold(el, ends) {
   const ms = +el.dataset.hold, bar = el.querySelector("i"), t0 = performance.now();
   let raf;
   const tick = (t) => { const k = (t - t0) / ms; bar.style.width = Math.min(100, k * 100) + "%"; if (k >= 1) { stop(); dialog.done?.("hold"); } else raf = requestAnimationFrame(tick); };
-  const stop = () => { cancelAnimationFrame(raf); bar.style.width = "0"; removeEventListener("pointerup", stop); removeEventListener("pointercancel", stop); };
-  addEventListener("pointerup", stop); addEventListener("pointercancel", stop);
+  const stop = () => { pressed = performance.now(); cancelAnimationFrame(raf); bar.style.width = "0"; ends.forEach((x) => removeEventListener(x, stop)); };
+  ends.forEach((x) => addEventListener(x, stop));
   raf = requestAnimationFrame(tick);
+}
+document.addEventListener("pointerdown", (e) => { const el = e.target.closest("[data-hold]"); if (el) { pressed = performance.now(); hold(el, ["pointerup", "pointercancel"]); } });
+document.addEventListener("keydown", (e) => {
+  const el = e.target.closest?.("[data-hold]");
+  if (!el || (e.key !== " " && e.key !== "Enter")) return;
+  e.preventDefault(); pressed = performance.now();
+  if (!e.repeat) hold(el, ["keyup", "blur"]);
 });
-addEventListener("resize", () => { if (screen === "table") drawTable(); });
+addEventListener("resize", () => { M = null; geo = null; tight = false; if (screen === "table") drawTable(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && dialog.done) dialog.done(null); }); // a keyboard can always close a dialog
 
 // ---------------------------------------------------------------- family table test (DESIGN.md §9 spike): Hearts with two people on two
 // devices and two bots. Hidden: ?debug, or tap "Play a game of cards at…" seven times. The protocol is family.js.
@@ -946,13 +1301,16 @@ async function guestHand() { // a guest plays the host's deal from its own seat;
   const mine = h.seats.findIndex((x) => x.player === net.me);
   G = { game: h.game, rules: h.rules, preset: h.preset, totals: h.totals, handNo: h.handNo, dealer: h.dealer, history: h.handNo && G ? G.history : [], viewer: mine, reasons: {}, over: null,
     seats: h.seats.map((x, i) => (i === mine ? { ...x, kind: "human" } : { ...x, kind: "remote", player: net.hostId })) };
-  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo);
+  G.st = MOD[G.game].newHand(G.rules, h.seed, G.dealer, G.totals, G.handNo, h.cut ?? 0);
+  G.st.cut ??= h.cut ?? 0;
   S.cur = G; save(); sound.shuffle(); G.justDealt = true;
   run();
 }
 
 // ---------------------------------------------------------------- boot
+if (S.opt.textAuto !== false) { const t = phoneText(); if (t) S.opt.text = t; } // follows the iPhone's text size until you pick one
 applyLook();
+$("#prop").innerHTML = tableProp();
 setTelemetry(S.opt.analytics === true);
 platform.init();
 if (S.cur) { G = S.cur; G.viewer = G.viewer ?? 0; run(); } // cards back in hand, exactly where they were
@@ -960,6 +1318,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, readMs, said, get dialogKind() { return dialog.kind; }, get tight() { return tight; }, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, get peekOpen() { return peekOpen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };
