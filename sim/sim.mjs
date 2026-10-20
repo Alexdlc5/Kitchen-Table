@@ -176,7 +176,7 @@ function report(game, level, m) {
   return m;
 }
 
-function check(game, m) {
+function check(game, m, rules) {
   const fails = [];
   const need = (ok, what) => ok || fails.push(what);
   if (game === "spades") {
@@ -184,7 +184,7 @@ function check(game, m) {
     need(m.set / m.contracts <= 0.12, `set rate ${pct(m.set, m.contracts)} > 12%`);
     need(m.nilMade / m.nilBids >= 0.7, `nil success ${pct(m.nilMade, m.nilBids)} < 70%`);
     need(m.bags / m.contracts <= 1.5, "bags per hand > 1.5");
-    need(!m.blindBids || m.blindMade / m.blindBids >= 0.45, `blind nil made ${pct(m.blindMade, m.blindBids)} < 45%`); // R3: with the exchange
+    need(!m.blindBids || !rules.blindSwap || m.blindMade / m.blindBids >= 0.45, `blind nil made ${pct(m.blindMade, m.blindBids)} < 45%`); // R3: with the exchange
   } else if (game === "euchre") {
     need(m.euchred / m.calls <= 0.2, `maker euchre rate ${pct(m.euchred, m.calls)} > 20%`);
     need(m.lonerMarch / Math.max(1, m.loners) >= 0.6, `loner success ${pct(m.lonerMarch, m.loners)} < 60%`);
@@ -227,7 +227,7 @@ else {
     for (const game of games) for (const level of levels) {
       const t0 = Date.now(), m = report(game, level, await parallel({ game, levels: [level, level, level, level], preset, custom, hands }, workers));
       console.log(`\n(${((Date.now() - t0) / 1000).toFixed(0)} s)`);
-      if (args.includes("--check") && level === "standard") fails.push(...check(game, m).map((f) => `${game}: ${f}`));
+      if (args.includes("--check") && level === "standard") fails.push(...check(game, m, rulesFor(cfg, game, preset, custom)).map((f) => `${game}: ${f}`));
       if (args.includes("--check") && m.shippedSins) fails.push(`${game} ${level}: ${m.shippedSins} sins shipped`);
     }
   if (args.includes("--ladder") || all) {

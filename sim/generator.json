@@ -255,9 +255,9 @@
      0
     ],
     "presets": {
-     "standard": 2,
-     "kitchen": 2,
-     "tournament": 2
+     "standard": 0,
+     "kitchen": 0,
+     "tournament": 0
     }
    },
    {

@@ -90,7 +90,7 @@ sc("S16", "beside partner's nil, a weak hand may bid 1", table("spades", { deale
 
 // R3: the blind nil exchange. The nil sends its most dangerous cards (spades first), the partner its lowest
 {
-  const ex = { preset: "kitchen", custom: { jokers: false }, bids: [0, 3, 4, 4], blind: [true, false, false, false], totals: { score: [40, 260], bags: [0, 0] },
+  const ex = { preset: "kitchen", custom: { jokers: false, blindSwap: 2 }, bids: [0, 3, 4, 4], blind: [true, false, false, false], totals: { score: [40, 260], bags: [0, 0] },
     hands: { 0: "AS KS 2D 3D 4D 6D 8D 9D 3C 4C 5C 6C 7C", 2: "2H 3H AH KH QH 5S 6S" } };
   sc("R3", "blind nil exchange: the nil passes its top spades", table("spades", ex), (a) => [...a].sort().join() === "AS,KS");
   sc("R3", "blind nil exchange: the partner passes back its lowest cards", table("spades", { ...ex, swaps: ["AS KS"] }),
@@ -205,7 +205,7 @@ sc("H09", "Omnibus: last to play, win the J♦ when the trick has no points (AI-
   const allowed = { spades: "game rules seat dealer phase turn hand sizes bids blind passed received trick tricks history broken totals", hearts: "game rules seat dealer phase turn dir hand sizes passed received trick tricks taken history broken moon totals" };
   for (const [name, g] of [["spades", spades], ["hearts", hearts]]) {
     for (const preset of ["standard", "kitchen"]) {
-      const rules = rulesFor(cfg, name, preset);
+      const rules = rulesFor(cfg, name, preset, name === "spades" ? { blindSwap: 2 } : {});
       for (let i = 0; i < 150; i++) {
         const st = g.newHand(rules, newSeed(), i % 4, name === "spades" && i % 3 === 0 ? { score: [0, 250], bags: [0, 0] } : undefined, i);
         let steps = Math.floor(rng() * 50);

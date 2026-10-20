@@ -102,7 +102,7 @@ const rng = () => ((r = (Math.imul(r, 1103515245) + 12345) >>> 0) / 2 ** 32);
 for (const [name, g] of [["spades", spades], ["hearts", hearts]])
   for (const preset of cfg.presets)
     test(`${name}/${preset}: 3,000 random hands never break a rule and every card is played once`, () => {
-      const rules = rulesFor(cfg, name, preset);
+      const rules = rulesFor(cfg, name, preset, name === "spades" ? { blindSwap: 2 } : {}); // the exchange as designed (presets ship 0 until the table draws it)
       for (let i = 0; i < 3000; i++) {
         const behind = name === "spades" && i % 2 ? { score: [0, 200], bags: [0, 0] } : undefined; // blind nil (and its exchange) open to team 0
         const st = randomHand(g, rules, newSeed(), rng, behind, i);
@@ -180,7 +180,7 @@ test("spades game end: first to the target, ties play on; Lose at (R6)", () => {
 });
 
 test("spades blind nil exchange (R3): nil passes 2 to partner, partner passes 2 back, then play", () => {
-  const st = spades.newHand(rulesFor(cfg, "spades", "kitchen"), "0000-0000-0000-0000-0000-0000-01", 3, { score: [0, 200], bags: [0, 0] });
+  const st = spades.newHand(rulesFor(cfg, "spades", "kitchen", { blindSwap: 2 }), "0000-0000-0000-0000-0000-0000-01", 3, { score: [0, 200], bags: [0, 0] });
   for (const a of [{ bid: 0, blind: true }, { bid: 4 }, { bid: 4 }, { bid: 4 }]) spades.apply(st, a); // seat 0 blind nil
   assert.equal(st.phase, "exchange"); assert.equal(st.turn, 0);
   const nil0 = [...st.hands[0]], give = spades.legal(st).slice(0, 2);
