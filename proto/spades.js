@@ -1,5 +1,6 @@
 // Spades rules: pure functions over a plain state object. House rules come in as `rules` (cards.rulesFor).
-// Bids are numbers; 0 is nil. Actions: {bid, blind?} while bidding, a card string while playing.
+// Bids are numbers; 0 is nil. Actions: {bid, blind?} while bidding, [n cards] in the blind nil exchange, a card string
+// while playing.
 import { newDeck, dealHands, winnerIndex, followable, next, partner, team } from "./cards.js";
 
 const JOKER_POW = { BJ: 20, LJ: 19, "2D": 18, "2S": 17 };
@@ -11,10 +12,15 @@ export function newHand(rules, seed, dealer, totals = { score: [0, 0], bags: [0,
   return {
     game: "spades", rules, seed, dealer, totals: structuredClone(totals),
     phase: "bid", turn: next(dealer), hands: dealHands(seed, dealer, newDeck(rules.jokers)),
-    bids: [null, null, null, null], blind: [false, false, false, false],
+    bids: [null, null, null, null], blind: [false, false, false, false], passes: [null, null, null, null], received: [null, null, null, null],
     trick: [], lastTrick: null, tricks: [0, 0, 0, 0], history: [], broken: false,
   };
 }
+
+// the blind nil exchange (rules.blindSwap cards): each blind nil, from the dealer's left, passes to its partner, then the
+// partner passes back. Two blind nils on one team have nothing to swap.
+const swapOrder = (st) => [1, 2, 3, 4].map((k) => (st.dealer + k) % 4).filter((s) => st.blind[s] && !st.blind[partner(s)]).flatMap((s) => [s, partner(s)]);
+const firstLead = (st) => (st.rules.twoClubsLead ? (st.rules.jokers ? "3C" : "2C") : null);
 
 export function legal(st) {
   const s = st.turn, r = st.rules, j = r.jokers;
@@ -28,9 +34,11 @@ export function legal(st) {
     if (r.blindNil && behind >= r.blindNilDown && st.hands[s].length === 13) out.push({ bid: 0, blind: true });
     return out;
   }
+  if (st.phase === "exchange") return st.hands[s].filter((c) => !(st.received[s] || []).includes(c)); // choose any n; never hand back what you got
   if (st.phase !== "play") return [];
   const hand = st.hands[s];
   if (!st.trick.length) {
+    if (!st.history.length && firstLead(st)) return [firstLead(st)];
     if (r.spadesBroken && !st.broken) {
       const side = hand.filter((c) => !isTrump(c, j));
       if (side.length) return side;
@@ -40,12 +48,30 @@ export function legal(st) {
   return followable(hand, eff(st.trick[0].card, j), (c) => eff(c, j));
 }
 
+function startPlay(st) {
+  st.phase = "play"; st.turn = next(st.dealer);
+  if (firstLead(st)) st.turn = st.hands.findIndex((h) => h.includes(firstLead(st)));
+  return st;
+}
+
 export function apply(st, a) {
   const s = st.turn, j = st.rules.jokers;
   if (st.phase === "bid") {
     st.bids[s] = a.bid; st.blind[s] = !!a.blind;
     st.turn = next(s);
-    if (st.bids.every((b) => b !== null)) { st.phase = "play"; st.turn = next(st.dealer); }
+    if (st.bids.every((b) => b !== null)) {
+      const order = st.rules.blindSwap ? swapOrder(st) : [];
+      if (order.length) { st.phase = "exchange"; st.turn = order[0]; } else startPlay(st);
+    }
+    return st;
+  }
+  if (st.phase === "exchange") {
+    const n = st.rules.blindSwap, ok = legal(st), to = partner(s);
+    if (a.length !== n || new Set(a).size !== n || a.some((c) => !ok.includes(c))) throw new Error(`pass ${n} of your own cards`);
+    st.passes[s] = [...a]; st.received[to] = [...a];
+    st.hands[s] = st.hands[s].filter((c) => !a.includes(c)); st.hands[to].push(...a);
+    const nxt = swapOrder(st).find((x) => !st.passes[x]);
+    if (nxt === undefined) startPlay(st); else st.turn = nxt;
     return st;
   }
   const hand = st.hands[s], i = hand.indexOf(a);
@@ -66,28 +92,31 @@ export function score(st) {
   const r = st.rules, lines = [], score = [...st.totals.score], bags = [...st.totals.bags];
   for (const t of [0, 1]) {
     const seats = [t, t + 2];
-    let pts = 0, B = 0, T = 0;
+    let pts = 0, B = 0, T = 0, over = 0;
     for (const s of seats) {
       if (st.bids[s] === 0) {
         const val = st.blind[s] ? r.blindNil : r.nil, made = st.tricks[s] === 0;
         lines.push({ team: t, seat: s, kind: st.blind[s] ? "blindNil" : "nil", made, pts: made ? val : -val });
         pts += made ? val : -val;
         if (r.nilTricksCount) T += st.tricks[s];
+        else if (st.tricks[s]) { // a broken nil's tricks don't help the partner, but they are bags
+          lines.push({ team: t, seat: s, kind: "nilBags", took: st.tricks[s], pts: st.tricks[s] });
+          pts += st.tricks[s]; over += st.tricks[s];
+        }
       } else { B += st.bids[s]; T += st.tricks[s]; }
     }
-    let over = 0;
     if (B > 0) {
+      const big = r.boston === "bid 13" && B >= 13 ? 500 : r.tenFor200 && B >= 10 ? 200 : 0; // these bids win or lose a flat amount
       if (T >= B) {
-        over = T - B;
-        const base = 10 * B * (r.tenFor200 && B >= 10 ? 2 : 1);
-        lines.push({ team: t, kind: "made", bid: B, took: T, pts: base + over });
-        pts += base + over;
+        over += T - B;
+        lines.push({ team: t, kind: "made", bid: B, took: T, pts: (big || 10 * B) + T - B });
+        pts += (big || 10 * B) + T - B;
       } else {
-        lines.push({ team: t, kind: "set", bid: B, took: T, pts: -10 * B });
-        pts -= 10 * B;
+        lines.push({ team: t, kind: "set", bid: B, took: T, pts: -(big || 10 * B) });
+        pts -= big || 10 * B;
       }
-    } else if (T > 0) { over = T; lines.push({ team: t, kind: "bags", took: T, pts: T }); pts += T; }
-    if (r.boston && st.tricks[t] + st.tricks[t + 2] === 13) { lines.push({ team: t, kind: "boston", pts: r.boston }); pts += r.boston; }
+    } else if (T > 0) { over += T; lines.push({ team: t, kind: "bags", took: T, pts: T }); pts += T; }
+    if (r.boston === "took 13" && st.tricks[t] + st.tricks[t + 2] === 13) { lines.push({ team: t, kind: "boston", pts: 250 }); pts += 250; }
     bags[t] += over;
     while (bags[t] >= r.bagLimit) { bags[t] -= r.bagLimit; lines.push({ team: t, kind: "bagPenalty", pts: -r.bagPenalty }); pts -= r.bagPenalty; }
     score[t] += pts;
@@ -95,17 +124,20 @@ export function score(st) {
   return { lines, totals: { score, bags } };
 }
 
+// first to the target wins (ties play on); with "Lose at", a team at or below that score loses at once
 export function winner(totals, r) {
-  const [a, b] = totals.score;
-  if (Math.max(a, b) < r.target || a === b) return null;
+  const [a, b] = totals.score, sunk = !!r.loseAt && Math.min(a, b) <= r.loseAt;
+  if ((Math.max(a, b) < r.target && !sunk) || a === b) return null;
   return a > b ? 0 : 1;
 }
 
-// everything a player at seat could know; never other hands, the seed, or who is human
+// everything a player at seat could know; never other hands, the seed, or who is human. passed/received: this seat's
+// own side of a blind nil exchange
 export function view(st, seat) {
   return {
     game: "spades", rules: st.rules, seat, dealer: st.dealer, phase: st.phase, turn: st.turn,
     hand: [...st.hands[seat]], sizes: st.hands.map((h) => h.length), bids: [...st.bids], blind: [...st.blind],
+    passed: st.passes[seat] && [...st.passes[seat]], received: st.received[seat] && [...st.received[seat]],
     trick: st.trick.map((t) => ({ ...t })), tricks: [...st.tricks], history: st.history.map((h) => ({ ...h })),
     broken: st.broken, totals: structuredClone(st.totals),
   };

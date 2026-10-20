@@ -3,7 +3,9 @@
 *Phase 0, 2026-10-19.* Every sin below was named by a real player in a 1-3 star review (Apple review RSS, last 200 per app,
 pulled 2026-10-19; see PLAYER_RESEARCH.md) or in the market research (Mobile-Market-Research `research/games-strategy-sim-idle.md`
 #1-2, `research/games-casual-puzzle.md` #1, #3, #5). Each sin is a **scenario test** in `sim/test_ai.mjs`, run against the
-same `proto/ai.js` the app ships, that the AI must pass at **every level**, Easy included.
+same `proto/ai.js` the app ships, that the AI must pass at **every level**, Easy included. Every scenario is a real deal
+(four 13-card hands, the bids, passes and plays replayed through the engine with a legality check), so Expert and Extreme
+really sample it; the test fails if a look-ahead decision never sampled a world.
 
 ## 1. Principles
 
@@ -28,8 +30,13 @@ same `proto/ai.js` the app ships, that the AI must pass at **every level**, Easy
 |---|---|---|---|
 | **Easy** | Rule-based heuristics, counts only the last trick, bids from a simple point count | Bids ±1 off; forgets which suits are void after 4+ tricks; plays a middle card where the lowest would do; doesn't count spades left | Any §3-§7 sin; an illegal play |
 | **Standard** | Heuristics + full card counting (cards played, known voids), bag awareness, nil cover, moon detection | Occasionally misjudges a finesse; conservative bids | Any sin |
-| **Expert** | Standard + Monte Carlo look-ahead: samples 24 deals consistent with everything public (voids, plays, passed cards), plays each candidate out with the Standard policy, picks the best average | — | Any sin; peeking (samples never use hidden cards) |
-| **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
+| **Expert** | Standard + Monte Carlo look-ahead: samples 24 deals consistent with everything public (voids, plays, passed cards), plays each candidate out with the Standard policy and scores it with the game end in view (a hand that ends the game is worth ±1000). Card play and **Spades bidding** both look ahead: each candidate bid (within 2.5 of the hand count, never below the spades that can't lose, nil when the hand's nil risk is ≤ 0.45) is bid, the later seats bid like Standard, and the hand is played out | — | Any sin; peeking (samples never use hidden cards) |
+| **Extreme** | Expert with 60 samples, and it reads the bids: a sampled deal is kept only if each seat's dealt hand fits what that seat bid (a nil bidder holds no top spades; a 5-bid holds about five tricks). It also **passes by look-ahead** in Hearts (every 3-card pass from the 5 cards most worth passing, 30 deals each) and **calls by look-ahead** in Euchre (every legal call, alone or not, 120 deals that fit the calls so far, the later calls made like Standard; Euchre play also uses 120 deals). For very experienced players (owner request, 2026-10-19) | — | Any sin; peeking (the bids are public; the hands are not) |
+
+A look-ahead **overrules the heuristic only when it is sure**: every option is played out in the same sampled deals, and
+another option replaces the heuristic's choice only if its average gain over that choice, deal by deal, is larger than
+the gain's own standard error. With 24 samples a 10-point difference is mostly noise; this keeps Expert from trading a
+sound heuristic play for a lucky-looking one (review AI-S2), and lets Extreme's larger samples change more decisions.
 
 Extreme is offered from Table setup like the others (four pips on the seat card). Partner and opponents are picked separately at table setup (e.g. Expert partner, Standard opponents). Bots have names and
 a fixed style; the player can swap partners ("can't get a new partner" was a complaint).
@@ -46,7 +53,7 @@ a fixed style; the player can swap partners ("can't get a new partner" was a com
 | S06 | **Sloughs instead of trumping to save nil.** "If you bid NIL and are stuck with a boss, your partner will slough off instead of trumping." | Same as S05 when void in the led suit: trump over partner's card rather than discard. |
 | S07 | **Covers with the top spade, then can't later.** "Cut with a jack of spade when he could've used a 2. Then when I needed it to cover my nil later on, it couldn't." | When covering or winning, use the **lowest** card that wins. |
 | S08 | **Takes tricks over partner's nil / sets own partner.** "Tries to take tricks over protecting your nil", "Partner intentionally throws low cards when I bid zero, then later higher cards in the same suit." | Partner nil: on partner's suit lead, play high early (unblock above partner), never "duck under" partner when holding a higher card. |
-| S09 | **Nil bidder takes a trick it could duck.** "The opponent bid nil and took a diamond trick with the queen of spades." | Own nil: play the highest card that still loses; when void, discard the most dangerous card (highest spade or highest card in a short suit); never trump when a discard exists. |
+| S09 | **Nil bidder takes a trick it could duck.** "The opponent bid nil and took a diamond trick with the queen of spades." | Own nil: play the highest card that still loses; when void, discard the most dangerous card (danger: few unseen cards above it, a spade more so, low cards held under it less so); never trump when a discard exists. Sin predicate also: void in the led suit and holding a spade that can't win this trick but would win later (no unseen spade above it, e.g. the K♠ under an A♠ already played) → shed that spade now (review AI-S1). |
 | S10 | **Breaks an opponent's trapped nil for them.** "We had a nil player totally trapped and my partner trumps the trick." "Misses the chance to let your opponent win a trick when they had bid nil." | Opponent bid nil and is winning the trick → do not overtake unless our team needs this trick to make our bid and it is the last chance. |
 | S11 | **Ignores bags.** "When we reach our bid they don't know to play off suit to avoid bags." "The computer players don't consider how many are in the bag." | Team has made its bid and bags + tricks-left would cross the bag limit → prefer losing plays, unless the trick sets the opponents. |
 | S12 | **Doesn't set the opponents.** "Allows the opposing team to make books when it could have easily set them." "To win we need to bag the other team and my partner takes the bags." | Opponents need exactly the remaining tricks and AI holds the boss card in the led suit (or a trump while void) → win the trick. When bagging them wins the game, play to give them tricks. |
@@ -57,27 +64,32 @@ a fixed style; the player can swap partners ("can't get a new partner" was a com
 | S17 | **Nil too often.** "Constant bidding Nil with face cards and spades." | Sim: nil bid rate per seat within 1.5× of the expected nil-able-hand rate; scenario S01 covers the worst cases. |
 | S18 | **Doesn't take the lead to protect partner's nil.** "Why did my teammate NOT throw the Ace and King of spades to get in the lead?" | Partner nil, AI wins a trick → lead a suit where partner is known void or a boss card, never a low card into partner's long suit. |
 | S19 | **Renege.** "The game renege." | §1.2 legality test. |
-| S20 | **Wrong score.** "My team completes a nil, then the opponent gets credit." "Set a nil and a 5 bid … -50 instead of -150." "The bag count didn't increase." | `test_rules`: a table of 40 hand outcomes per preset with expected line items; the score sheet prints the same line items. |
+| S20 | **Wrong score.** "My team completes a nil, then the opponent gets credit." "Set a nil and a 5 bid … -50 instead of -150." "The bag count didn't increase." | `sim/test_sim.mjs`: a table of hand outcomes per preset with expected line items; the score sheet prints the same line items. Standard and Tournament: a broken nil's tricks don't count toward the partner's bid (set nil + set 5 = -100 and -50) but are bags, on their own `nilBags` line (+1 each, into the bag count); Kitchen: they count toward the partner. 10 for 200 is +200 / -200; Boston "took 13" +250, "bid 13" +500 / -500; "Lose at" ends the game. |
+| S21 | **Blind nil exchange done backwards.** (R3: pagat's basic blind nil swaps two cards) | Rule "Blind nil exchange" 2 / 1 / 0. The nil passes its most dangerous cards, spades first (a spade counts six ranks higher, so the 9♠ and up go before a side ace); the partner passes back its lowest. Sim: blind nil made ≥ 45% (Kitchen, Standard). |
 
 ## 4. Hearts sins (v1.0)
 
 | ID | Sin | Scenario test |
 |---|---|---|
-| H01 | **Nobody stops a moon.** "None of the other players will even attempt to stop each other from shooting the moon." "Has no sense of who is winning." | One player has all points so far, ≥ 8 hearts or Q♠ + 5 hearts taken, AI can win a trick containing a point card → it takes that trick (accepting points) unless doing so costs it the game. |
+| H01 | **Nobody stops a moon.** "None of the other players will even attempt to stop each other from shooting the moon." "Has no sense of who is winning." | One player has all points so far, ≥ 8 hearts or Q♠ + 5 hearts taken, AI can win a trick containing a point card → it takes that trick (accepting points) unless doing so costs it the game. Never gives that player the Q♠ (following under their A♠/K♠ or as a discard) when another card will do (review AI-H1). |
 | H02 | **Ducks a trick it should take to stop a moon.** (PROPOSAL wording) | Same position on the last 3 tricks: AI holding a winner in the led suit plays it. |
 | H03 | **Moon scoring choice against itself.** "It shoots the moon and always subtracts from its own score even though an opponent would lose if he added it to others." | "Shooter chooses" preset: AI picks +26 to others when that ends the game with it lowest; otherwise the option with the better winning chance. |
 | H04 | **Targets the human with Q♠.** "AI plays the queen of spades as soon as you only have the king or ace of spades." | Seat-swap test (§1.1); Q♠ dump decisions depend only on public info. |
 | H05 | **Passes a moon to the next player.** "If you are receiving from them, there's probably a 50% chance you can shoot the moon." | Sim: moon rate of the receiving seat ≤ baseline + 1 pt; passing never sends A♥ K♥ Q♥ all three plus A♠ to one player. |
 | H06 | **Can't read a pass.** "Has no sense … how to read a pass." | Standard+: cards passed to the AI are tracked as known; scenario: AI received Q♠ from the left → never leads a spade into a void it caused. |
 | H07 | **Breaks hearts / plays points on trick 1 illegally.** | Engine legality tests per preset. |
-| H08 | **Wrong moon/Jack of Diamonds scoring.** | `test_rules` scoring table (moon both modes, J♦ on/off, 100/150 end, ties). |
+| H08 | **Wrong moon/Jack of Diamonds scoring.** | `sim/test_sim.mjs` scoring table (moon add / choose / auto, J♦ on/off, 100/150 end, ties; Tournament: only a heart breaks hearts). |
+| H09 | **Ignores the J♦ (Omnibus, Kitchen preset).** "Throws the jack of diamonds away." (review AI-H3, AI-H4) | With the J♦ rule on: never duck the J♦ under someone else's winner or discard it to them when another card will do; take a trick worth less than nothing (the J♦ and fewer points) when last to play or with a card nobody can beat; lead the J♦ when nobody can beat it. |
+| H10 | **Ends a game it is losing.** (review AI-H2) | Points that would push the trick's winner to the end score are given only when the bot is lowest; otherwise another card (Standard, every level). Expert and Extreme also score each playout with the game end (±1000). |
 
 ## 5. Euchre sins (v1.1)
 
 Bots: `proto/ai-euchre.js` (dispatched from `ai.decide()`/`sins()`/`know()`), same four levels: Easy calls from a
 noisy hand count, forgets old tricks and slips a card; Standard counts every card and the upcard's whereabouts;
 Expert and Extreme sample the hidden hands (the dealer holds a picked-up upcard until it's played; the rest is the
-kitty) and play each card out; Extreme keeps only deals that fit every call and pass. Predicates are in `sins()`;
+kitty) and play each card out; Extreme keeps only deals that fit every call and pass, samples twice as many (120), and
+calls by look-ahead: each legal call (pass, order or name a suit, alone or not) is made in each deal, the later calls
+follow Standard, the hand is played out, and the call changes only when it is surely better. Predicates are in `sins()`;
 scenarios in `sim/test_ai_euchre.mjs`, every level (Easy 12 times).
 
 | ID | Sin | Scenario test |
@@ -142,9 +154,10 @@ other team" → never discard a card the opponents' melds show they want when an
 
 ## 9. The sin detector (runtime and sim)
 
-`proto/ai.js` exports `checkSins(view, action)` built from the same predicates as the tests. The sim runs it on every
-decision of every seat (bots and a random-legal "human"); the game runs it on bot plays only and logs `blame {game, sin}`
-(opt-in analytics) if one ever fires. Target: **zero** firings at any level in 100K hands.
+`proto/ai.js` exports `sins(view, action)` built from the same predicates as the tests. The sim runs it on every
+decision of every seat; the game runs it on bot plays only and logs `blame {game, sin}` (opt-in analytics) if one ever
+fires. Target: **zero** firings at any level in 100K hands. A play is a sin only when a clean play was there to make
+instead: a forced play (every legal card commits it) never counts (review AI-H5).
 
 ## 10. Sim report (filled in `docs/RELEASE_REVIEW.md`)
 
@@ -163,6 +176,13 @@ Expert opponents":
 | Maker euchre rate (Euchre) | calls where the makers took 2 tricks or fewer | ≤ 20% |
 | Loner success (Euchre) | loners that took all five tricks | ≥ 60% |
 | Also reported (Euchre) | hands with a maker, thrown in, round-two calls, dealer stuck, marches, points per call, loners per 100 hands | — |
+| Blind nil made (Spades, Kitchen) | blind nil bids that took no trick, with the 2-card exchange | ≥ 45% |
+| Nil-able hands, plain rule | reported next to the bots' own nil test: ≤ 2 spades, none above the 9, no side ace (DESIGN §7) | — |
+| Moon runs, plain rule | reported next to the sim's own: after trick 6 one player has every point card taken, 5 or more | — |
 | Partner-blame events | §9 detector firings | 0 |
-| Level ladder | win rate of Extreme vs Expert, Expert vs Standard, Standard vs Easy | ≥ 58% each (Extreme vs Expert: > 50%) |
+| Level ladder | `node sim/sim.mjs --ladder --games 2000`: the stronger level against the weaker, seats swapped halfway, stronger side's share of finished games | **Partnerships** (Spades, Euchre, Whist; even is 50%): Extreme vs Expert ≥ 55%, Expert vs Standard ≥ 58%, Standard vs Easy ≥ 58%. **One strong seat vs three** (Hearts, Oh Hell; even is 25%): Extreme vs Expert ≥ 28%, the other steps ≥ 30% |
+| Moon rate per level (Hearts) | as above, all four seats at that level | Easy and Standard 1-4% (the check); Expert and Extreme 1-7% (strong players shoot more often, review AI-L4) |
 | Fairness | win rate per seat with equal levels | 50% ± 1 pt |
+
+Every run is cut into chunks (500 hands, or 25 whole games for the ladder), each with a seed of its own, so CI and a
+laptop play exactly the same hands whatever `--workers` is (review T2).

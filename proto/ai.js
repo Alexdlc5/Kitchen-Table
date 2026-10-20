@@ -13,13 +13,14 @@ import * as euchreAI from "./ai-euchre.js"; // Euchre bots live in their own mod
 
 const GAMES = { spades, hearts, ohhell, whist };
 const BOTS = { ohhell: ohhellBot, whist: whistBot }; // games whose bots live in their own module (ai-<game>.js)
-const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 } };
+// what the app plays with (main.js passes no tune); sim/test_ai.mjs asserts it equals generator.json's "ai"
+export const DEFAULT_TUNE = { easyNoise: 0.25, easyMemory: 4, expertSamples: 24, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 }, bidBias: 0.25, extremeSamples: 60, lookNilRisk: 0.45 };
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
 export function legalFor(v) {
   if (v.game === "euchre") return euchreAI.legalFor(v);
-  const st = { ...v, turn: v.seat, hands: [] };
-  st.hands[v.seat] = v.hand;
+  const st = { ...v, turn: v.seat, hands: [], received: [] };
+  st.hands[v.seat] = v.hand; st.received[v.seat] = v.received;
   return GAMES[v.game].legal(st);
 }
 
@@ -137,8 +138,9 @@ export function nilForbidden(hand, r) {
 function spadesBid(v, level, rng, tune) {
   const r = v.rules, s = v.seat, p = partner(s), legal = legalFor(v), pb = v.bids[p];
   const behind = v.totals.score[1 - team(s)] - v.totals.score[team(s)];
-  // blind nil is decided on the score alone, before looking at the cards
-  if (level !== "easy" && legal.some((a) => a.blind) && pb !== 0 && behind >= Math.max(200, r.blindNilDown) && v.totals.score[1 - team(s)] >= r.target - 150)
+  // blind nil is decided on the score alone, before looking at the cards: only when the game is otherwise lost (the
+  // opponents are a hand from the target and we can't catch them with a normal bid)
+  if (level !== "easy" && legal.some((a) => a.blind) && pb !== 0 && behind >= Math.max(200, r.blindNilDown) && v.totals.score[1 - team(s)] >= r.target - 100)
     return { action: { bid: 0, blind: true }, reason: "blind_nil_comeback" };
   const est = estimateTricks(v.hand, r), risk = nilRisk(v.hand, r);
   const maxRisk = tune.nilMaxRisk[level] ?? 0.22;
@@ -152,6 +154,17 @@ function spadesBid(v, level, rng, tune) {
   const ok = legal.filter((a) => a.bid > 0 && !a.blind).map((a) => a.bid);
   bid = ok.reduce((a, b) => (Math.abs(b - bid) < Math.abs(a - bid) ? b : a));
   return { action: { bid }, reason: pb === 0 ? "bid_beside_nil" : "bid_count" };
+}
+
+// the blind nil exchange: the nil gives away the cards most likely to win a trick, spades first (a spade counts six
+// ranks higher, so the 9 of spades and up go before a side ace); the partner sends back its lowest cards
+function spadesSwap(v) {
+  const j = v.rules.jokers, P = (c) => spades.pow(c, j), n = v.rules.blindSwap, ok = legalFor(v);
+  if (v.blind[v.seat]) {
+    const danger = (c) => P(c) + (spades.eff(c, j) === "S" ? 6 : 0);
+    return { action: [...ok].sort((a, b) => danger(b) - danger(a)).slice(0, n), reason: "swap_nil_high" };
+  }
+  return { action: [...ok].sort((a, b) => P(a) - P(b)).slice(0, n), reason: "swap_partner_low" };
 }
 
 function spadesPlay(v, K, rng) {
@@ -168,10 +181,10 @@ function spadesPlay(v, K, rng) {
     if (losers.length) {
       const follow = losers.filter((c) => K.eff(c) === T.led);
       if (follow.length) return R(highest(follow, K), "nil_duck_highest_under");
-      const sp = losers.filter((c) => K.eff(c) === "S");
-      const sideL = side(losers);
-      if (sideL.length) return R(highest(sideL, K), "nil_discard_danger");
-      return R(highest(sp, K), "nil_discard_danger");
+      // danger: few unseen cards above it (a boss wins later), a spade (trump) more so, low cards held under it less so
+      const mine = (c, f) => v.hand.filter((x) => K.eff(x) === K.eff(c) && f(K.pow(x), K.pow(c))).length;
+      const danger = (c) => (K.eff(c) === "S" ? 2 : 0) - K.unseen.filter((u) => K.eff(u) === K.eff(c) && K.pow(u) > K.pow(c)).length - 0.5 * mine(c, (a, b) => a < b) + K.pow(c) / 100;
+      return R(losers.reduce((a, b) => (danger(b) > danger(a) ? b : a)), "nil_discard_danger");
     }
     return R(T.last ? highest(legal, K) : lowest(legal, K), "nil_forced");
   }
@@ -224,7 +237,10 @@ function spadesPlay(v, K, rng) {
 
   // an opponent's nil is winning this trick: let it stand unless our own contract needs exactly every trick left
   if (oppNil.includes(T.winSeat) && losers.length && us.left !== left) return R(highest(losers, K), "keep_opp_nil_trapped");
-  if (oppNil.length && T.seatsAfter.some((x) => oppNil.includes(x)) && losers.length && us.left !== left) {
+  // their nil plays after me: play low so it may be forced over, unless the nil's partner is already winning (then
+  // the nil ducks under that just as easily, and a low card only gives away a trick we need)
+  const nilAfter = oppNil.filter((o) => T.seatsAfter.includes(o));
+  if (nilAfter.length && nilAfter.every((o) => T.winSeat !== partner(o)) && losers.length && us.left !== left) {
     const follow = losers.filter((c) => K.eff(c) === T.led);
     return R(lowest(follow.length ? follow : side(losers).length ? side(losers) : losers, K), "set_nil_play_low");
   }
@@ -312,9 +328,17 @@ function heartsPlay(v, K, level, rng) {
   const trickPts = v.trick.some((t) => HPTS(t.card));
   const myPts = v.taken[me].filter(HPTS).length;
   const shooting = threat === me || (myPts >= 10 && v.taken.every((t, s) => s === me || !t.some(HPTS)) && v.hand.filter(K.boss).length * 2 >= v.hand.length);
+  const jd = v.rules.jackDiamonds, pts = (c) => hearts.points(c, v.rules), trickVal = v.trick.reduce((n, t) => n + pts(t.card), 0);
+  // the scoreboard: points that push the trick's winner to the end score finish the game, so give them only when I'm lowest
+  const now = v.totals.score.map((x, s) => x + v.taken[s].reduce((n, c) => n + pts(c), 0));
+  const iLead = now[me] < Math.min(...now.filter((_, s) => s !== me));
+  const endsLosing = (c) => !iLead && T.winSeat >= 0 && T.winSeat !== me && pts(c) > 0 && now[T.winSeat] + trickVal + pts(c) >= v.rules.endScore;
 
   if (shooting) {
-    if (!v.trick.length) return R(highest(legal.filter(K.boss).length ? legal.filter(K.boss) : legal, K), "moon_lead_boss");
+    if (!v.trick.length) { // lead winners, but not the A/K of spades into the queen I passed (H06)
+      const lead = legal.filter((c) => !((c === "AS" || c === "KS") && v.passed?.includes("QS") && qsOut)), pool = lead.length ? lead : legal;
+      return R(highest(pool.filter(K.boss).length ? pool.filter(K.boss) : pool, K), "moon_lead_boss");
+    }
     if (winners.length) return R(highest(winners, K), "moon_take");
     return R(lowest(legal, K), "moon_lost_trick");
   }
@@ -328,6 +352,8 @@ function heartsPlay(v, K, level, rng) {
     if (!legal.some((c) => K.eff(c) === T.led)) {
       const keep = legal.filter((c) => !HPTS(c));
       if (T.winSeat === threat && keep.length) return R(highest(keep, K), "no_points_to_shooter");
+      const hs = legal.filter((c) => c[1] === "H");
+      if (T.winSeat === threat && hs.length) return R(lowest(hs, K), "least_points_to_shooter"); // only points left: one heart, never the queen
     }
   }
 
@@ -338,6 +364,7 @@ function heartsPlay(v, K, level, rng) {
     const pool = safe.length ? safe : legal;
     const sp = pool.filter((c) => c[1] === "S" && P(c) < 12);
     if (qsOut && !v.hand.some((c) => ["AS", "KS", "QS"].includes(c)) && sp.length) return R(highest(sp, K), "flush_queen");
+    if (jd && pool.includes("JD") && K.boss("JD")) return R("JD", "lead_jack_diamonds"); // nobody can beat it: -10 for me
     const bySuit = {};
     for (const c of pool) (bySuit[c[1]] ??= []).push(c);
     const choice = Object.values(bySuit).map((cs) => lowest(cs, K)).sort((a, b) => P(a) - P(b) || bySuit[a[1]].length - bySuit[b[1]].length);
@@ -346,24 +373,31 @@ function heartsPlay(v, K, level, rng) {
   const follow = legal.filter((c) => K.eff(c) === T.led);
   if (follow.length) {
     if (first) return R(highest(follow, K), "first_trick_high");
-    if (T.led === "S" && v.hand.includes("QS") && (T.winCard === "AS" || T.winCard === "KS")) return R("QS", "dump_queen_under");
+    if (jd) { // a trick worth less than nothing (the J♦): take it last to play, or with a card nobody can beat
+      const takes = winners.filter((c) => trickVal + pts(c) < 0 && (T.last || K.boss(c)));
+      if (takes.length) return R(takes.includes("JD") ? "JD" : lowest(takes, K), "take_jack_diamonds");
+    }
+    if (T.led === "S" && v.hand.includes("QS") && (T.winCard === "AS" || T.winCard === "KS") && !(threat >= 0 && T.winSeat === threat) && !endsLosing("QS"))
+      return R("QS", "dump_queen_under");
     const under = follow.filter((c) => !T.beats(c));
     if (T.led === "S" && qsOut) {
       const below = follow.filter((c) => P(c) < 12);
       if (below.length) return R(highest(below.filter((c) => !T.beats(c)).length ? below.filter((c) => !T.beats(c)) : below, K), "spade_below_queen");
     }
-    if (under.length) return R(highest(under.filter((c) => c !== "QS").length ? under.filter((c) => c !== "QS") : under, K), "duck_highest_under");
+    const duck = under.filter((c) => c !== "QS" && !(jd && c === "JD")); // never duck the J♦ (or the queen) to someone else
+    if (under.length) return R(highest(duck.length ? duck : under, K), "duck_highest_under");
     const nonQ = follow.filter((c) => c !== "QS");
     if (T.last && !trickPts) return R(highest(nonQ.length ? nonQ : follow, K), "take_clean_trick_high");
     return R(T.last ? highest(nonQ.length ? nonQ : follow, K) : lowest(nonQ.length ? nonQ : follow, K), "forced_win");
   }
-  // void: get rid of trouble
-  if (legal.includes("QS") && !(threat >= 0 && T.winSeat === threat)) return R("QS", "discard_queen");
-  for (const c of ["AS", "KS"]) if (legal.includes(c) && qsOut) return R(c, "discard_high_spade");
-  const hs = legal.filter((c) => c[1] === "H");
+  // void: get rid of trouble, but never end the game for someone else and never hand over the J♦
+  const keep = legal.filter((c) => !endsLosing(c) && !(jd && c === "JD")), L = keep.length ? keep : legal;
+  if (L.includes("QS") && !(threat >= 0 && T.winSeat === threat)) return R("QS", "discard_queen");
+  for (const c of ["AS", "KS"]) if (L.includes(c) && qsOut) return R(c, "discard_high_spade");
+  const hs = L.filter((c) => c[1] === "H");
   if (hs.length && !(threat >= 0 && T.winSeat === threat)) return R(highest(hs, K), "discard_heart");
-  const pool = legal.filter((c) => !HPTS(c));
-  const p2 = pool.length ? pool : legal, bySuit = {};
+  const pool = L.filter((c) => !HPTS(c));
+  const p2 = pool.length ? pool : L, bySuit = {};
   for (const c of p2) (bySuit[c[1]] ??= []).push(c);
   const shortest = Object.values(bySuit).sort((a, b) => a.length - b.length || P(highest(b, K)) - P(highest(a, K)))[0];
   return R(highest(shortest, K), "discard_high");
@@ -372,7 +406,13 @@ function heartsPlay(v, K, level, rng) {
 // ---------------------------------------------------------------- sins (docs/AI_SPEC.md §3-§4)
 
 // ids of the sins an action would commit in this view; [] is clean. Shared by tests, the sim and the in-game detector.
+// A play is only a sin when a clean one was there to make instead: a forced play never counts (AI-H5).
+const same = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
 export function sins(v, action) {
+  const raw = sinsRaw(v, action);
+  return raw.length && legalFor(v).some((x) => !same(x, action) && !sinsRaw(v, x).length) ? raw : [];
+}
+function sinsRaw(v, action) {
   if (BOTS[v.game]) return BOTS[v.game].sins(v, action);
   if (v.game === "euchre") return euchreAI.sins(v, action);
   const out = [];
@@ -410,6 +450,10 @@ export function sins(v, action) {
       if (c !== hi && T.beats(hi)) out.push("S08");
     }
     if (nilAlive(v, s) && wins && canLose) out.push("S09");
+    if (nilAlive(v, s) && !legal.some((x) => K.eff(x) === T.led)) { // can't follow: a spade that would win later goes now, for free
+      const shed = legal.filter((x) => K.eff(x) === "S" && !T.beats(x) && K.boss(x));
+      if (shed.length && !shed.includes(c)) out.push("S09");
+    }
     if (opps.some((o) => nilAlive(v, o) && T.winSeat === o) && wins && canLose && us.left !== left) out.push("S10");
     if (us.left <= 0 && T.last && wins && canLose && !(them.left > 0 && them.left <= left && them.left >= left - 1) && !nilAlive(v, s) && !nilAlive(v, p)) out.push("S11");
     if (them.left > 0 && them.left === left && !nilAlive(v, s) && T.last && !pWinning && !wins && legal.some(T.beats) && !opps.some((o) => nilAlive(v, o))) out.push("S12");
@@ -437,6 +481,7 @@ export function sins(v, action) {
       if (v.trick.some((t) => HPTS(t.card))) out.push("H01");
       else if (v.hand.length <= 3 && T.winSeat === threat) out.push("H02");
     }
+    if (threat >= 0 && threat !== v.seat && action === "QS" && T.winSeat === threat && !T.beats("QS")) out.push("H01"); // the queen fed to the runner
     return out;
   }
   return out;
@@ -457,19 +502,18 @@ function fitsBids(v, hs) {
 }
 
 function sampleWorld(v, K, rng, read = false) {
-  const g = GAMES[v.game], sizes = v.sizes, hands = [[], [], [], []];
-  hands[v.seat] = [...v.hand];
+  const sizes = v.sizes;
   for (let attempt = 0; attempt < (read ? 80 : 40); attempt++) {
     const pool = [...K.unseen];
     const known = [[], [], [], []];
-    if (v.passed && v.received) { // cards I passed are still with the receiver unless played
-      const to = (v.seat + v.dir) % 4;
+    if (v.passed && v.received) { // cards I passed are still with the receiver unless played (Spades: the blind nil exchange)
+      const to = v.game === "spades" ? partner(v.seat) : (v.seat + v.dir) % 4;
       for (const c of v.passed) if (pool.includes(c)) { known[to].push(c); pool.splice(pool.indexOf(c), 1); }
     }
     for (let i = pool.length - 1; i > 0; i--) { const k = Math.floor(rng() * (i + 1)); [pool[i], pool[k]] = [pool[k], pool[i]]; }
     const hs = known.map((k) => [...k]); hs[v.seat] = [...v.hand];
     let ok = true;
-    const seats = [0, 1, 2, 3].filter((s) => s !== v.seat).sort((a, b) => K.voids[b].size - K.voids[a].size);
+    const seats = [1, 2, 3].map((k) => (v.seat + k) % 4).sort((a, b) => K.voids[b].size - K.voids[a].size); // from my left: any chair samples alike
     for (const c of pool) {
       const cands = seats.filter((s) => hs[s].length < sizes[s] && (attempt > 30 || !K.voids[s].has(K.eff(c))));
       if (!cands.length) { ok = false; break; }
@@ -491,41 +535,92 @@ function playOut(st, rng, tune) {
   return st;
 }
 
+// the best of `options` by its outcome over sampled worlds; run(world, option) plays one out and returns the final state.
+// Every option sees the same worlds, and the heuristic's choice is kept unless another option beats it in those worlds
+// by more than its own standard error: a look-ahead overrules the heuristic only when it is sure.
+function lookahead(v, base, options, n, rng, read, run) {
+  const K = know(v), b = options.findIndex((o) => same(o, base.action)), sum = options.map(() => 0), sq = options.map(() => 0);
+  let samples = 0;
+  for (let i = 0; i < n; i++) {
+    const hands = sampleWorld(v, K, rng, read);
+    if (!hands) continue;
+    samples++;
+    const val = options.map((o) => outcome(run(hands, o), v.seat));
+    val.forEach((x, k) => { const d = b < 0 ? x : x - val[b]; sum[k] += d; sq[k] += d * d; });
+  }
+  if (!samples) return { ...base, samples };
+  let best = b;
+  for (let k = 0; k < options.length; k++) {
+    const m = sum[k] / samples, se = Math.sqrt(Math.max(0, sq[k] / samples - m * m) / samples);
+    if (b < 0 ? best < 0 || m > sum[best] / samples : m > se && (best === b || m > sum[best] / samples)) best = k;
+  }
+  return best === b ? { ...base, samples } : { action: options[best], reason: "expert_lookahead", samples };
+}
+
 function expertPlay(v, base, rng, tune, extreme = false) {
   const g = GAMES[v.game], legal = legalFor(v).filter((c) => !sins(v, c).length);
   if (legal.length <= 1) return base;
-  const K = know(v), totals = new Map(legal.map((c) => [c, 0]));
   const root = { ...structuredClone(v), turn: v.seat, lastTrick: null, passes: [null, null, null, null], moonChoice: null };
   root.passes[v.seat] = v.passed;
-  const fork = (hands) => ({ ...root, hands: hands.map((h) => [...h]), trick: [...root.trick], tricks: [...root.tricks],
-    history: [...root.history], bids: root.bids && [...root.bids], taken: root.taken && root.taken.map((t) => [...t]) });
-  let samples = 0;
-  for (let i = 0; i < (extreme ? tune.extremeSamples : tune.expertSamples); i++) {
-    const hands = sampleWorld(v, K, rng, extreme);
-    if (!hands) continue;
-    samples++;
-    for (const c of legal) {
-      const st = fork(hands);
-      g.apply(st, c);
-      playOut(st, rng, tune);
-      totals.set(c, totals.get(c) + outcome(st, v.seat));
-    }
-  }
-  if (!samples) return base;
-  let best = base.action, bestV = totals.get(base.action) ?? -Infinity;
-  for (const [c, val] of totals) if (val > bestV + 1e-9) { best = c; bestV = val; }
-  return best === base.action ? base : { action: best, reason: "expert_lookahead" };
+  return lookahead(v, base, legal, extreme ? tune.extremeSamples : tune.expertSamples, rng, extreme, (hands, c) => {
+    const st = { ...root, hands: hands.map((h) => [...h]), trick: [...root.trick], tricks: [...root.tricks],
+      history: [...root.history], bids: root.bids && [...root.bids], taken: root.taken && root.taken.map((t) => [...t]) };
+    g.apply(st, c);
+    return playOut(st, rng, tune);
+  });
 }
 
-function outcome(st, seat) { // higher is better for seat's side, in points
+// Expert and Extreme bid by look-ahead (AI-L1): deal the hidden cards, let the seats after me bid like Standard, play the
+// hand out, keep the bid with the best average (the game end included). Nil is tried up to tune.lookNilRisk (looser than
+// the heuristic's nilMaxRisk), and taken only when the playouts are sure it beats the counted bid.
+function expertBid(v, base, rng, tune, extreme) {
+  if (base.action.blind) return base; // blind nil is a score decision, made before looking
+  const r = v.rules, est = estimateTricks(v.hand, r);
+  const options = legalFor(v).filter((a) => !a.blind && !sins(v, a).length && // never below the spades that can't lose (S15)
+    (a.bid === 0 ? nilRisk(v.hand, r) <= tune.lookNilRisk && est < 3 : (Math.abs(a.bid - est) <= 2.5 && a.bid >= sureSpades(v.hand, r)) || a.bid === base.action.bid));
+  if (options.length <= 1) return base;
+  return lookahead(v, base, options, extreme ? tune.extremeSamples : tune.expertSamples, rng, extreme, (hands, a) => {
+    const st = { game: "spades", rules: r, dealer: v.dealer, totals: structuredClone(v.totals), phase: "bid", turn: v.seat, hands: hands.map((h) => [...h]),
+      bids: [...v.bids], blind: [...v.blind], passes: [null, null, null, null], received: [null, null, null, null], trick: [], lastTrick: null,
+      tricks: [0, 0, 0, 0], history: [], broken: false };
+    spades.apply(st, a);
+    while (st.phase === "bid" || st.phase === "exchange") spades.apply(st, decide(spades.view(st, st.turn), "standard", rng, tune).action);
+    return playOut(st, rng, tune);
+  });
+}
+
+// Extreme passes by look-ahead: every three-card pass from the five cards most worth passing, each played out
+const combos = (a, k) => (k ? a.flatMap((x, i) => combos(a.slice(i + 1), k - 1).map((c) => [x, ...c])) : [[]]);
+function extremePass(v, base, rng, tune) {
+  const rank = (c) => (c === "QS" ? 40 : c === "AS" || c === "KS" ? 30 : 0) + (c[1] === "H" ? 3 : 0) + hearts.pow(c);
+  const top = [...new Set([...base.action, ...[...v.hand].sort((a, b) => rank(b) - rank(a))])].slice(0, 5);
+  const key = (p) => [...p].sort().join(), options = combos(top, 3);
+  const mine = options.find((p) => key(p) === key(base.action)) ?? (options.push(base.action), base.action);
+  return lookahead(v, { ...base, action: mine }, options, Math.round(tune.extremeSamples / 2), rng, false, (hands, pass) => {
+    const st = { game: "hearts", rules: v.rules, dealer: v.dealer, handNo: 0, totals: structuredClone(v.totals), dir: v.dir, phase: "pass", turn: v.seat,
+      hands: hands.map((h) => [...h]), passes: [null, null, null, null], received: [null, null, null, null], trick: [], lastTrick: null,
+      tricks: [0, 0, 0, 0], taken: [[], [], [], []], history: [], broken: false, moon: null, moonChoice: null };
+    for (let k = 0; k < 4; k++) {
+      const s = (v.seat + k) % 4;
+      st.turn = s;
+      hearts.apply(st, s === v.seat ? pass : heartsPass(hearts.view(st, s), "standard", rng).action);
+    }
+    return playOut(st, rng, tune);
+  });
+}
+
+// higher is better for seat's side, in points; a hand that ends the game is worth ±1000 on top (AI-L2)
+const GAME_END = 1000;
+function outcome(st, seat) {
   if (st.game === "spades") {
-    const sc = spades.score(st), t = team(seat);
+    const sc = spades.score(st), t = team(seat), w = spades.winner(sc.totals, st.rules);
     const bagCost = (b) => b * (st.rules.bagPenalty / st.rules.bagLimit) * 0.5;
-    return sc.totals.score[t] - st.totals.score[t] - bagCost(sc.totals.bags[t]) - (sc.totals.score[1 - t] - st.totals.score[1 - t] - bagCost(sc.totals.bags[1 - t]));
+    return sc.totals.score[t] - st.totals.score[t] - bagCost(sc.totals.bags[t]) - (sc.totals.score[1 - t] - st.totals.score[1 - t] - bagCost(sc.totals.bags[1 - t])) +
+      (w === null ? 0 : w === t ? GAME_END : -GAME_END);
   }
   if (st.phase === "moon") st.moonChoice = "add";
-  const sc = hearts.score(st), d = sc.totals.score.map((x, s) => x - st.totals.score[s]);
-  return (d.reduce((a, b) => a + b, 0) - d[seat]) / 3 - d[seat];
+  const sc = hearts.score(st), d = sc.totals.score.map((x, s) => x - st.totals.score[s]), w = hearts.winner(sc.totals, st.rules);
+  return (d.reduce((a, b) => a + b, 0) - d[seat]) / 3 - d[seat] + (w === null ? 0 : w === seat ? GAME_END : -GAME_END);
 }
 
 // ---------------------------------------------------------------- entry point
@@ -534,21 +629,26 @@ export function decide(v, level = "standard", rng = Math.random, tune = DEFAULT_
   if (v.game === "euchre") return euchreAI.decide(v, level, rng, tune);
   tune = { ...DEFAULT_TUNE, ...tune };
   if (BOTS[v.game]) return BOTS[v.game].decide(v, level, rng, tune);
-  const easy = level === "easy";
+  const easy = level === "easy", deep = level === "expert" || level === "extreme";
   if (v.game === "spades" && v.phase === "bid") {
-    const d = spadesBid(v, level, rng, tune);
+    let d = spadesBid(v, level, rng, tune);
+    if (deep) d = expertBid(v, d, rng, tune, level === "extreme");
     return sins(v, d.action).length ? { action: { bid: Math.max(1, Math.round(estimateTricks(v.hand, v.rules))) }, reason: "bid_count" } : d;
   }
-  if (v.game === "hearts" && v.phase === "pass") return heartsPass(v, level, rng);
+  if (v.game === "spades" && v.phase === "exchange") return spadesSwap(v);
+  if (v.game === "hearts" && v.phase === "pass") {
+    const d = heartsPass(v, level, rng);
+    return level === "extreme" ? extremePass(v, d, rng, tune) : d;
+  }
   if (v.game === "hearts" && v.phase === "moon") return heartsMoonChoice(v);
   const K = know(v, easy ? tune.easyMemory : Infinity);
   let d = v.game === "spades" ? spadesPlay(v, K, rng) : heartsPlay(v, K, level, rng);
   const legal = legalFor(v);
-  if (easy && rng() < tune.easyNoise) { // a human slip: another card of the same suit
-    const alt = legal.filter((c) => K.eff(c) === K.eff(d.action) && c !== d.action && !sins(v, c).length);
+  if (easy && rng() < tune.easyNoise) { // a human slip: another card of the same suit (dropping the Q♠ or J♦ is no slip)
+    const alt = legal.filter((c) => K.eff(c) === K.eff(d.action) && c !== d.action && !(v.game === "hearts" && (c === "QS" || c === "JD")) && !sins(v, c).length);
     if (alt.length) d = { action: pick(rng, alt), reason: "easy_slip" };
   }
-  if (level === "expert" || level === "extreme") d = expertPlay(v, d, rng, tune, level === "extreme");
+  if (deep) d = expertPlay(v, d, rng, tune, level === "extreme");
   if (sins(v, d.action).length) { // safety net: never ship a sin, whatever the heuristics said
     const clean = legal.filter((c) => !sins(v, c).length);
     if (clean.length) d = { action: lowest(clean, K), reason: `${d.reason}:sin_guard`, guarded: true };

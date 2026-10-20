@@ -79,6 +79,7 @@ function randomHand(g, rules, seed, rng, totals, handNo = 0) {
   while (st.phase !== "done") {
     const legal = g.legal(st), s = st.turn;
     if (st.phase === "pass") { g.apply(st, [...st.hands[s]].sort(() => rng() - 0.5).slice(0, 3)); continue; }
+    if (st.phase === "exchange") { g.apply(st, [...legal].sort(() => rng() - 0.5).slice(0, rules.blindSwap)); continue; }
     if (st.phase === "bid" || st.phase === "moon") { g.apply(st, legal[Math.floor(rng() * legal.length)]); continue; }
     const hand = [...st.hands[s]], card = legal[Math.floor(rng() * legal.length)], eff = (c) => g.eff(c, rules.jokers);
     if (st.trick.length) { // follow suit if you can
@@ -129,11 +130,16 @@ test("spades scoring: made, set, bags, nil, blind nil, 10-for-200, Boston, penal
   assert.equal(kinds(sc, 0), "set:-70");
   sc = spadesDone("standard", [0, 4, 5, 4], [0, 4, 5, 4]);
   assert.equal(kinds(sc, 0), "nil:100 made:50"); assert.equal(sc.totals.score[0], 150);
-  // a broken nil: the reviewer case "set a nil and a 5 bid ... -50 instead of -150"
-  sc = spadesDone("standard", [0, 4, 5, 4], [1, 4, 4, 4]); // nil tricks count toward partner: made 5
-  assert.equal(sc.totals.score[0], -100 + 50);
-  sc = spadesDone("tournament", [0, 4, 5, 4], [1, 4, 4, 4]); // they don't: set 5
-  assert.equal(sc.totals.score[0], -150);
+  // a broken nil: the reviewer case "set a nil and a 5 bid ... -50 instead of -150" (R1). Standard and Tournament: the
+  // nil's trick doesn't help the partner (set 5), but it is a bag, on its own line
+  for (const preset of ["standard", "tournament"]) {
+    sc = spadesDone(preset, [0, 4, 5, 4], [1, 4, 4, 4]);
+    assert.equal(kinds(sc, 0), "nil:-100 nilBags:1 set:-50"); assert.deepEqual(sc.totals.bags, [1, 0]);
+    sc = spadesDone(preset, [0, 4, 5, 4], [2, 3, 6, 2]); // partner made it alone: the nil's 2 tricks are 2 more bags
+    assert.equal(kinds(sc, 0), "nil:-100 nilBags:2 made:51"); assert.deepEqual(sc.totals.bags, [3, 0]);
+  }
+  sc = spadesDone("kitchen", [0, 4, 5, 4], [1, 4, 4, 4]); // Kitchen: they count toward the partner, made 5
+  assert.equal(kinds(sc, 0), "nil:-100 made:50");
   // the opponents' nil is theirs, never ours
   sc = spadesDone("standard", [4, 0, 4, 5], [4, 0, 4, 5]);
   assert.equal(kinds(sc, 1), "nil:100 made:50"); assert.equal(kinds(sc, 0), "made:80");
@@ -141,17 +147,66 @@ test("spades scoring: made, set, bags, nil, blind nil, 10-for-200, Boston, penal
   assert.equal(kinds(sc, 0), "made:62 bagPenalty:-100"); assert.deepEqual(sc.totals.bags, [0, 0]); assert.equal(sc.totals.score[0], 162);
   sc = spadesDone("kitchen", [0, 3, 4, 4], [0, 4, 5, 4], { blind: [true, false, false, false], totals: { score: [0, 200], bags: [0, 0] } });
   assert.equal(kinds(sc, 0), "blindNil:200 made:41");
+  // 10 for 200 (R4): a team bid of 10 or more wins or loses a flat 200
   sc = spadesDone("kitchen", [5, 1, 5, 1], [6, 0, 5, 2]);
   assert.equal(kinds(sc, 0), "made:201");
+  sc = spadesDone("kitchen", [5, 1, 5, 1], [5, 1, 4, 3]);
+  assert.equal(kinds(sc, 0), "set:-200");
   sc = spadesDone("kitchen", [6, 0, 5, 0], [7, 0, 6, 0]);
-  assert.match(kinds(sc, 0), /made:222 boston:250/);
+  assert.equal(kinds(sc, 0), "made:202 boston:250"); // Boston "took 13": whatever was bid
+  sc = spadesDone("standard", [6, 0, 5, 0], [7, 0, 6, 0]);
+  assert.equal(kinds(sc, 0), "made:112"); // Boston off
+  // Boston "bid 13" (R5): 500 for bidding and taking all 13, -500 for missing
+  sc = spadesDone("standard", [7, 0, 6, 0], [7, 0, 6, 0], { custom: { boston: "bid 13" } });
+  assert.equal(kinds(sc, 0), "made:500");
+  sc = spadesDone("standard", [7, 0, 6, 0], [6, 1, 6, 0], { custom: { boston: "bid 13" } });
+  assert.equal(kinds(sc, 0), "set:-500");
+  sc = spadesDone("standard", [6, 0, 5, 0], [7, 0, 6, 0], { custom: { boston: "bid 13" } });
+  assert.equal(kinds(sc, 0), "made:112"); // took 13 without bidding it: no bonus
 });
 
-test("spades game end: first to the target, ties play on", () => {
-  const r = rulesFor(cfg, "spades", "standard");
+test("spades game end: first to the target, ties play on; Lose at (R6)", () => {
+  const r = rulesFor(cfg, "spades", "standard"), k = rulesFor(cfg, "spades", "kitchen");
   assert.equal(spades.winner({ score: [510, 300] }, r), 0);
   assert.equal(spades.winner({ score: [510, 510] }, r), null);
   assert.equal(spades.winner({ score: [490, 300] }, r), null);
+  assert.equal(spades.winner({ score: [-250, 100] }, r), null, "Standard: no floor");
+  assert.equal(k.loseAt, -200);
+  assert.equal(spades.winner({ score: [-200, 100] }, k), 1, "Kitchen: -200 loses at once");
+  assert.equal(spades.winner({ score: [-150, 100] }, k), null);
+  assert.equal(spades.winner({ score: [-210, -230] }, k), 0, "both sunk: the higher score wins");
+  assert.equal(spades.winner({ score: [-600, 0] }, rulesFor(cfg, "spades", "standard", { loseAt: -500 })), 1);
+});
+
+test("spades blind nil exchange (R3): nil passes 2 to partner, partner passes 2 back, then play", () => {
+  const st = spades.newHand(rulesFor(cfg, "spades", "kitchen"), "0000-0000-0000-0000-0000-0000-01", 3, { score: [0, 200], bags: [0, 0] });
+  for (const a of [{ bid: 0, blind: true }, { bid: 4 }, { bid: 4 }, { bid: 4 }]) spades.apply(st, a); // seat 0 blind nil
+  assert.equal(st.phase, "exchange"); assert.equal(st.turn, 0);
+  const nil0 = [...st.hands[0]], give = spades.legal(st).slice(0, 2);
+  assert.deepEqual(spades.legal(st), nil0, "the nil may pass any two of its cards");
+  assert.throws(() => spades.apply(st, give.slice(0, 1)), /pass 2/);
+  spades.apply(st, give);
+  assert.equal(st.turn, 2); assert.equal(st.hands[2].length, 15);
+  assert.ok(give.every((c) => !spades.legal(st).includes(c)), "the partner can't hand the same cards back");
+  const back = spades.legal(st).slice(0, 2);
+  spades.apply(st, back);
+  assert.equal(st.phase, "play"); assert.equal(st.turn, 0, "left of the dealer leads");
+  assert.deepEqual(st.hands.map((h) => h.length), [13, 13, 13, 13]);
+  assert.ok(back.every((c) => st.hands[0].includes(c)) && give.every((c) => st.hands[2].includes(c)));
+  assert.deepEqual(spades.view(st, 0).passed, give); assert.deepEqual(spades.view(st, 0).received, back);
+  assert.equal(spades.view(st, 1).passed, null, "the other side sees only that it happened");
+  const off = spades.newHand(rulesFor(cfg, "spades", "kitchen", { blindSwap: 0 }), "0000-0000-0000-0000-0000-0000-01", 3, { score: [0, 200], bags: [0, 0] });
+  for (const a of [{ bid: 0, blind: true }, { bid: 4 }, { bid: 4 }, { bid: 4 }]) spades.apply(off, a);
+  assert.equal(off.phase, "play", "exchange 0: straight to play");
+});
+
+test("spades 2 of clubs leads (R10): whoever holds it leads it; the 3 with Jokers", () => {
+  for (const jokers of [false, true]) {
+    const st = spades.newHand(rulesFor(cfg, "spades", "standard", { twoClubsLead: true, jokers }), newSeed(), 1);
+    for (let k = 0; k < 4; k++) spades.apply(st, { bid: 3 });
+    const lead = jokers ? "3C" : "2C";
+    assert.ok(st.hands[st.turn].includes(lead)); assert.deepEqual(spades.legal(st), [lead]);
+  }
 });
 
 function heartsDone(preset, taken, { totals = { score: [0, 0, 0, 0] }, choice } = {}) {
@@ -172,6 +227,28 @@ test("hearts scoring: hearts, queen, jack of diamonds, the moon both ways", () =
   assert.deepEqual(sc.totals.score, [0, 26, 26, 26]);
   sc = heartsDone("kitchen", [["QS", ...ALL_H], [], ["JD"], []], { choice: "sub" });
   assert.deepEqual(sc.totals.score, [-26, 0, -10, 0]);
+});
+
+test("hearts Tournament (R8): moon adds 26 unless that loses the game; only a heart breaks hearts", () => {
+  const lastTrick = (totals) => { // seat 0 has taken the Q♠ and twelve hearts and wins the last trick with the A♥
+    const st = hearts.newHand(rulesFor(cfg, "hearts", "tournament"), newSeed(), 3, { score: totals }, 3);
+    Object.assign(st, { hands: [["AH"], ["2C"], ["3C"], ["4C"]], turn: 0, broken: true, trick: [], taken: [["QS", ...ALL_H.slice(0, 12)], [], [], []],
+      history: Array.from({ length: 48 }, (_, i) => ({ seat: i % 4, card: "x", n: i >> 2 })) });
+    for (const c of ["AH", "2C", "3C", "4C"]) hearts.apply(st, c);
+    return st;
+  };
+  let st = lastTrick([60, 10, 80, 85]); // adding ends it with seat 1 lowest: the shooter takes 26 off instead
+  assert.equal(st.phase, "done"); assert.equal(st.moonChoice, "sub"); assert.deepEqual(hearts.score(st).totals.score, [34, 10, 80, 85]);
+  st = lastTrick([60, 70, 80, 85]); // adding ends it with the shooter lowest: add
+  assert.equal(st.moonChoice, "add");
+  st = lastTrick([0, 0, 0, 0]); // nobody reaches 100: add
+  assert.equal(st.moonChoice, "add");
+  for (const [preset, broken] of [["tournament", false], ["standard", true]]) {
+    const t = hearts.newHand(rulesFor(cfg, "hearts", preset), newSeed(), 3, undefined, 3);
+    Object.assign(t, { hands: [["QS", "2H"], ["3D"], ["4D"], ["5D"]], turn: 0, trick: [], history: [{ seat: 0, card: "x", n: 0 }] });
+    hearts.apply(t, "QS");
+    assert.equal(t.broken, broken, `${preset}: does the queen break hearts?`);
+  }
 });
 
 test("hearts game end: lowest wins once someone reaches the end score; a tie for lowest plays on", () => {

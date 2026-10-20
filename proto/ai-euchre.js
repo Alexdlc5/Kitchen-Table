@@ -267,7 +267,7 @@ function expertPlay(v, base, rng, tune, extreme) {
   if (legal.length <= 1) return base;
   const K = know(v), totals = new Map(legal.map((c) => [c, 0]));
   let samples = 0;
-  for (let i = 0; i < (extreme ? tune.extremeSamples : tune.expertSamples); i++) {
+  for (let i = 0; i < (extreme ? 2 * tune.extremeSamples : tune.expertSamples); i++) {
     const hands = sampleWorld(v, K, rng, extreme);
     if (!hands) continue;
     samples++;
@@ -285,6 +285,46 @@ function expertPlay(v, base, rng, tune, extreme) {
   return best === base.action ? base : { action: best, reason: "expert_lookahead" };
 }
 
+// Extreme calls by look-ahead (and with twice the samples): deal the other hands and the kitty's three hidden cards
+// (fitting every call so far), let everyone after me call like Standard, play it out, and keep the call, alone or not,
+// with the best result in those deals (the game end counts). It overrules the hand count only when it is sure: the
+// gain over the count's call must beat its own standard error.
+function extremeBid(v, base, rng, tune) {
+  const options = legalFor(v).filter((a) => !sins(v, a).length), b = options.findIndex((a) => a.call === base.action.call && !!a.alone === !!base.action.alone);
+  if (options.length <= 1 || b < 0) return base;
+  const K = know(v), others = [1, 2, 3].map((k) => (v.seat + k) % 4), me = team(v.seat), n = 2 * tune.extremeSamples;
+  const sum = options.map(() => 0), sq = options.map(() => 0);
+  let samples = 0;
+  for (let i = 0; i < n; i++) {
+    let hands, pool;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      pool = K.unseen.filter((c) => c !== v.up);
+      for (let j = pool.length - 1; j > 0; j--) { const k = Math.floor(rng() * (j + 1)); [pool[j], pool[k]] = [pool[k], pool[j]]; }
+      hands = [[], [], [], []]; hands[v.seat] = [...v.hand];
+      others.forEach((s, k) => (hands[s] = pool.slice(5 * k, 5 * k + 5)));
+      if (attempt >= 60 || fitsCalls(v, hands)) break;
+    }
+    samples++;
+    const val = options.map((a) => {
+      const st = { game: "euchre", rules: v.rules, dealer: v.dealer, handNo: 0, totals: structuredClone(v.totals), phase: v.phase, turn: v.seat,
+        hands: hands.map((h) => [...h]), kitty: [v.up, ...pool.slice(15)], up: v.up, trump: null, maker: null, alone: false, defender: null, out: [],
+        calls: v.calls.map((c) => ({ ...c })), farmers: [], discard: null, trick: [], lastTrick: null, tricks: [0, 0, 0, 0], history: [] };
+      E.apply(st, a);
+      while (st.phase !== "play" && st.phase !== "done") E.apply(st, decide(E.view(st, st.turn), "standard", rng, tune).action);
+      while (st.phase === "play") { const pv = peek(st); E.apply(st, play(pv, know(pv)).action); }
+      const sc = E.score(st).totals, w = E.winner(sc, v.rules);
+      return sc.score[me] - v.totals.score[me] - (sc.score[1 - me] - v.totals.score[1 - me]) + (w === null ? 0 : w === me ? 10 : -10);
+    });
+    val.forEach((x, k) => { const d = x - val[b]; sum[k] += d; sq[k] += d * d; });
+  }
+  let best = b;
+  for (let k = 0; k < options.length; k++) {
+    const m = sum[k] / samples, se = Math.sqrt(Math.max(0, sq[k] / samples - m * m) / samples);
+    if (m > se && (best === b || m > sum[best] / samples)) best = k;
+  }
+  return best === b ? base : { action: options[best], reason: "extreme_lookahead_call" };
+}
+
 // ---------------------------------------------------------------- entry point
 
 export function decide(v, level = "standard", rng = Math.random, tune = {}) {
@@ -293,7 +333,8 @@ export function decide(v, level = "standard", rng = Math.random, tune = {}) {
   if (v.phase === "defend") return defend(v);
   if (v.phase === "discard") return { action: discardChoice(v.hand, v.trump), reason: "discard_short" };
   if (v.phase === "bid1" || v.phase === "bid2") {
-    const d = bid(v, level, rng, tune);
+    let d = bid(v, level, rng, tune);
+    if (level === "extreme" && !sins(v, d.action).length) d = extremeBid(v, d, rng, tune);
     if (!sins(v, d.action).length) return d;
     const clean = legalFor(v).filter((a) => !a.alone && !sins(v, a).length);
     return { action: clean.find((a) => a.call === "pass") || clean[0], reason: `${d.reason}:sin_guard`, guarded: true };
