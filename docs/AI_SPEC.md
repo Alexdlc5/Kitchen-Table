@@ -103,8 +103,11 @@ didn't look at its cards. The turned trump card is public; the undealt cards are
 Sim (`node sim/sim.mjs --game ohhell --check`, Standard, 20K hands): exact bids ≥ 50% (Standard preset 57.6%, Kitchen
 60.5%, Tournament 53.3% where 10-13 card hands make it harder), average miss ≤ 0.6 tricks, zero sins shipped. Level ladder
 (one stronger seat against three weaker, so even is 25%): Standard vs Easy 46.5%, Expert vs Standard 35.0%, Extreme vs
-Expert 25.9% (572 games each, 2026-10-19). Extreme is not yet measurably stronger than Expert: open item. Expert samples hidden hands consistent with voids and plays each clean card out; Extreme keeps only
-worlds where each seat's hand as dealt counts to within 1.5 of its bid.
+Expert 43.5% (572 games each, 2026-10-19). Expert samples hidden hands consistent with voids and plays each clean card out.
+Extreme does that too, keeping only worlds where each seat's hand as dealt counts to within 1.5 of its bid, and it bids
+by playing the hand out: for each bid within 1 of its count (O02), it deals the unseen cards 60 ways that fit the bids
+so far, lets the later seats bid as Standard does, plays each world out and bids what scores best. Decision time (desktop,
+measured beside Spades Expert's 21 ms mean on a busy machine): Extreme bid 8 ms mean, play 4 ms mean.
 
 ## 7. Whist sins (v1.1)
 
@@ -123,10 +126,12 @@ and Expert's sampled worlds put it there.
 | W06 | **Book, honours or game end scored wrongly.** | `sim/test_family.mjs`: tricks over six score 1 each; honours 4 for all four, 2 for three, off in Standard; tricks score before honours; a side one point from game can't count honours; honours can reach game but not pass it; first side to 5 or 7 wins. |
 
 Sim (`node sim/sim.mjs --game whist --check`, Standard, 20K hands): tricks per team within 0.15 a hand with equal bots
-(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%; 577-651 games each, 2026-10-19): Standard vs Easy
-69.3%, Expert vs Standard 71.9%, Extreme vs Expert 49.3% (measured with an earlier lead-reading Extreme, since removed;
-Extreme is not yet measurably stronger than Expert: open item).
-Extreme is Expert with 60 samples instead of 24 (a bid-reading filter has nothing to read in Whist: there is no bidding).
+(6.53 / 6.47), team wins 51.6% / 48.4%, zero sins shipped. Level ladder (partnerships, even is 50%; 684-811 games each,
+2026-10-19): Standard vs Easy 70.6%, Expert vs Standard 72.1%, Extreme vs Expert 56.1%.
+Extreme samples 60 worlds for every clean card, then plays the two best on through 200 more (the samples go where the
+choice is close; a bid-reading filter has nothing to read in Whist: there is no bidding). Expert and Extreme never try
+leading partner's suit into a known ruff (the W02 exception is a manner, kept by the lookahead too). Decision time
+(desktop): Extreme 12 ms mean, 50 ms p95 against Spades Expert's 9 ms and 38 ms.
 
 ## 8. Canasta / Hand and Foot (v2 note)
 

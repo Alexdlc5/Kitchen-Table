@@ -12,7 +12,7 @@ import { newDeck, partner, team, next } from "./cards.js";
 
 const GAMES = { spades, hearts, ohhell, whist };
 const BOTS = { ohhell: ohhellBot, whist: whistBot }; // games whose bots live in their own module (ai-<game>.js)
-const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 } };
+const DEFAULT_TUNE = { bidBias: 0, easyNoise: 0.25, easyMemory: 4, expertSamples: 24, extremeSamples: 60, extremeMore: 200, nilMaxRisk: { easy: 0.25, standard: 0.22, expert: 0.22, extreme: 0.22 } };
 const pick = (rng, a) => a[Math.floor(rng() * a.length)];
 
 export function legalFor(v) {
@@ -22,25 +22,61 @@ export function legalFor(v) {
 }
 
 // what this seat can work out from the table: unseen cards and who has shown out of which suit
-const DECKS = { false: newDeck(false), true: newDeck(true) };
+// (eff and pow looked up per card: the lookahead bots call this thousands of times a decision)
+const TABLES = {};
+function tables(game, j) {
+  return (TABLES[game + j] ??= (() => {
+    const g = GAMES[game], deck = newDeck(j), E = {}, P = {};
+    for (const c of deck) { E[c] = g.eff(c, j); P[c] = g.pow(c, j); }
+    return { deck, E, P, eff: (c) => E[c], pow: (c) => P[c] };
+  })());
+}
 export function know(v, memory = Infinity) {
-  const g = GAMES[v.game], j = v.game === "spades" && !!v.rules.jokers, eff = (c) => g.eff(c, j), pow = (c) => g.pow(c, j);
+  const j = v.game === "spades" && !!v.rules.jokers, T = tables(v.game, j), E = T.E, P = T.P;
   const h = v.history, cut = (h.length ? h[h.length - 1].n : -1) - memory;
   const gone = new Set(v.hand), voids = [new Set(), new Set(), new Set(), new Set()];
   let ledN = -1, led = null;
   for (const p of h) {
     if (p.n <= cut) continue; // a forgetful player thinks old cards are still out
     gone.add(p.card);
-    if (p.n !== ledN) { ledN = p.n; led = eff(p.card); } else if (eff(p.card) !== led) voids[p.seat].add(led);
+    if (p.n !== ledN) { ledN = p.n; led = E[p.card]; } else if (E[p.card] !== led) voids[p.seat].add(led);
   }
   if (v.trick.length) {
-    const l = eff(v.trick[0].card);
-    for (const t of v.trick) { gone.add(t.card); if (eff(t.card) !== l) voids[t.seat].add(l); }
+    const l = E[v.trick[0].card];
+    for (const t of v.trick) { gone.add(t.card); if (E[t.card] !== l) voids[t.seat].add(l); }
   }
-  const unseen = DECKS[j].filter((c) => !gone.has(c)), top = {};
-  for (const u of unseen) { const su = eff(u), p = pow(u); if (!(top[su] >= p)) top[su] = p; }
-  const boss = (c) => !(top[eff(c)] > pow(c));
-  return { eff, pow, unseen, voids, boss, j };
+  const unseen = [], top = {};
+  for (const u of T.deck) {
+    if (gone.has(u)) continue;
+    unseen.push(u);
+    const su = E[u], p = P[u];
+    if (!(top[su] >= p)) top[su] = p;
+  }
+  const boss = (c) => !(top[E[c]] > P[c]);
+  return { eff: T.eff, pow: T.pow, unseen, voids, boss, j };
+}
+
+// know() for a play-out: the same facts kept up to date card by card instead of recounted every turn (the lookahead
+// bots' rollouts). out: cards nobody holds (Oh Hell's turned trump). see(st) after each engine.apply; K(hand) for a seat.
+export function tracker(v, out = []) {
+  const T = tables(v.game, false), E = T.E, P = T.P;
+  if (!T.bySuit) { T.bySuit = {}; for (const c of [...T.deck].sort((a, b) => P[b] - P[a])) (T.bySuit[E[c]] ??= []).push(c); }
+  const bySuit = T.bySuit;
+  const make = (gone, voids) => ({
+    copy: () => make(new Set(gone), voids.map((x) => new Set(x))),
+    see(st) {
+      const h = st.history, p = h[h.length - 1];
+      let i = h.length - 1;
+      while (i > 0 && h[i - 1].n === p.n) i--;
+      gone.add(p.card);
+      if (E[p.card] !== E[h[i].card]) voids[p.seat].add(E[h[i].card]);
+    },
+    K(hand) {
+      const boss = (c) => { for (const u of bySuit[E[c]]) { if (P[u] <= P[c]) return true; if (!gone.has(u) && !hand.includes(u)) return false; } return true; };
+      return { eff: T.eff, pow: T.pow, voids, boss, j: false };
+    },
+  });
+  return make(new Set([...out, ...v.history.map((p) => p.card), ...v.trick.map((t) => t.card)]), know(v).voids);
 }
 
 // the trick so far: who is winning, with what, and whether card c would take over

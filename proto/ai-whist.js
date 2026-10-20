@@ -111,6 +111,9 @@ export function sins(v, action) {
 
 const outcome = (st, seat) => { const t = seat % 2; return st.tricks[t] + st.tricks[t + 2] - st.tricks[1 - t] - st.tricks[3 - t]; };
 
+// what the lookahead may try: no sins, and partner's suit is never led into a known ruff (§7 W02: a manner, not a sin)
+const manners = (v, c) => (!v.trick.length && c[1] === partnerSuit(v) && ruffable(v, know(v), c[1]) ? ["into_ruff"] : sins(v, c));
+
 export function decide(v, level, rng, tune) {
   const easy = level === "easy", K = know(v, easy ? tune.easyMemory : Infinity), legal = legalFor(v);
   let d = play(v, K);
@@ -120,7 +123,7 @@ export function decide(v, level, rng, tune) {
   }
   if (level === "expert" || level === "extreme") {
     const x = level === "extreme", pinned = v.seat === v.dealer ? [] : [{ seat: v.dealer, card: v.trumpCard }];
-    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, pinned }); // Extreme: more samples
+    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, more: x ? tune.extremeMore : 0, policy: play, outcome, sins: manners, pinned }); // Extreme: more samples, spent on the two best cards
   }
   if (sins(v, d.action).length) {
     const clean = legal.filter((c) => !sins(v, c).length);

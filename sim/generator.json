@@ -622,7 +622,8 @@
    "extreme": 0.22
   },
   "bidBias": 0.25,
-  "extremeSamples": 60
+  "extremeSamples": 60,
+  "extremeMore": 200
  },
  "shop": {
   "tiers": {

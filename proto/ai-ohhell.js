@@ -2,7 +2,7 @@
 // see only the view (ohhell.view): their own hand, the bids, the turned trump and what was played. Sins: docs/AI_SPEC.md §6.
 // Also home to lookahead(), the Expert/Extreme sampler that Whist shares.
 import * as ohhell from "./ohhell.js";
-import { know, trickInfo, lowest, highest, legalFor } from "./ai.js";
+import { know, trickInfo, lowest, highest, legalFor, tracker } from "./ai.js";
 
 const R = (action, reason) => ({ action, reason });
 // the turned trump card is face up on the table, out of play: nobody holds it
@@ -153,27 +153,33 @@ export function sampleHands(v, K, rng, { pinned = [], keep = null, tries = 40 } 
 
 const peek = (st) => ({ ...st, seat: st.turn, hand: st.hands[st.turn], sizes: st.hands.map((h) => h.length) });
 
-// try each clean card in `n` worlds sampled from what K knows, playing the rest of the hand with `policy(view)`; keep the best average outcome
-export function lookahead(v, base, rng, { K, engine, n, policy, outcome, sins, pinned, keep }) {
-  const legal = legalFor(v).filter((c) => !sins(v, c).length);
+// try each clean card in `n` worlds sampled from what K knows, playing the rest of the hand with `policy(view, K)`; keep the
+// best average outcome. more: the two best cards then play on through that many more worlds (Extreme: samples where they count)
+export function lookahead(v, base, rng, { K, engine, n, more = 0, policy, outcome, sins, pinned, keep, out = [] }) {
+  let legal = legalFor(v).filter((c) => !sins(v, c).length);
   if (legal.length <= 1) return base;
   const totals = new Map(legal.map((c) => [c, 0]));
-  const root = { ...structuredClone(v), turn: v.seat, lastTrick: null };
-  let got = 0;
-  for (let i = 0; i < n; i++) {
-    const hands = sampleHands(v, K, rng, { pinned, keep });
-    if (!hands) continue;
-    got++;
-    for (const c of legal) {
-      const st = { ...root, hands: hands.map((h) => [...h]), trick: [...root.trick], tricks: [...root.tricks], history: [...root.history], bids: root.bids && [...root.bids] };
-      engine.apply(st, c);
-      while (st.phase === "play") { const pv = peek(st); engine.apply(st, policy(pv).action); }
-      totals.set(c, totals.get(c) + outcome(st, v.seat));
+  const root = { ...structuredClone(v), turn: v.seat, lastTrick: null }, trk = tracker(v, out);
+  const run = (cards, worlds) => {
+    let got = 0;
+    for (let i = 0; i < worlds; i++) {
+      const hands = sampleHands(v, K, rng, { pinned, keep });
+      if (!hands) continue;
+      got++;
+      for (const c of cards) {
+        const st = { ...root, hands: hands.map((h) => [...h]), trick: [...root.trick], tricks: [...root.tricks], history: [...root.history], bids: root.bids && [...root.bids] };
+        const t = trk.copy();
+        engine.apply(st, c); t.see(st);
+        while (st.phase === "play") { const pv = peek(st); engine.apply(st, policy(pv, t.K(pv.hand)).action); t.see(st); }
+        totals.set(c, totals.get(c) + outcome(st, v.seat));
+      }
     }
-  }
-  if (!got) return base;
-  let best = base.action, bestV = totals.get(base.action) ?? -Infinity;
-  for (const [c, val] of totals) if (val > bestV + 1e-9) { best = c; bestV = val; }
+    return got;
+  };
+  if (!run(legal, n)) return base;
+  if (more && legal.length > 2) run((legal = [...legal].sort((a, b) => totals.get(b) - totals.get(a)).slice(0, 2)), more);
+  let best = legal.includes(base.action) ? base.action : legal[0], bestV = totals.get(best);
+  for (const c of legal) if (totals.get(c) > bestV + 1e-9) { best = c; bestV = totals.get(c); }
   return best === base.action ? base : R(best, "expert_lookahead");
 }
 
@@ -187,16 +193,40 @@ function outcome(st, seat) {
 const fitsBids = (v) => (hs) => {
   for (let s = 0; s < 4; s++) {
     if (s === v.seat || v.bids[s] === null) continue;
-    const dealt = [...hs[s], ...v.history.filter((h) => h.seat === s).map((h) => h.card), ...v.trick.filter((t) => t.seat === s).map((t) => t.card)];
+    const dealt = [...hs[s], ...v.history.filter((h) => h.seat === s).map((h) => h.card)]; // the history holds the trick in progress too
     if (Math.abs(estimate(dealt, v.size, v.trump) - v.bids[s]) > 1.5) return false;
   }
   return true;
 };
 
+// Extreme bids by playing the hand out: for each bid within 1 of its count (O02), deal the unseen cards n ways that fit
+// the bids so far, let the seats after it bid as Standard does, play every world out, keep the bid that scores best
+function bidAhead(v, d, rng, n) {
+  const c = Math.round(count(v)), cands = legalFor(v).map((a) => a.bid).filter((b) => Math.abs(b - c) <= 1);
+  if (cands.length <= 1) return d;
+  const K = knowO(v), totals = new Map(cands.map((b) => [b, 0])), root = { ...structuredClone(v), turn: v.seat, lastTrick: null };
+  const trk = tracker(v, v.trumpCard ? [v.trumpCard] : []);
+  for (let i = 0; i < n; i++) {
+    const hands = sampleHands(v, K, rng, { keep: fitsBids(v) });
+    if (!hands) continue;
+    for (const b of cands) {
+      const st = { ...root, hands: hands.map((h) => [...h]), bids: [...root.bids], tricks: [...root.tricks], trick: [], history: [] };
+      ohhell.apply(st, { bid: b });
+      while (st.phase === "bid") ohhell.apply(st, bid(peek(st), "standard").action);
+      const t = trk.copy();
+      while (st.phase === "play") { const pv = peek(st); ohhell.apply(st, play(pv, t.K(pv.hand)).action); t.see(st); }
+      totals.set(b, totals.get(b) + outcome(st, v.seat));
+    }
+  }
+  let best = d.action.bid;
+  for (const [b, val] of totals) if (val > totals.get(best) + 1e-9) best = b;
+  return best === d.action.bid ? d : R({ bid: best }, "extreme_bid_ahead");
+}
+
 // ---------------------------------------------------------------- entry point (ai.decide sends Oh Hell views here)
 
 export function decide(v, level, rng, tune) {
-  if (v.phase === "bid") return bid(v, level, rng);
+  if (v.phase === "bid") return level === "extreme" ? bidAhead(v, bid(v, level, rng), rng, tune.extremeSamples) : bid(v, level, rng);
   const easy = level === "easy", K = knowO(v, easy ? tune.easyMemory : Infinity), legal = legalFor(v);
   let d = play(v, K);
   if (easy && rng() < tune.easyNoise) {
@@ -205,7 +235,7 @@ export function decide(v, level, rng, tune) {
   }
   if (level === "expert" || level === "extreme") {
     const x = level === "extreme";
-    d = lookahead(v, d, rng, { K: knowO(v), engine: ohhell, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, keep: x ? fitsBids(v) : null });
+    d = lookahead(v, d, rng, { K: knowO(v), engine: ohhell, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, keep: x ? fitsBids(v) : null, out: v.trumpCard ? [v.trumpCard] : [] });
   }
   if (sins(v, d.action).length) {
     const clean = legal.filter((c) => !sins(v, c).length);
