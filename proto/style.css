@@ -11,11 +11,17 @@
   --lift-1: 0 1px 1px rgba(40,20,6,.28), 0 3px 6px -2px rgba(40,20,6,.3);
   --lift-2: 0 1px 1px rgba(40,20,6,.25), 0 6px 12px -4px rgba(40,20,6,.4), 0 18px 32px -16px rgba(40,20,6,.55);
   --stock: #fbf5e6; --stock-edge: #d8c7a2; --press: #c8b48a;
+  /* a card on the table: a tight contact shadow, a short warm one and a soft ambient one, all from the lamp above; lifted, deeper.
+     The radius is the card's own (rx 9 of 100 x 140), so a shadow hugs the drawn corners at any size */
+  --card-r: 9% / 6.43%;
+  --card-shadow: 0 .5px .6px rgba(40,20,6,.34), 0 2px 3px -1px rgba(40,20,6,.3), 0 6px 12px -5px rgba(40,20,6,.34);
+  --card-lift: 0 1px 1.5px rgba(40,20,6,.3), 0 8px 12px -4px rgba(40,20,6,.34), 0 18px 26px -12px rgba(40,20,6,.48);
   --fs: 18px; --fs-s: 16px; --fs-l: 23px;
+  --muted: #6a5f50;           /* small print on paper; Comfort darkens it to its 7:1 floor */
   --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
   --speed: 1;
 }
-html.comfort { --cw: 106px; --tap: 64px; --fs: 22px; --fs-s: 19px; --fs-l: 28px; }
+html.comfort { --cw: 106px; --tap: 64px; --fs: 22px; --fs-s: 19px; --fs-l: 28px; --muted: #3f362c; }
 /* iPad: bigger cards and type, so the table does not look empty */
 @media (min-width: 700px) { :root { --cw: 118px; --tcw: 112px; --fs: 20px; --fs-s: 17px; --fs-l: 26px; } html.comfort { --cw: 168px; --tcw: 130px; --fs: 26px; --fs-s: 22px; --fs-l: 32px; } }
 [hidden] { display: none !important; }
@@ -33,21 +39,36 @@ button { font: inherit; color: inherit; cursor: pointer; }
   opacity: 0; visibility: hidden; transition: opacity calc(.22s * var(--speed)), visibility 0s calc(.22s * var(--speed)); }
 .screen.on { opacity: 1; visibility: visible; transition: opacity calc(.22s * var(--speed)); }
 #table { overflow: hidden; padding: 0; }
+/* the lamp's pool of warm light on the felt, under the trick (the cards themselves stay unhazed: they paint over it) */
+#table::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse min(64vw, 460px) min(30vh, 330px) at 50% var(--mid, 48%), rgba(255,214,150,.2), rgba(255,214,150,.07) 55%, transparent 72%); }
+/* one painted prop at the edge (TABLE.md rule 4): never behind a card or a plate, and slid away in Comfort and on small phones */
+#prop { position: absolute; left: -18px; top: calc(var(--safe-t) + 70px); width: clamp(96px, 17vw, 190px); pointer-events: none;
+  filter: drop-shadow(0 2px 2px rgba(20,8,0,.25)); transition: transform calc(.4s * var(--speed)) ease-out; }
+#prop svg { display: block; width: 100%; height: auto; }
+html.comfort #prop { transform: translateX(-130%); }
+@media (max-height: 760px) { #prop { transform: translateX(-130%); } }
 
 h1, h2, h3 { font-family: var(--serif); font-weight: 700; margin: 0 0 .4em; letter-spacing: 0; }
 h1 { font-size: calc(var(--fs-l) * 1.6); color: var(--cream); text-align: center; line-height: 1.08; font-weight: 500;
   text-shadow: 0 1px 0 rgba(30,14,4,.6), 0 3px 14px rgba(0,0,0,.35); }
 h2 { font-size: var(--fs-l); }
 /* small printed labels: letterspaced small caps, like a menu card */
-.label, .recipe .from, .pin h3 { font-family: var(--sans); font-weight: 700; font-size: calc(var(--fs-s) * .82); letter-spacing: .14em; text-transform: uppercase; color: #8a6a44; }
+.label, .recipe .from, .pin h3 { font-family: var(--sans); font-weight: 700; font-size: calc(var(--fs-s) * .82); letter-spacing: .14em; text-transform: uppercase; color: #6f5233; }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .paper { position: relative; padding: 20px 20px 18px; border-radius: 6px; color: var(--ink);
   background: var(--grain), linear-gradient(180deg, #fffaf0, var(--paper) 40%, color-mix(in srgb, var(--paper) 92%, #c9a87a));
   border: 1px solid var(--stock-edge); box-shadow: var(--lift-2); }
 .paper::after { content: ""; position: absolute; inset: 5px; border: 1px solid color-mix(in srgb, var(--brass) 38%, transparent); border-radius: 3px; pointer-events: none; }
 .stack { display: grid; gap: 12px; max-width: 560px; margin: 0 auto; }
-.muted { color: #6a5f50; font-size: var(--fs-s); }
+.muted { color: var(--muted); font-size: var(--fs-s); }
 .onfelt { color: var(--cream); }
+[tabindex="-1"]:focus { outline: none; } /* headings take focus for VoiceOver and the keyboard; no ring on a heading */
+/* Comfort: cream titles on the wood get a dark plate behind them, for the 7:1 floor */
+html.comfort .screen > .stack > h1:not(.sign):not(.dark), html.comfort .kicker, html.comfort .boxcap, html.comfort .onfelt {
+  background: linear-gradient(180deg, rgba(46,24,10,.84), rgba(28,14,4,.86)); border-radius: 10px; padding: 2px 14px; justify-self: center; text-shadow: none;
+  box-shadow: inset 0 0 0 1px rgba(201,164,92,.5), inset 0 1px 0 rgba(255,236,200,.12), 0 2px 6px rgba(20,8,2,.3); } /* a dark-stained plaque with a brass hairline, not a flat box */
+html.comfort .kicker > span { background: none; }
 
 .btn { min-height: var(--tap); min-width: var(--tap); flex: none; padding: 10px 18px; border-radius: 7px; color: #3b2a1a;
   font: 500 var(--fs)/1.2 var(--sans); letter-spacing: .01em; text-shadow: 0 1px 0 rgba(255,255,255,.75);
@@ -69,44 +90,74 @@ h2 { font-size: var(--fs-l); }
   border: 1px solid color-mix(in srgb, var(--brass) 70%, #6e5224); box-shadow: inset 0 0 0 2px rgba(255,255,255,.55), var(--lift-2); }
 .ico { width: 18px; height: 18px; flex: none; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; min-height: var(--tap); }
-.row > span { flex: 1 1 0; min-width: 0; }   /* the label wraps; the control keeps its place on the right */
+.row > span, .row > label { flex: 1 1 0; min-width: 0; }   /* the label wraps; the control keeps its place on the right */
 .row > .seg { flex: 1 1 100%; }
 .row > b { margin-left: auto; text-align: right; max-width: 45%; }
-.grid2 .seg { display: grid; grid-template-columns: 1fr 1fr; }
+/* a row of choices: an even grid, never one choice left alone on a line ("Extreme" wrapping by itself) */
+.seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.6em), 1fr)); gap: 6px; }
+.seg[data-n="2"], .seg[data-n="4"] { grid-template-columns: 1fr 1fr; }
+.seg[data-n="3"], .seg[data-n="5"] { grid-template-columns: 1fr 1fr 1fr; }
+@media (min-width: 700px) { .seg[data-n="4"] { grid-template-columns: repeat(4, 1fr); } .seg[data-n="5"] { grid-template-columns: repeat(5, 1fr); } }
+.seg button { padding-left: 8px; padding-right: 8px; }
+.seg.presets { margin-bottom: 6px; }
+@media (min-width: 700px) { .seg.presets { grid-template-columns: 1fr 1fr; } }
+.dimmed { opacity: .55; }
+.preview { margin: 0 0 4px; font-family: var(--serif); }
+/* setup: the rules fold into one line; Deal stays pinned to the bottom of the screen */
+details.rules { border-top: 1px solid var(--rule); }
+details.rules > summary { list-style: none; display: flex; gap: 10px; align-items: center; justify-content: space-between; min-height: var(--tap); padding: 6px 0; cursor: pointer; }
+details.rules > summary::-webkit-details-marker { display: none; }
+details.rules > summary > span:first-child { flex: 1 1 0; min-width: 0; font-size: var(--fs-s); }
+details.rules .see { flex: none; font-weight: 700; color: var(--brass-d); text-decoration: underline; }
+details.rules[open] .see { visibility: hidden; }
+details.rules > summary:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
+.dealbar { position: sticky; bottom: calc(-12px - var(--safe-b)); z-index: 2; margin: 0 -16px; padding: 12px 16px calc(var(--safe-b) + 12px);
+  background: linear-gradient(180deg, transparent, rgba(40,22,10,.82) 28%); }
+.dealbar .btn { width: 100%; }
 .stack > * { min-width: 0; }
 .row + .row { border-top: 1px solid var(--rule); }
-/* the whole tap-target square is the switch; the track and knob are drawn inside it */
-.toggle { width: calc(var(--tap) * 1.3); height: var(--tap); border: 0; background: none; position: relative; flex: none; padding: 0; }
-.toggle::before { content: ""; position: absolute; left: 0; right: 0; top: 18%; bottom: 18%; border-radius: 999px; background: #d9ccb0;
+/* the whole tap-target square is the switch; "On"/"Off" is printed left of the track (the track is outlined for 3:1) */
+.toggle { --pad: 2.6em; width: calc(var(--tap) * 1.3 + var(--pad)); height: var(--tap); border: 0; background: none; position: relative; flex: none; padding: 0; }
+.toggle::before { content: ""; position: absolute; left: var(--pad); right: 0; top: 18%; bottom: 18%; border-radius: 999px; background: #d9ccb0; border: 1.5px solid var(--brass-d);
   box-shadow: inset 0 2px 3px rgba(60,35,10,.35), 0 1px 0 #fff; transition: background .15s; }
-.toggle::after { content: ""; position: absolute; top: calc(18% - 1px); left: 2px; width: calc(var(--tap) * .64 + 2px); height: calc(var(--tap) * .64 + 2px); border-radius: 50%;
+.toggle::after { content: ""; position: absolute; top: calc(18% - 1px); left: calc(var(--pad) + 2px); width: calc(var(--tap) * .64 + 2px); height: calc(var(--tap) * .64 + 2px); border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fff6dc, var(--brass) 55%, #7a5a26); box-shadow: 0 2px 4px rgba(40,20,6,.45), inset 0 -1px 1px rgba(60,35,10,.4); transition: transform .15s; }
+.toggle i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--pad) - .4em); display: grid; place-items: center end; font: 700 var(--fs-s) var(--sans); font-style: normal; color: var(--muted); }
+.toggle[aria-checked="true"] i { color: #2f6b45; }
+.toggle[disabled] { opacity: .6; }
 .toggle[aria-checked="true"]::before { background: #4f7f5b; }
 .toggle[aria-checked="true"]::after { transform: translateX(calc(var(--tap) * .62)); }
 select, input { font: inherit; min-height: var(--tap); border-radius: 7px; border: 1px solid var(--stock-edge); padding: 4px 36px 4px 12px; color: #3b2a1a; -webkit-appearance: none; appearance: none;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236e5224' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") right 14px center no-repeat, var(--grain), linear-gradient(180deg, #fffbf2, var(--stock));
   box-shadow: inset 0 1px 0 #fff, 0 2px 0 var(--press); }
-.seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button { min-height: var(--tap); padding: 6px 14px; border-radius: 6px; font: 500 var(--fs) var(--sans); color: #3b2a1a;
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--stock)); border: 1px solid var(--stock-edge); box-shadow: inset 0 1px 0 #fff, 0 2px 0 var(--press); }
-.seg button[aria-pressed="true"] { transform: translateY(2px); font-weight: 700; border-color: color-mix(in srgb, var(--brass) 80%, #6e5224);
+.seg button[aria-checked="true"] { transform: translateY(2px); font-weight: 700; border-color: color-mix(in srgb, var(--brass) 80%, #6e5224);
   background: linear-gradient(180deg, color-mix(in srgb, var(--brass) 30%, #fff8e6), color-mix(in srgb, var(--brass) 45%, #fff3d6)); box-shadow: inset 0 2px 3px rgba(90,60,20,.25); }
 
 /* title */
 #title .stack { min-height: 100%; align-content: center; }
-.kicker { margin: 0; text-align: center; color: var(--cream); font: italic 400 calc(var(--fs) * 1.1) var(--serif); opacity: .92; text-shadow: 0 1px 0 rgba(30,14,4,.5); }
+.kicker { margin: 0; text-align: center; color: #fff6e2; font: italic 400 calc(var(--fs) * 1.1) var(--serif); text-shadow: 0 1px 0 rgba(30,14,4,.6), 0 0 12px rgba(30,14,4,.55); }
+.kicker > span { display: inline-block; padding: 2px 14px; border-radius: 999px; background: radial-gradient(ellipse at center, rgba(30,14,4,.42), rgba(30,14,4,.18) 70%, transparent); }
 .wordmark { margin: 0; font-size: calc(var(--fs-l) * 1.8); font-weight: 700; letter-spacing: .005em; }
-.hero { position: relative; height: calc(var(--cw) * 2.6); margin: 4px -16px 6px; }
+/* the still life: its aces are decoration, so they keep a still-life size in Comfort (the big cards are for the table), and a
+   warm lamp pool sits behind them, as at the table (TABLE.md) */
+.hero { --hcw: min(var(--cw), 18vw); position: relative; height: calc(var(--hcw) * 2.75); margin: 4px -16px 6px; }
+.hero::before { content: ""; position: absolute; inset: -8% 2% 0; pointer-events: none;
+  background: radial-gradient(ellipse 50% 46% at 50% 56%, rgba(255,214,150,.2), rgba(255,214,150,.07) 55%, transparent 75%); }
+.hero .ace { width: var(--hcw); height: calc(var(--hcw) * 1.4); margin: 0 calc(var(--hcw) * -.32); }
 .hero .props { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; }
 .hero .props svg { width: min(100%, 520px); height: auto; }
 .hero .fan { position: absolute; left: 0; right: 0; top: 4%; display: flex; justify-content: center; }
 .hero .card { position: relative; transform-origin: 50% 120%; }
+/* iPad: the still life fills its band instead of leaving bare wood around it */
+@media (min-width: 700px) { #title .stack { max-width: 680px; } .hero { --hcw: min(var(--cw) * 1.2, 150px); height: calc(var(--hcw) * 3); margin: 12px 0 18px; } .hero .props svg { width: 100%; } .wordmark { font-size: calc(var(--fs-l) * 2.3); } }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .lock { font-size: .9em; }
 .gamecard { display: flex; align-items: center; gap: 14px; text-align: left; justify-content: flex-start; width: 100%; }
 .gamecard .mini { width: calc(var(--tap) * .9); flex: none; }
 /* the table shop */
-.thanks { text-align: center; } .thanks h2 { margin-bottom: .2em; }
+.thanks p { margin: 0; }
 .swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .swatch { display: grid; gap: 4px; justify-items: center; padding: 6px; min-height: var(--tap); border-radius: 12px; border: 2px solid transparent; background: none; }
 .swatch.on { border-color: var(--brass); }
@@ -116,30 +167,45 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 7px; borde
 .tile { display: grid; gap: 6px; align-content: start; }
 .tile .tprev { aspect-ratio: 4 / 3; }
 .tile.luxe .tprev { aspect-ratio: 16 / 9; }
-.tile .tback, .tile .tface { position: absolute; top: 18%; width: 26%; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+.tile .tback, .tile .tface { position: absolute; top: 18%; width: 26%; border-radius: var(--card-r); box-shadow: var(--card-lift); }
 .tile .tback svg, .tile .tface svg { width: 100%; display: block; }
 .tile .tback { left: 22%; transform: rotate(-8deg); } .tile .tface { left: 44%; transform: rotate(6deg); }
 .tile.luxe .tback, .tile.luxe .tface { width: 17%; top: 14%; } .tile.luxe .tback { left: 32%; } .tile.luxe .tface { left: 48%; }
-.tname { font-family: var(--serif); font-weight: 600; } .tblurb { font-size: var(--fs-s); color: #6a5f50; }
+.tname { font-family: var(--serif); font-weight: 600; } .tblurb { font-size: var(--fs-s); color: var(--muted); }
 .tile.using .tprev { outline: 3px solid var(--brass); outline-offset: 2px; }
 .luxebox { background: linear-gradient(180deg, #fffaf0, var(--paper)); border: 1px solid var(--brass); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brass) 25%, transparent), 0 12px 32px rgba(20,10,4,.28); }
-.gamecard small { display: block; font-weight: 400; color: #6a5f50; font-size: var(--fs-s); }
+.gamecard small { display: block; font-weight: 400; color: var(--muted); font-size: var(--fs-s); }
 .gamecard.soon { padding: 10px 18px; border-radius: 12px; background: rgba(251,244,226,.82); border: 2px dashed #c9b78f; font-weight: 600; }
 .gamecard.soon > span:nth-child(2) { flex: 1; }
 .gamecard.soon .mini { opacity: .7; }
 .tag { flex: none; justify-self: start; font-size: var(--fs-s); background: var(--gold); border-radius: 999px; padding: 2px 10px; }
 
 /* cards */
-.card { width: var(--cw); height: calc(var(--cw) * 1.4); padding: 0; border: 0; background: none; display: block; border-radius: 9px;
-  box-shadow: 0 2px 4px rgba(0,0,0,.28); transition: transform calc(.12s * var(--speed)); }
+.card { width: var(--cw); height: calc(var(--cw) * 1.4); padding: 0; border: 0; background: none; display: block; border-radius: var(--card-r);
+  box-shadow: var(--card-shadow); transition: transform calc(.12s * var(--speed)); }
 .card svg { width: 100%; height: 100%; display: block; }
-#hand { position: absolute; left: 0; right: 0; bottom: calc(var(--safe-b) + 8px); }
+/* your hand is its own stacking context, so no card can rise over the pass-the-phone cover */
+#hand { position: absolute; left: 0; right: 0; bottom: calc(var(--safe-b) + 8px); z-index: 1; }
+#hand:focus { outline: none; } /* the group takes focus for VoiceOver; each card shows its own ring */
+#hand .card:focus-visible { outline: 3px solid var(--brass-d); outline-offset: 2px; }
 #hand .card { position: absolute; }
 #hand .card[disabled] { cursor: default; }
 #hand .card.dim { filter: brightness(.72) saturate(.7); }
-#hand .card.sel { transform: translateY(-22%); box-shadow: 0 0 0 4px var(--brass), 0 10px 18px rgba(0,0,0,.35); }
+#hand .card.sel { transform: translateY(-22%); box-shadow: 0 0 0 4px var(--brass), var(--card-lift); }
+/* Comfort: a chosen card stays put (lifting it hid the cards above); a thick brass outline and a tick beside its index */
+html.comfort #hand .card.sel { transform: none; outline: 5px solid var(--brass); outline-offset: -5px; box-shadow: 0 0 0 2px #6e5224, var(--card-shadow); }
+html.comfort #hand .card.sel::after { content: "✓"; position: absolute; left: 34%; top: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 17px/1 var(--sans); color: #3a2810; background: var(--brass); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+/* the first few hands: the cards you may play rise and settle, slowly (never under Reduce Motion) */
+#hand .card.hint { animation: hint 2.6s ease-in-out infinite; }
+@keyframes hint { 0%, 70%, 100% { translate: 0 0; } 35% { translate: 0 -7px; } }
 #trick { position: absolute; left: 50%; top: var(--mid, 48%); width: 0; height: 0; }
-#trick .card { position: absolute; width: var(--tcw); height: calc(var(--tcw) * 1.4); left: calc(var(--tcw) * -.5); top: calc(var(--tcw) * -.7); }
+#trick .card { position: absolute; width: var(--tw, var(--tcw)); height: calc(var(--tw, var(--tcw)) * 1.4); left: calc(var(--tw, var(--tcw)) * -.5); top: calc(var(--tw, var(--tcw)) * -.7); }
+#trick .card > svg { border-radius: var(--card-r); }
+#trick .who { display: none; }
+/* Comfort and iPad: a small name tab under each card in the trick */
+#trick.named .who { display: block; position: absolute; left: 50%; top: calc(100% - 4px); transform: translateX(-50%); padding: 0 8px; border-radius: 4px; white-space: nowrap;
+  font: 700 calc(var(--fs-s) * .95) var(--sans); color: var(--ink); background: var(--paper); border: 1px solid var(--stock-edge); box-shadow: var(--lift-1); }
 .bar { position: absolute; top: calc(var(--safe-t) + 8px); left: 12px; right: 12px; display: flex; justify-content: space-between; z-index: 5; }
 #seats .seat { position: absolute; display: grid; justify-items: center; gap: 1px; padding: 7px 14px 8px; border-radius: 5px; min-width: 96px;
   background: var(--grain), linear-gradient(180deg, #fffbf2 0%, #fffbf2 46%, color-mix(in srgb, var(--stock) 85%, #b89a6a) 48%, var(--stock) 54%);
@@ -149,32 +215,85 @@ select, input { font: inherit; min-height: var(--tap); border-radius: 7px; borde
 html.comfort #seats .seat:not(.s-me) .st span { display: block; }
 html.comfort #seats .seat:not(.s-me) .st span + span::before { content: none; }
 #seats .seat.turn { box-shadow: 0 0 0 3px var(--brass), 0 0 18px color-mix(in srgb, var(--brass) 70%, transparent), 0 6px 16px rgba(20,10,4,.3); }
-#seats .seat .why { max-width: 200px; font-size: calc(var(--fs-s) * .92); color: #5a4c3a; text-align: center; }
+#seats .seat .st { min-height: 1.2em; } /* a plate is the same size before and after the bidding */
+/* after a bot plays: a little Why? tab on its plate's corner (outside the plate, so the plate never grows) */
+#seats .whytab { position: absolute; top: -12px; right: -6px; padding: 0 8px; border-radius: 999px; font: 700 max(15px, calc(var(--fs-s) * .9))/1.5 var(--sans); color: #3a2810;
+  background: var(--brass); border: 1px solid #6e5224; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+html.comfort #seats .whytab { top: auto; bottom: 3px; right: 3px; } /* on the plate's lower edge, by the card backs, never over a name */
+/* trump, in the bar: the word and a full-size suit */
+.bar .tp { gap: 6px; cursor: default; }
+.bar .tp small { font-size: var(--fs-s); }
+.bar .tp b { font: 700 max(28px, var(--fs-l))/1 var(--serif); }
+.bar .tp .sH, .bar .tp .sD { color: var(--red); }
+html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #13894a; }
+.dialog .answer { font: italic 400 var(--fs-l)/1.35 var(--serif); }
+/* a tight table (an iPhone SE at Extra large text): the bar keeps Menu's icon, the panels use regular-height buttons */
+#table.tight #menuBtn span { display: none; }
+#table.mypanel #seats .s-me { visibility: hidden; } /* your own panel (a bid, a call) stands in your plate's place until you answer */
+
+#table.tight #center { gap: 6px; }
+#table.tight #center .btn.big { min-height: var(--tap); font: 700 var(--fs)/1.15 var(--serif); }
+#table.tight #center .say { padding: 4px 12px; }
+#table.tight #center .callpad, #table.tight #center .eurow { gap: 6px; }
+#seats .seat .ask:empty { display: none; }
+#seats .seat .ask { font-weight: 700; color: #6e4a16; }
 .s-top { top: calc(var(--safe-t) + 64px); left: 50%; transform: translateX(-50%); }
-.s-left { top: calc(var(--mid, 48%) + var(--tcw) * .9); left: 8px; }
-.s-right { top: calc(var(--mid, 48%) + var(--tcw) * .9); right: 8px; }
+.s-left { top: var(--side, calc(var(--mid, 48%) + var(--tcw) * .9)); left: 8px; }
+.s-right { top: var(--side, calc(var(--mid, 48%) + var(--tcw) * .9)); right: 8px; }
+html:not(.comfort) #seats .seat.s-me { max-width: calc(100% - 2 * var(--sideW, 0px) - 32px); }
+/* the side plates never reach the trick's side cards, whatever the words or the text size: they stop short of the card slots
+   and stack their words one per line, as Comfort's plates do */
+html:not(.comfort) #seats .s-left, html:not(.comfort) #seats .s-right { max-width: calc(50% - var(--slotX, 80px) - 14px); }
+html:not(.comfort) #seats .seat:is(.s-left, .s-right) .st span { display: block; }
+html:not(.comfort) #seats .seat:is(.s-left, .s-right) .st span + span::before { content: none; }
 /* Comfort: the other three seats share one row under the bar, so the 1.6x hand leaves room for the trick */
 html.comfort #seats .seat:not(.s-me) { top: calc(var(--safe-t) + 70px); width: calc((100% - 32px) / 3); min-width: 0; padding: 4px 6px; transform: none; }
 html.comfort .s-left { left: 8px; }
 html.comfort .s-top { left: calc(16px + (100% - 32px) / 3); }
 html.comfort .s-right { right: 8px; }
 html.comfort #seats .seat .pips { display: none; }
-html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline; padding: 4px 14px; }
+html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline; padding: 5px 14px; min-height: 0; white-space: nowrap; max-width: calc(100% - 16px); }
+html.comfort #seats .seat.s-me .st:empty { display: none; }
 .s-me { left: 50%; transform: translateX(-50%); }
+/* iPad: bigger plates (about 1.3x), so the seats read from across the table */
+@media (min-width: 700px) {
+  #seats .seat { min-width: 128px; padding: 10px 20px 11px; }
+  .backs { height: 29px; } .backs img { width: 21px; height: 29px; }
+}
 .pips { letter-spacing: 2px; color: var(--brass-d); }
 .backs { display: flex; justify-content: center; height: 22px; }
-.backs svg { width: 16px; height: 22px; margin: 0 -4px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
-.backs svg:nth-child(1) { transform: rotate(-10deg); } .backs svg:nth-child(3) { transform: rotate(10deg); }
+.backs img { position: relative; width: 16px; height: 22px; margin: 0 -4px; border-radius: var(--card-r); box-shadow: 0 .5px 1px rgba(40,20,6,.45), 0 1.5px 2px -.5px rgba(40,20,6,.3); }
+.backs img:nth-child(1) { transform: rotate(-10deg); } .backs img:nth-child(3) { transform: rotate(10deg); }
 #center { position: absolute; left: 12px; right: 12px; top: calc(var(--free0, 22%) + 10px); display: grid; justify-items: center; gap: 10px; z-index: 4; pointer-events: none; }
 #center > * { pointer-events: auto; }
+/* one line from the table just above your plate: "Your turn: tap a card", a Why? answer. Comfort: over the seat row instead */
+#say { position: absolute; left: 12px; right: 12px; bottom: calc(100% - var(--free1, 70%) + 8px); display: grid; justify-items: center; z-index: 4; pointer-events: none; }
+#say:empty { display: none; }
+#say .say { max-width: 440px; }
+html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
+.say.small { font-weight: 500; font-size: var(--fs-s); max-width: 420px; }
+.row.stepper { gap: 8px; justify-content: center; flex-wrap: wrap; }
+.chip { font: 700 var(--fs-l)/1.2 var(--serif); min-width: 2.4ch; padding: 4px 10px; text-align: center; border-radius: 6px; color: var(--ink);
+  background: var(--grain), linear-gradient(180deg, #fffbf2, var(--paper)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-1); }
+/* the cut: a squared-up deck, wide enough to tap where you'd cut it */
+.deck { display: flex; justify-content: center; align-items: center; width: 100%; min-height: calc(var(--tap) * 2.2); margin: 6px 0 4px; padding: 10px 0; border: 0; border-radius: 10px; background: none; }
+.deck img { flex: none; width: 15%; height: auto; aspect-ratio: 5 / 7; margin: 0 -2.6%; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
+.fp { white-space: nowrap; }
+/* before the deal, while you cut: the felt and the bar only, nothing left over from the last hand */
+#table.predeal :is(#seats, #hand, #trick, #center, #say, #trump, #scoreChip) { visibility: hidden; }
+.deck:focus-visible { outline: 3px solid var(--brass-d); outline-offset: 2px; }
+.lasttrick { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
+.lasttrick > span { display: grid; gap: 4px; justify-items: center; }
+.lasttrick .card { width: 56px; height: 78px; } .lasttrick small { font-size: var(--fs-s); }
 .bidpad { display: grid; grid-template-columns: repeat(5, minmax(var(--tap), 1fr)); gap: 8px; max-width: 420px; width: 100%; }
 .bidpad .btn { padding: 4px; }
 /* Euchre: the kitty with its upcard (turned sideways once it's turned down), and the pad for calling trump */
-.kitty { --kw: calc(var(--tcw) * .55); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
-.kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.kitty { --kw: var(--cw); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
+.kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .kitty svg { display: block; width: 100%; height: 100%; }
 .kitty .kb:nth-child(1) { left: 0; transform: rotate(-5deg); } .kitty .kb:nth-child(2) { left: 4px; transform: rotate(3deg); }
 .kitty .up { left: 12px; }
+.kitty.small { --kw: calc(var(--tcw) * .8); } /* a tight table: the upcard leads the button row, still big enough to read */
 .kitty.down .up { transform: rotate(90deg) scale(.85); opacity: .8; }
 .eurow { display: flex; gap: 12px; align-items: center; justify-content: center; max-width: 420px; }
 .callpad { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 420px; }
@@ -183,12 +302,13 @@ html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline
 .btn.suit .sym { font-size: var(--fs-l); } .btn.suit .sH, .btn.suit .sD { color: var(--red); }
 .say { border-radius: 5px; padding: 8px 16px; font-weight: 700; text-align: center; color: var(--ink);
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--stock)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-2); }
-#peek { position: absolute; top: calc(var(--safe-t) + 64px); right: 12px; left: 12px; max-width: 420px; margin-left: auto; z-index: 6; }
+.seed { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: var(--fs-s); letter-spacing: .3px; }
+.seed > span { white-space: nowrap; }
 /* the turned trump card (Oh Hell, Whist), on the felt left of your seat plate */
 #trump { position: absolute; left: 12px; z-index: 3; }
 #trump:empty { display: none; }
 #trump .tt { display: grid; justify-items: center; gap: 2px; color: var(--cream); font-size: var(--fs-s); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-#trump .ttc { display: block; width: calc(var(--tcw) * .62); height: calc(var(--tcw) * .62 * 1.4); transform: rotate(-8deg); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+#trump .ttc { display: block; width: var(--tcw); height: calc(var(--tcw) * 1.4); transform: rotate(-4deg); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 #trump .ttc svg { width: 100%; height: 100%; }
 #trump .tt.none b { padding: 6px 10px; border: 1px dashed currentColor; border-radius: 6px; }
 #handoff { position: absolute; inset: 0; z-index: 8; display: grid; place-content: center; gap: 16px; text-align: center; padding: 24px; background: #3a2414; }
@@ -198,7 +318,9 @@ html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline
 .pad td, .pad th { padding: 6px 4px; border-bottom: 1px solid var(--rule); text-align: left; }
 .pad td.n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pad .neg { color: var(--red); }
-.seed { font-family: "Courier New", ui-monospace, monospace; font-size: var(--fs-s); letter-spacing: .5px; word-break: break-all; }
+.pad h1 { color: var(--ink); text-shadow: none; text-align: left; font: 700 calc(var(--fs-l) * 1.15) var(--serif); }
+.pad .goal { font-weight: 700; margin: 10px 0 0; }
+.pad td.place { width: 3em; color: var(--muted); font-weight: 700; }
 
 .dialog { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(20,12,6,.5); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .dialog .paper { max-width: 440px; width: 100%; }
@@ -208,7 +330,11 @@ html.comfort #seats .seat.s-me { display: flex; gap: 10px; align-items: baseline
 .hold { position: relative; overflow: hidden; }
 .hold i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(61,139,87,.35); }
 .bars { display: grid; gap: 4px; }
-.bars .b { display: grid; grid-template-columns: 5.5em 1fr 3.5em; gap: 8px; align-items: center; font-size: var(--fs-s); }
+.bars .b { display: grid; grid-template-columns: minmax(5.5em, 7.5em) 1fr 3.8em; gap: 8px; align-items: center; font-size: var(--fs-s); line-height: 1.2; }
+.bars .b > span:last-of-type { text-align: right; }
+/* the shaded band: where a fair deck lands 95% of the time for this many hands */
+.bars .t s { position: absolute; top: 0; bottom: 0; z-index: 1; text-decoration: none; background: repeating-linear-gradient(135deg, rgba(20,50,30,.38) 0 2px, transparent 2px 5px); }
+.bars .t u { z-index: 2; }
 .bars .t { height: 14px; background: #e6dbbd; border-radius: 7px; position: relative; overflow: hidden; }
 .bars .t i { position: absolute; left: 0; top: 0; bottom: 0; background: #3d8b57; border-radius: 7px; }
 .bars .t u { position: absolute; top: -2px; bottom: -2px; width: 3px; background: var(--ink); }
@@ -233,7 +359,7 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 .shelf { position: relative; display: flex; justify-content: center; align-items: flex-end; gap: 18px; padding: 8px 8px 0; min-height: 40px; }
 .shelf::after { content: ""; position: absolute; left: -16px; right: -16px; bottom: -14px; height: 16px; border-radius: 3px;
   background: linear-gradient(180deg, #c08a52, #8c5a31 40%, #3a2010); box-shadow: 0 8px 14px rgba(0,0,0,.4); }
-.shelf { margin-bottom: 4.4em; } /* room under the plank for the captions */
+.shelf { margin-bottom: 6em; } /* room under the plank for the captions and their plates */
 .shelf + .shelf { margin-top: 10px; }
 .box { position: relative; display: grid; justify-items: center; gap: 4px; width: min(44%, 170px); padding: 0; background: none; border: 0; min-height: var(--tap); }
 .box svg { width: 100%; height: auto; overflow: visible; }
@@ -242,7 +368,9 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 .box.open .lid, .box:active .lid { transform: rotate(-24deg) translate(-6px, -10px); }
 .box.open .peek { opacity: 1; transform: translateY(-6px); }
 .box:focus-visible { outline: 3px solid var(--brass); outline-offset: 4px; border-radius: 8px; }
-.boxcap { position: absolute; top: calc(100% + 20px); left: -10%; right: -10%; z-index: 1; color: var(--cream); font-size: var(--fs-s); text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-bottom: 4px; }
+.boxcap { position: absolute; top: calc(100% + 20px); left: -10%; right: -10%; z-index: 1; display: grid; justify-items: center; gap: 4px; color: var(--cream); font-size: var(--fs-s); text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); margin-bottom: 4px; }
+/* a little brass "Play ›" plate under each box, so a box reads as something to tap */
+.boxcap .play { padding: 1px 12px; border-radius: 5px; font-weight: 700; color: #3a2810; text-shadow: none; background: linear-gradient(180deg, #e8cf94, #c9a45c); border: 1px solid #6e5224; box-shadow: 0 2px 3px rgba(0,0,0,.4); }
 .box.soon { opacity: .95; }
 /* "Coming to the table": a row of smaller closed boxes under a brass plaque */
 .shelfsign { justify-self: center; margin: 0 auto -6px; padding: 4px 16px; border-radius: 6px; font-size: var(--fs); color: #3b2a1a;
@@ -262,35 +390,47 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
 .confetti span { position: absolute; left: 0; top: 0; width: 46px; }
 .confetti svg { width: 100%; filter: drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
-/* how to play: recipe cards */
+/* how to play: recipe cards, five short steps and a drawn trick */
+.steps { margin: 0 0 8px; padding-left: 1.4em; display: grid; gap: 6px; }
+.minitrick { --mw: 54px; position: relative; height: calc(var(--mw) * 3.1); margin: 6px auto 0; max-width: 260px; }
+.minitrick .card { position: absolute; left: calc(50% - var(--mw) / 2); top: calc(50% - var(--mw) * .7); width: var(--mw); height: calc(var(--mw) * 1.4); }
+.minitrick .p0 { transform: translate(calc(var(--mw) * -.75), 0) rotate(-4deg); } .minitrick .p1 { transform: translate(0, calc(var(--mw) * -.62)) rotate(3deg); }
+.minitrick .p2 { transform: translate(calc(var(--mw) * .75), 0) rotate(5deg); } .minitrick .p3 { transform: translate(0, calc(var(--mw) * .62)) rotate(-2deg); }
+.minitrick .win { z-index: 1; box-shadow: 0 0 0 3px var(--brass), var(--card-lift); }
+/* unlock: the boxes it opens */
+.uboxes { display: flex; justify-content: center; gap: 8px; margin: -4px 0 8px; } .ubox { width: min(22%, 90px); } .ubox svg { width: 100%; height: auto; } .ubox .peek { display: none; }
 .recipe h2 { border-bottom: 2px solid #d98585; padding-bottom: 6px; }
 .recipe .from { margin: 0; font: italic 400 var(--fs-s) var(--serif); color: #8a5a3a; }
-.recipe .serves { margin-top: -6px; font-size: var(--fs-s); color: #6a5f50; }
+html.comfort .recipe .from { color: var(--muted); }
+.recipe .serves { margin-top: -6px; font-size: var(--fs-s); color: var(--muted); }
 /* caregiver: a note held to the fridge with a magnet */
 .note { position: relative; transform: rotate(-.6deg); box-shadow: 0 8px 18px rgba(0,0,0,.18); }
 .note::before { content: ""; position: absolute; top: -12px; left: calc(50% - 18px); width: 36px; height: 24px; border-radius: 12px; background: radial-gradient(circle at 40% 35%, #f08a7a, #c0392b); box-shadow: 0 3px 6px rgba(0,0,0,.3); }
-/* the fair-deal ledger: green-ruled bookkeeping paper */
-.ledger .paper { background-image: repeating-linear-gradient(180deg, transparent 0 27px, rgba(47,122,79,.18) 27px 28px), linear-gradient(var(--paper), var(--paper)); }
+/* the fair-deal ledger: green-ruled bookkeeping paper, ruled only under the bar charts (rules through text lines read as strike-throughs) */
+.ledger .bars { gap: 0; } .ledger .bars .b { min-height: 30px; border-bottom: 1px solid rgba(47,122,79,.22); }
 /* the leaderboard: index cards pinned to cork */
 .pins { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .pin { position: relative; transform: rotate(var(--tilt, 0deg)); padding: 22px 14px 14px; border-radius: 4px; }
 .pin::before { content: ""; position: absolute; top: 6px; left: calc(50% - 7px); width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff9a8a, #b03a2e 60%, #6a1c14); box-shadow: 0 2px 3px rgba(0,0,0,.4); }
 .pin h3 { font-size: var(--fs); margin: 0 0 4px; } .pin .best { margin: 0; font: 600 calc(var(--fs-l) * 1.1) var(--serif); color: #2a5596; }
 .pin.small { font-size: var(--fs-s); margin: 0; }
+.pin .none { margin: 2px 0 4px; font: italic 400 var(--fs-s) var(--serif); color: var(--muted); }
 .minirib { position: absolute; right: -6px; top: -14px; width: 44px; }
-.corknote { color: #3a2a1c; text-align: center; }
+.corknote { color: var(--ink); text-align: center; margin: 0; }
+.btn.ghost.ink { color: var(--ink); text-shadow: none; background: transparent; border-color: var(--stock-edge); box-shadow: none; }
+.backfan .showall { align-self: center; }
 #boards .btn.ghost, #caregiver .btn.ghost { background: var(--paper); color: var(--ink); }
 /* title: the aces deal themselves in; tap one to flip it */
 .ace { position: relative; display: block; width: var(--cw); height: calc(var(--cw) * 1.4); margin: 0 calc(var(--cw) * -.32); transform-origin: 50% 120%; cursor: pointer;
   animation: dealin calc(.6s * var(--speed)) cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i) * 90ms); }
-.ace > span { position: absolute; inset: 0; border-radius: 9px; box-shadow: 0 4px 10px rgba(0,0,0,.3); }
+.ace > span { position: absolute; inset: 0; border-radius: var(--card-r); box-shadow: var(--card-lift); }
 .ace svg { width: 100%; height: 100%; display: block; }
 .ace .back, .ace.flipped .face { display: none; } .ace.flipped .back { display: block; }
 @keyframes dealin { from { opacity: 0; translate: 0 60px; } to { opacity: 1; translate: 0 0; } }
 .steam { animation: steam 3.2s ease-in-out infinite; transform-box: fill-box; } .steam.s2 { animation-delay: 1.1s; }
 @keyframes steam { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
 @media (prefers-reduced-motion: reduce) {
-  .ace, .stamp, .ribbon, .steam { animation: none !important; }
+  .ace, .stamp, .ribbon, .steam, #hand .card.hint { animation: none !important; }
   .box .lid, .box .peek { transition: none !important; }
 }
 
@@ -298,8 +438,8 @@ h1.dark { color: #3a2a1c; text-shadow: none; }
 .backfan { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px 10px; padding: 22px 0 6px; } /* every back in view: no hidden sideways scroll */
 .backpick { flex: none; width: 72px; display: grid; gap: 6px; justify-items: center; padding: 0; border: 0; background: none; scroll-snap-align: center;
   transform: rotate(calc((var(--i) % 2 * 2 - 1) * 3deg)); transition: transform .2s; min-height: var(--tap); }
-.backpick svg { width: 72px; height: auto; display: block; border-radius: 8px; box-shadow: var(--lift-2); }
-.backpick small { font-size: calc(var(--fs-s) * .9); color: #5a4a38; text-align: center; line-height: 1.15; }
+.backpick svg { width: 72px; height: auto; display: block; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
+.backpick small { font-size: var(--fs-s); color: var(--muted); text-align: center; line-height: 1.15; }
 .backpick.on { transform: translateY(-16px) rotate(0); }
 .backpick.on svg { outline: 3px solid var(--brass); outline-offset: 3px; }
 .backpick:focus-visible svg { outline: 3px solid var(--brass-d); outline-offset: 3px; }

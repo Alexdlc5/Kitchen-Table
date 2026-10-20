@@ -63,12 +63,11 @@ export function play(v, K = know(v)) {
   const follow = (cs) => cs.filter((c) => c[1] === T.led), side = (cs) => cs.filter((c) => c[1] !== v.trump);
   const low = (cs) => { const f = follow(cs); return f.length ? lowest(f, K) : lowest(side(cs).length ? side(cs) : cs, K); };
 
-  if (T.winSeat === p) { // partner has it: stay out of the way unless partner's card can still be beaten and mine can't
-    if (T.last || K.boss(T.winCard) || !losers.length) return R(losers.length ? low(losers) : lowest(legal, K), "duck_partner_winning");
-    const mine = follow(winners).filter(K.boss);
-    if (mine.length) return R(lowest(mine, K), "third_hand_high");
-    return R(low(losers), "duck_partner_winning");
-  }
+  // partner has it: stay out of the way only if partner's card is safe (boss, I'm last, or the last player can't beat it);
+  // otherwise play as if an opponent were winning: third hand high, or ruff low
+  const after = (v.seat + 1) % 4;
+  if (T.winSeat === p && (T.last || K.boss(T.winCard) || (K.voids[after].has(T.led) && (T.led === v.trump || K.voids[after].has(v.trump)))))
+    return R(losers.length ? low(losers) : lowest(legal, K), "duck_partner_winning");
   if (pos === 1) { // second hand low, but cover an honour with an honour
     const led = v.trick[0].card;
     if (K.pow(led) >= 11 && K.pow(led) <= 13 && follow(winners).length) return R(lowest(follow(winners), K), "cover_honour");
@@ -111,6 +110,9 @@ export function sins(v, action) {
 
 const outcome = (st, seat) => { const t = seat % 2; return st.tricks[t] + st.tricks[t + 2] - st.tricks[1 - t] - st.tricks[3 - t]; };
 
+// what the lookahead may try: no sins, and partner's suit is never led into a known ruff (§7 W02: a manner, not a sin)
+const manners = (v, c) => (!v.trick.length && c[1] === partnerSuit(v) && ruffable(v, know(v), c[1]) ? ["into_ruff"] : sins(v, c));
+
 export function decide(v, level, rng, tune) {
   const easy = level === "easy", K = know(v, easy ? tune.easyMemory : Infinity), legal = legalFor(v);
   let d = play(v, K);
@@ -120,7 +122,7 @@ export function decide(v, level, rng, tune) {
   }
   if (level === "expert" || level === "extreme") {
     const x = level === "extreme", pinned = v.seat === v.dealer ? [] : [{ seat: v.dealer, card: v.trumpCard }];
-    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, policy: play, outcome, sins, pinned }); // Extreme: more samples
+    d = lookahead(v, d, rng, { K: know(v), engine: whist, n: x ? tune.extremeSamples : tune.expertSamples, more: x ? tune.extremeMore ?? 200 : 0, policy: play, outcome, sins: manners, pinned }); // Extreme: more samples, spent on the two best cards
   }
   if (sins(v, d.action).length) {
     const clean = legal.filter((c) => !sins(v, c).length);

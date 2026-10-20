@@ -18,11 +18,22 @@ export const PIP = {
 const pip = (s, x, y, size, col) => `<path d="${PIP[s]}" fill="${col}" transform="translate(${x - size / 2} ${y - size / 2}) scale(${size / 100})"/>`;
 const label = (c) => (c[0] === "T" ? "10" : c[0]);
 
+// The card stock, 100 x 140, lit by the lamp from the top left: the bottom-right half of its rim falls into shade, with a
+// hairline of shadow just inside, so a card reads as a card with thickness. The halves meet at the corners' 45-degree points,
+// as light falls on a real card. light: an optional lit top-left half, for backs only; a face keeps its plain rim on the left,
+// which is the edge that tells one card from the next in a fanned hand (and where crisp.mjs measures). Edges only: the face
+// stays pure colour (TABLE.md rule 1). One group, first in the svg, which check-cards.mjs counts as the stock.
+const RIM = { lit: "M3.64 136.36A9 9 0 0 1 1 130V10A9 9 0 0 1 10 1H90A9 9 0 0 1 96.36 3.64", shade: "M96.36 3.64A9 9 0 0 1 99 10V130A9 9 0 0 1 90 139H10A9 9 0 0 1 3.64 136.36",
+  inner: "M95.16 4.84A7.3 7.3 0 0 1 97.3 10V130A7.3 7.3 0 0 1 90 137.3H10A7.3 7.3 0 0 1 4.84 135.16" };
+export const stock = (fill, edge = "#c9bfa8", dark = "#ab9d7e", light = null) => `<g><rect x="1" y="1" width="98" height="138" rx="9" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>` +
+  (light ? `<path d="${RIM.lit}" fill="none" stroke="${light}" stroke-width="1.5"/>` : "") +
+  `<path d="${RIM.shade}" fill="none" stroke="${dark}" stroke-width="1.5"/><path d="${RIM.inner}" fill="none" stroke="#6b5a3c" stroke-opacity=".12" stroke-width="1.1"/></g>`;
+
 // face: 100 x 140. Big corner index (rank over suit) for reading at a glance. Everything else stays in the clear centre
 // column (x 32-68) between the two indices, so nothing ever sits on a rank or suit (scripts/check-cards.mjs)
 export function face(c, { four = false } = {}) {
   const W = 100, H = 140, cream = "#fffdf7";
-  const base = `<rect x="1" y="1" width="98" height="138" rx="9" fill="${cream}" stroke="#c9bfa8" stroke-width="1.5"/>`;
+  const base = stock(cream);
   if (c === "BJ" || c === "LJ") {
     const col = c === "BJ" ? "#d0182f" : "#16181d", star = curve(ring(50, 70, 26, 26, 10, 0, 3).map(([x, y], i) => (i % 2 ? [50 + (x - 50) * 0.45, 70 + (y - 70) * 0.45] : [x, y])));
     return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${base}<path d="${star}" fill="${col}"/>` +
@@ -47,11 +58,10 @@ export function face(c, { four = false } = {}) {
 
 // the title's still life around the four aces: a teacup on its saucer, cookies on a plate, a score pad and pencil.
 // Painted like everything else (tinted shadow side, warm light from the top left, a soft contact shadow under each prop).
-export function titleProps() {
-  const shade = (x, y, rx, ry) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#1a0c04" opacity=".32" filter="url(#tpBlur)"/>`;
-  const china = "#f7f1e6", rim = "#c9a45c";
-  // teacup and saucer (left)
-  const cup = shade(70, 178, 58, 12) +
+const shade = (x, y, rx, ry) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#1a0c04" opacity=".32" filter="url(#tpBlur)"/>`;
+const china = "#f7f1e6", rim = "#c9a45c";
+// a teacup on its saucer, centred on (70, 140); needs the #tpBlur filter in its svg
+const teacup = () => shade(70, 178, 58, 12) +
     shape(curve(ring(70, 168, 56, 14, 18, 0.02, 4)), china, mix(china, "#5a3a20", 0.35)) +
     `<ellipse cx="70" cy="166" rx="44" ry="9" fill="none" stroke="${rim}" stroke-width="1.6" opacity=".9"/>` +
     shape(curve([[34, 118], [106, 118], [100, 150], [86, 164], [54, 164], [40, 150]]), china, mix(china, "#5a3a20", 0.35)) +
@@ -59,7 +69,18 @@ export function titleProps() {
     `<path d="M105 128 C121 127 122 148 102 150" fill="none" stroke="${china}" stroke-width="4" stroke-linecap="round"/>` +
     `<ellipse cx="70" cy="118" rx="36" ry="8" fill="#6b3f22"/><ellipse cx="66" cy="117" rx="20" ry="3" fill="#8a5a34" opacity=".7"/>` +
     `<path d="M36 118 L104 118" stroke="${rim}" stroke-width="2"/><path d="M42 140 C60 146 82 146 98 140" stroke="${rim}" stroke-width="1.4" fill="none" opacity=".8"/>` +
-    `<g class="steam">` + stroke(60, 104, -1.75, 26, 2.2, "#fff", 0.35, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 22, 1.8, "#fff", 0.28, -0.4) + `</g>`;
+    `<g class="steam">` + stroke(60, 104, -1.75, 28, 2.4, "#fff", 0.5, 0.35) + `</g><g class="steam s2">` + stroke(78, 102, -1.4, 24, 2, "#fff", 0.4, -0.4) + `</g>`;
+const blur = `<defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>`;
+// the one prop on the table (TABLE.md rule 4): a cup of tea at the edge, out of the way of every card and plate
+export const tableProp = () => `<svg viewBox="0 90 140 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur.replace("tpBlur", "tpBlur2")}${teacup().replaceAll("url(#tpBlur)", "url(#tpBlur2)")}</svg>`;
+
+export function titleProps() {
+  const cup = teacup();
+  // a teaspoon resting on the saucer, bowl toward the cup: polished silver, lit from the top left
+  const silver = "#d9dde2", spoon = `<path d="M8 166 C18 163 28 161 36 160" stroke="${mix(silver, "#3a3a3a", 0.45)}" stroke-width="3.6" stroke-linecap="round" fill="none"/>` +
+    `<path d="M8 166 C18 163 28 161 36 160" stroke="${silver}" stroke-width="2.2" stroke-linecap="round" fill="none"/>` +
+    `<ellipse cx="42" cy="159" rx="7.5" ry="4.2" transform="rotate(-8 42 159)" fill="${silver}" stroke="${mix(silver, "#3a3a3a", 0.45)}" stroke-width="1"/>` +
+    `<ellipse cx="40.5" cy="158" rx="3.2" ry="1.4" transform="rotate(-8 40.5 158)" fill="#fff" opacity=".8"/>`;
   // cookies on a plate (right)
   const r = rng(5);
   let cookies = "";
@@ -76,5 +97,6 @@ export function titleProps() {
     `<text x="152" y="212" font-family="Alegreya, Georgia, serif" font-style="italic" font-size="9" fill="#5a4a3a" transform="rotate(-1.5 152 212)">Us 320 · Them 285</text>` +
     shape(curve([[168, 236], [292, 214], [296, 220], [172, 242]]), "#e2b24a", "#8a6420") + `<path d="M292 214 L306 214 L296 220Z" fill="#e8c9a0"/><path d="M302 214 L306 214 L303 216Z" fill="#3a3a3a"/>` +
     `<path d="M168 236 L160 238 L164 244 L172 242Z" fill="#d98a9a"/>`;
-  return `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><filter id="tpBlur" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>${cup}${plate}${pad}</svg>`;
+  // the cup and the plate sit out past the fan's corners, so no card ever hides them (nothing important under a card)
+  return `<svg viewBox="-16 0 432 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${blur}<g transform="translate(-14 4)">${cup}${spoon}</g><g transform="translate(14 4)">${plate}</g>${pad}</svg>`;
 }

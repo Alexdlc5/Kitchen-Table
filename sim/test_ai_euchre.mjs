@@ -23,8 +23,8 @@ function ev({ preset = "standard", custom, hand, phase = "play", dealer = 3, up 
     calls: calls ?? (bidding ? [] : [{ seat: maker, round: 1, call: "order", alone }]), trick: tr, tricks, history: hist, totals };
 }
 
-function sc(id, what, view, check) {
-  for (const level of LEVELS) {
+function sc(id, what, view, check, levels = LEVELS) {
+  for (const level of levels) {
     for (let k = 0; k < (level === "easy" ? 12 : 1); k++) {
       const d = decide(structuredClone(view), level, rng, { ...cfg.ai, expertSamples: 12, extremeSamples: 16 });
       assert.deepEqual(sins(view, d.action), [], `${id} ${level}: ${JSON.stringify(d)} commits a sin`);
@@ -48,7 +48,20 @@ sc("E04", "stuck dealer: must call, and names a suit (never alone)", ev({ preset
 sc("E05", "partner and both opponents out of trump: keep my last trump, lead the side card", ev({ maker: 0, hand: "9S 9H KD QC", history: ["0:JS 1:9C 2:9D 3:TC"] }), (c) => c !== "9S");
 sc("E05", "defending: no trump lead to bleed them", ev({ maker: 3, dealer: 2, hand: "9S TS QH KD 9C" }), (c) => !trumpS(c));
 sc("E06", "partner's trump wins and the last opponent is out of trump: no overtrump", ev({ maker: 2, dealer: 3, hand: "AS TS 9H KC", history: ["2:JS 3:KS 0:JC 1:9D"], trick: "2:QS 3:9S" }), (c) => c === "TS");
-sc("E07", "never alone without four sure tricks", ev({ phase: "bid1", up: "QS", hand: "JS AS KS 9H 9D" }), (a) => !a.alone);
+sc("E07", "no reckless loner: the right, ace and king of trump but no off ace and only three trumps", ev({ phase: "bid1", up: "QS", hand: "JS AS KS 9H 9D" }), (a) => !a.alone);
+// AI-E2 (review 2): a classic loner without the left bower goes alone (alone +3.31 a hand, with partner +1.77)
+sc("E07", "J♠ A♠ K♠ Q♠ A♥ in round two goes alone", ev({ phase: "bid2", up: "9D", hand: "JS AS KS QS AH", calls: [0, 1, 2, 3].map((s) => ({ seat: s, round: 1, call: "pass", alone: false })) }),
+  (a) => a.call === "S" && a.alone);
+sc("E07", "five trumps with the right bower go alone (J♠ Q♠ T♠ 9♠ J♣)", ev({ phase: "bid2", up: "9D", hand: "JS QS TS 9S JC", calls: [0, 1, 2, 3].map((s) => ({ seat: s, round: 1, call: "pass", alone: false })) }),
+  (a) => a.call === "S" && a.alone);
+{ // J♠ J♣ K♠ Q♠ K♥: not reckless (Extreme may go alone on it), but Standard keeps a hand with a loser for its partner
+  const v = ev({ phase: "bid2", up: "9D", hand: "JS JC KS QS KH", calls: [0, 1, 2, 3].map((s) => ({ seat: s, round: 1, call: "pass", alone: false })) });
+  assert.deepEqual(sins(v, { call: "S", alone: true }), [], "E07 allows it");
+  sc("E07", "four top trumps and the K♥: call spades, alone is allowed", v, (a) => a.call === "S");
+}
+// AI-E1 (review 2): trumping in, the 9 of trump wins as well as the right bower, which stays a sure trick for later
+sc("AI-E1", "trumping in: the lowest trump that wins, keep the right bower", ev({ maker: 3, trump: "C", up: "AC", hand: "JC TD QD 9C", trick: "2:TH 3:AH", history: ["0:9S 1:KS 2:QC 3:AS"] }),
+  (c) => c === "9C", ["standard", "expert", "extreme"]); // Easy may slip to the bower: a human mistake, not a sin
 sc("E07", "both bowers, the ace and king of trump and an off ace: go alone (never 'never alone')", ev({ phase: "bid1", up: "9S", hand: "JS JC AS KS AH" }), (a) => a.call === "order" && a.alone);
 sc("E07", "Canadian loner: the dealer's partner with an assist hand passes rather than a reckless loner", ev({ phase: "bid1", custom: { canadianLoner: true }, dealer: 2, up: "9S", hand: "QS KS AH 9D TC", calls: [{ seat: 3, round: 1, call: "pass", alone: false }] }), (a) => a.call === "pass");
 sc("E09", "farmer's hand: swap three, keep the upcard's suit", ev({ preset: "kitchen", phase: "farmer", up: "QH", hand: "9H TH 9C TC 9S" }), (a) => a.swap && !a.swap.includes("9H") && !a.swap.includes("TH"));

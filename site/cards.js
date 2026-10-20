@@ -1,6 +1,6 @@
 // Cards are two-letter strings: rank (2-9 T J Q K A) + suit (S H D C). Jokers: "BJ" (big), "LJ" (little).
 // Shared table mechanics for every trick-taking game; pure, no state.
-import { deal } from "./dealer.js";
+import { deal, encode, seedBytes, sha256 } from "./dealer.js";
 
 export const SUITS = "SHDC", RANKS = "23456789TJQKA";
 export const rankOf = (c) => RANKS.indexOf(c[0]) + 2; // 2..14 (jokers: 1, games give them their own power)
@@ -14,14 +14,21 @@ export function newDeck(jokers = false) {
   return jokers ? d.filter((c) => c !== "2C" && c !== "2H").concat(["LJ", "BJ"]) : d;
 }
 
-// The cut, as at a real table: the shuffled deck's top `cut` cards go to the bottom (0 = no cut). Then `size` cards
-// each, round-robin from the dealer's left; `rest` is what's left in order (Euchre's kitty, Oh Hell's trump card).
-// Nothing but the seed and the cut decides who gets what.
+// The cut is mixed into the shuffle: cut c (1 or more) shuffles from the first 16 bytes of SHA-256(the seed's 16 bytes,
+// then the byte c), so every cut is an unrelated deal. Cut 0 (no cut) shuffles from the seed itself.
+export function cutSeed(seed, cut) {
+  if (!cut) return seed;
+  const h = sha256(Uint8Array.of(...seedBytes(seed), cut));
+  return encode([0, 8, 16, 24].map((i) => parseInt(h.slice(i, i + 8), 16)));
+}
+
+// `size` cards each, round-robin from the dealer's left; `rest` is what's left in order (Euchre's kitty, Oh Hell's
+// trump card). Nothing but the seed and the cut decides who gets what.
 export function dealOut(seed, dealer, deck, size, cut = 0) {
   if (!Number.isInteger(cut) || cut < 0 || cut >= deck.length) throw new Error(`A cut is 0 to ${deck.length - 1} cards`);
-  const p = deal(seed, deck.length), order = p.slice(cut).concat(p.slice(0, cut)), hands = [[], [], [], []];
-  order.slice(0, 4 * size).forEach((ci, k) => hands[(dealer + 1 + k) % 4].push(deck[ci]));
-  return { hands, rest: order.slice(4 * size).map((ci) => deck[ci]) };
+  const p = deal(cutSeed(seed, cut), deck.length), hands = [[], [], [], []];
+  p.slice(0, 4 * size).forEach((ci, k) => hands[(dealer + 1 + k) % 4].push(deck[ci]));
+  return { hands, rest: p.slice(4 * size).map((ci) => deck[ci]) };
 }
 
 // the whole deck, 13 cards each
