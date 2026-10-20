@@ -72,19 +72,25 @@ a fixed style; the player can swap partners ("can't get a new partner" was a com
 | H07 | **Breaks hearts / plays points on trick 1 illegally.** | Engine legality tests per preset. |
 | H08 | **Wrong moon/Jack of Diamonds scoring.** | `test_rules` scoring table (moon both modes, J♦ on/off, 100/150 end, ties). |
 
-## 5. Euchre sins (v1.1; specified now so the sim and tests exist before the UI)
+## 5. Euchre sins (v1.1)
+
+Bots: `proto/ai-euchre.js` (dispatched from `ai.decide()`/`sins()`/`know()`), same four levels: Easy calls from a
+noisy hand count, forgets old tricks and slips a card; Standard counts every card and the upcard's whereabouts;
+Expert and Extreme sample the hidden hands (the dealer holds a picked-up upcard until it's played; the rest is the
+kitty) and play each card out; Extreme keeps only deals that fit every call and pass. Predicates are in `sins()`;
+scenarios in `sim/test_ai_euchre.mjs`, every level (Easy 12 times).
 
 | ID | Sin | Scenario test |
 |---|---|---|
-| E01 | **Leads the right when the other team called trump.** (PROPOSAL; r/euchre) | Defending and on lead → don't lead the right bower / trump unless holding 3+ trump including both bowers. |
+| E01 | **Leads the right when the other team called trump.** (PROPOSAL; r/euchre) | Defending and on lead → don't lead the right bower / trump unless holding 3+ trump including both bowers (or only trump is left). |
 | E02 | **Trumps a trick partner is winning when last.** "Partner trumping tricks when they were the last player and I had won it." "He will be last to lay on a trick that I am winning, throw trump on it." | Last to play, partner winning → lowest card, never trump. |
-| E03 | **Leads a low trump into partner's call.** "I will call something and he will lead with the 10 of trump, totally taking control away from me." | Partner is maker and AI leads: lead an off-suit ace or the right bower; never a 9/10 of trump. |
-| E04 | **Calls trump on nothing.** "My 'partner' calls trump on less than nothing and we often get euchred." "Terrible calls." | Never order up / call with ≤ 1 trump and no bower (stick-the-dealer forced call excepted). Sim: maker euchre rate ≤ 20% (Standard). |
-| E05 | **Bleeds trump regardless.** "Your AI partner's sole objective is to bleed trump, whether it makes sense or not." | Don't lead trump when defending, or when partner is known out of trump and we hold the last trump. |
-| E06 | **Over-trumped by partner.** "Over trumped by the partner multiple times a game." | Same as S04 for Euchre. |
-| E07 | **Goes alone recklessly / never alone.** | Alone only with ≥ 4 sure tricks (both bowers + ace, etc.); sim: loner success ≥ 60%. |
+| E03 | **Leads a low trump into partner's call.** "I will call something and he will lead with the 10 of trump, totally taking control away from me." | Partner is maker and AI leads: holding the right bower or an off-suit ace, lead one of them; otherwise never a 9/10 of trump. |
+| E04 | **Calls trump on nothing.** "My 'partner' calls trump on less than nothing and we often get euchred." "Terrible calls." | Never order up / call with ≤ 1 trump and no bower (the dealer counts the upcard; stick-the-dealer forced call excepted). Sim: maker euchre rate ≤ 20% (Standard). |
+| E05 | **Bleeds trump regardless.** "Your AI partner's sole objective is to bleed trump, whether it makes sense or not." | Don't lead trump when defending (E01), or, on the making side, when partner is out of trump (or sitting out) and the opponents have none left, while a losing side card could be led instead. |
+| E06 | **Over-trumped by partner.** "Over trumped by the partner multiple times a game." | Same as S04 for Euchre: partner's trump is winning and every opponent still to play is known out of trump → never play a higher trump. |
+| E07 | **Goes alone recklessly / never alone.** | Alone only with ≥ 4 sure tricks (the unbroken run of top trump, every trump if that run outlasts the trump still out, plus off aces; the dealer counts the hand after picking up); a hand with both bowers, A K of trump and an off ace goes alone at every level; under Canadian loner an assist-only hand passes. Sim: loner success (all five tricks) ≥ 60%. |
 | E08 | **Signals with hidden information.** "Seem to know exactly when to throw off because their partner has the winning card." | §1.1 view test. |
-| E09 | **Farmer's hand / stick the dealer applied wrongly.** | Engine tests per preset. |
+| E09 | **Farmer's hand / stick the dealer applied wrongly.** | Engine tests per preset (`sim/test_euchre.mjs`: stick the dealer, Canadian loner, farmer's hand, defend alone, loner's left leads, 5,000 random hands per preset); a bot with a farmer's hand swaps three and keeps the upcard's suit. |
 
 ## 6. Oh Hell sins (v1.1)
 
@@ -147,7 +153,7 @@ decision of every seat (bots and a random-legal "human"); the game runs it on bo
 
 ## 10. Sim report (filled in `docs/RELEASE_REVIEW.md`)
 
-`node sim/sim.mjs --game spades --hands 100000 --level easy|standard|expert` (and hearts, and euchre once it exists),
+`node sim/sim.mjs --game spades --hands 100000 --level easy|standard|expert` (and hearts, and euchre),
 each preset, partner and opponents at the same level, plus "Expert partner vs Standard opponents" and "Easy partner vs
 Expert opponents":
 
@@ -159,6 +165,9 @@ Expert opponents":
 | Bags per hand | per team | ≤ 1.5 |
 | Moon rate (Hearts) | hands where someone shot the moon | 1-4% |
 | Moon stops | runs where one seat holds every point taken so far, at least 10, after trick 6, that end without a moon | ≥ 60% |
+| Maker euchre rate (Euchre) | calls where the makers took 2 tricks or fewer | ≤ 20% |
+| Loner success (Euchre) | loners that took all five tricks | ≥ 60% |
+| Also reported (Euchre) | hands with a maker, thrown in, round-two calls, dealer stuck, marches, points per call, loners per 100 hands | — |
 | Partner-blame events | §9 detector firings | 0 |
 | Level ladder | win rate of Extreme vs Expert, Expert vs Standard, Standard vs Easy | ≥ 58% each (Extreme vs Expert: > 50%) |
 | Fairness | win rate per seat with equal levels | 50% ± 1 pt |

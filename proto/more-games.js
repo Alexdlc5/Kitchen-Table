@@ -36,7 +36,7 @@ export function handIntro(game, st, names) {
 
 // the turned card, on the felt by your hand for the whole hand
 export function trumpTile(st, svgFor, names) {
-  if (st.trump === undefined) return "";
+  if (!NAMES[st.game]) return ""; // Euchre names its trump in the score chip
   if (!st.trump) return `<div class="tt none" role="img" aria-label="No trump this hand"><b>No trump</b></div>`;
   const held = st.game === "whist" && st.hands[st.dealer].includes(st.trumpCard) ? `; ${names[st.dealer]} holds it` : "";
   return `<div class="tt" role="img" aria-label="Trump is ${suitWord(st.trump)}. The ${cardName(st.trumpCard)} was turned${held}."><span class="ttc">${svgFor(st.trumpCard)}</span><b>Trump</b></div>`;

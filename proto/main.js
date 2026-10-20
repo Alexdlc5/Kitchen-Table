@@ -3,9 +3,10 @@
 import { platform, track, setTelemetry } from "./platform.js";
 import { LANGS, CHOSEN } from "./i18n.js";
 import { newSeed } from "./dealer.js";
-import { rulesFor, team, partner, newDeck } from "./cards.js";
+import { rulesFor, team, partner, newDeck, SUITS } from "./cards.js";
 import * as spades from "./spades.js";
 import * as hearts from "./hearts.js";
+import * as euchre from "./euchre.js";
 import * as ohhell from "./ohhell.js";
 import * as whist from "./whist.js";
 import * as more from "./more-games.js";
@@ -18,10 +19,11 @@ import { sound } from "./sound.js";
 import { joinTable } from "./family.js";
 
 const cfg = await (await fetch("../sim/generator.json", { cache: "no-cache" })).json();
-const BRAND = cfg.brand.name, MOD = { spades, hearts, ohhell, whist }, qs = new URLSearchParams(location.search), DEBUG = qs.has("debug");
+const BRAND = cfg.brand.name, MOD = { spades, hearts, euchre, ohhell, whist }, qs = new URLSearchParams(location.search), DEBUG = qs.has("debug");
 const GAME_NAME = { hearts: "Hearts", spades: "Spades", euchre: "Euchre", ...more.NAMES };
 const LEVEL_NAME = { easy: "Easy", standard: "Standard", expert: "Expert", extreme: "Extreme" };
 const PRESET_NAME = { standard: "Standard", kitchen: "Kitchen table", tournament: "Tournament", custom: "Custom" };
+const TEAMS = (g) => !!cfg.games[g]?.teams; // partners across the table (Spades, Euchre, Whist)
 const BOTS = { easy: ["Dot", "Gus", "Pearl"], standard: ["June", "Earl", "Rosa"], expert: ["Mabel", "Walt", "Hank"], extreme: ["Vera", "Otis", "Dell"] };
 
 // ---------------------------------------------------------------- the save (on this device only; mirrored to Preferences)
@@ -31,12 +33,14 @@ const fresh = () => ({
   opt: { sound: true, loud: false, haptics: true, comfort: false, four: false, confirm: false, speed: "normal", lang: CHOSEN, analytics: null,
     theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1 },
   last: { game: "hearts", preset: "standard", custom: {}, partner: "standard", opps: "standard", seats: ["you", "bot", "bot", "bot"] },
-  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades"], straight: false },
+  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades", "euchre"], straight: false, euchre: 1 },
 });
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); if (S.reset !== RESET) S = fresh(); } catch { S = fresh(); }
 const F = fresh();
+const seenEuchre = S.care?.euchre; // Euchre arrives on the shelf once; a caregiver may hide it after that
 S = { ...F, ...S, opt: { ...F.opt, ...S.opt }, last: { ...F.last, ...S.last }, care: { ...F.care, ...S.care } };
+if (!seenEuchre && !S.care.games.includes("euchre")) S.care.games.push("euchre");
 if (!S.care.moreGames) S.care = { ...S.care, moreGames: 1, games: [...new Set([...S.care.games, "ohhell", "whist"])] }; // saves from before Oh Hell and Whist
 function save() { const j = JSON.stringify(S); try { localStorage.setItem(KEY, j); } catch {} platform.backup(KEY, j); }
 
@@ -47,7 +51,6 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const css = (v) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v));
 const speed = () => (qs.has("fast") ? 0.02 : S.opt.comfort ? 1.7 : { relaxed: 1.7, normal: 1, fast: 0.5 }[S.opt.speed] || 1); // ?fast: tests only
 const owns = (game) => cfg.games[game]?.free || platform.owns("everything");
-const TEAMS = (game) => !!cfg.games[game]?.teams; // partners sit across
 const toggle = (act, on, label) => `<div class="row"><span>${label}</span><button class="toggle" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"></button></div>`;
 let screen = null;
 function show(id) {
@@ -118,6 +121,14 @@ const WHY = {
   take_clean_trick_high: "No points in it, so I won it with a high card.", forced_win: "I had to win it.", first_trick_high: "No points on the first trick, so I threw a high club.",
   discard_queen: "I was out of the suit: the queen of spades went.", discard_high_spade: "I got rid of a big spade while the queen is out.", discard_heart: "I was out of the suit: a heart went.",
   discard_high: "I threw away a high card.", expert_lookahead: "I played it out a few ways and this came out best.", easy_slip: "Hmm, maybe not my best card.",
+  // Euchre
+  order_strength: "I had enough trump to order it up.", call_strength: "That suit was my best: I called it.", stuck_dealer: "I was stuck, so I named my best suit.",
+  pass_weak: "Not enough trump to call.", pass_canadian: "Ordering you up would have meant going alone; my hand wasn't strong enough.", alone_sure_tricks: "I could count five tricks myself, so I went alone.",
+  discard_short: "I threw away my weakest card, to be short in a suit.", farmer_swap: "Nines and tens only: I swapped three with the kitty.",
+  defend_alone: "I could stop their loner on my own.", defend_together: "I played it with you.", pull_trump_boss: "I led the best trump left to pull theirs.",
+  pull_trump: "I led trump to pull theirs.", lead_off_ace: "I led an ace.", lead_low_off: "I led low in a side suit.", lead_trump_only: "I had nothing but trump left.",
+  lead_right_for_partner: "You called it, so I led the right bower to help.", lead_right_strong: "I held both bowers, so I led the right.", secure_trick: "I made sure we kept that trick.",
+  trump_in: "I was out of that suit, so I trumped.",
 };
 
 // ---------------------------------------------------------------- title, picker, setup
@@ -209,10 +220,11 @@ function startHand() {
   S.cur = G; save();
   sound.shuffle();
   G.justDealt = true;
-  announce(`Hand ${G.handNo + 1}. New cards are dealt. ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}`, { interrupt: true });
+  announce(`Hand ${G.handNo + 1}. New cards are dealt.${G.game === "euchre" ? ` ${G.seats[G.st.dealer].name} deals; the upcard is the ${cardName(G.st.up)}.` : ""} ${more.handIntro(G.game, G.st, G.seats.map((x) => x.name))}`, { interrupt: true });
   run();
 }
 function recordDeal(hand, game, rules) { // the stats screen's last 1,000 deals (seat 0 only, as dealt)
+  if (game === "euchre") return; // the ledger compares 13-card hands with a full deck; five from twenty-four would skew it
   const j = game === "spades" && rules.jokers, E = (c) => spades.eff(c, j);
   const len = "SHDC".split("").map((s) => hand.filter((c) => (game === "spades" ? E(c) : c[1]) === s).length);
   S.deals.push({ g: game[0], j: j ? 1 : 0, hc: hand.filter((c) => "AKQJ".includes(c[0])).length, sh: [...len].sort((a, b) => b - a).join(""), sp: len[0],
@@ -250,6 +262,7 @@ async function run() {
     m.apply(st, action);
     if (net) await net.applied(st, s, action);
     if (phase === "bid") announce(`${seat.name} ${seat.kind === "human" && s === 0 ? "bid" : "bids"} ${action.blind ? "blind nil" : action.bid === 0 ? (G.game === "spades" ? "nil" : "zero") : action.bid}.${more.bidsDone(G.game, st)}`);
+    if (G.game === "euchre" && phase !== "play") euchreSay(s, action, phase);
     if (phase === "pass" && st.phase === "play") announce(`Cards passed. You received ${(st.received[G.viewer] || []).map(cardName).join(", ")}.`);
     if (st.history.length > before) await played(s, action);
     else drawTable();
@@ -304,12 +317,12 @@ const offset = (p, k = 0.62) => { const cw = css("--tcw"); return [[0, cw * k * 
 
 function drawTable(justPlayed = -1) {
   if (!G) return;
-  const st = G.st, m = MOD[G.game], me = G.viewer, isSp = G.game === "spades";
+  const st = G.st, m = MOD[G.game], me = G.viewer, isSp = G.game === "spades", isEu = G.game === "euchre";
   // seats
   const plate = (s) => {
     const p = pos(s), seat = G.seats[s], cls = ["s-me", "s-left", "s-top", "s-right"][p];
     const bid = isSp ? (st.bids[s] === null ? "" : st.bids[s] === 0 ? (st.blind[s] ? "Blind nil" : "Nil") : `Bid ${st.bids[s]}`) : "";
-    const status = more.plateStatus(G.game, st, s) ?? (isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`);
+    const status = isEu ? euchreStatus(s) : more.plateStatus(G.game, st, s) ?? (isSp ? (bid ? `<span>${bid}</span><span>took ${st.tricks[s]}</span>` : "") : `<span>${st.taken[s].reduce((n, c) => n + hearts.points(c, G.rules), 0)} pts</span>`);
     const pips = seat.kind === "bot" ? `<span class="pips" aria-label="${LEVEL_NAME[seat.level]}">${"●".repeat({ easy: 1, standard: 2, expert: 3, extreme: 4 }[seat.level])}</span>` : "";
     const tag = TEAMS(G.game) && s === partner(me) && !S.opt.comfort ? "<span>Partner</span>" : "";
     const whyLine = why[s] && G.reasons[s] ? `<span class="why">${WHY[G.reasons[s].split(":")[0]] || ""}</span>` : "";
@@ -325,27 +338,28 @@ function drawTable(justPlayed = -1) {
     if (el) { const [x, y] = offset(pos(justPlayed), 3); el.animate([{ translate: `${x}px ${y}px`, opacity: 0.4 }, { translate: "0 0", opacity: 1 }], { duration: 240 * speed(), easing: "ease-out" }); }
   }
   // hand
-  const hand = MOD[G.game] === spades ? [...st.hands[me]].sort(sortS) : [...st.hands[me]].sort(sortH);
+  const hand = [...st.hands[me]].sort(isEu ? sortE : isSp ? sortS : sortH);
   const mine = pending && pending.seat === me ? pending : null;
   const legal = mine?.kind === "play" ? new Set(mine.legal) : null;
   $("#hand").innerHTML = hand.map((c) => {
-    const enabled = mine && (mine.kind === "pass" || (legal && legal.has(c))), dim = legal && !legal.has(c); // dim only what you can't play now
+    const enabled = mine && (["pass", "farmer", "discard"].includes(mine.kind) || (legal && legal.has(c))), dim = legal && !legal.has(c); // dim only what you can't play now
     return cardEl(c, `data-act="card" ${enabled ? "" : "disabled"}`, `${mine?.sel?.includes(c) ? "sel" : ""} ${dim ? "dim" : ""}`, `${cardName(c)}${dim ? ", can't play now" : mine?.sel?.includes(c) ? ", selected" : ""}`);
   }).join("");
   const hh = layoutHand();
   const mePlate = document.querySelector(".s-me");
   mePlate.style.bottom = `calc(var(--safe-b) + ${hh + 18}px)`;
-  $("#trump").innerHTML = more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
+  $("#trump").innerHTML = !more.NAMES[G.game] ? "" : more.trumpTile(st, svgFor, G.seats.map((x) => x.name)); $("#trump").style.bottom = mePlate.style.bottom;
   // the trick and the side seats sit in the middle of whatever room the top seat and the hand leave
   const free0 = Math.max(...[".s-top", ...(S.opt.comfort ? [".s-left", ".s-right"] : [])].map((q) => document.querySelector(q).getBoundingClientRect().bottom)), free1 = mePlate.getBoundingClientRect().top;
   $("#table").style.setProperty("--free0", free0 + "px"); $("#table").style.setProperty("--mid", (free0 + free1) / 2 + "px");
   // centre: bids, passing, the moon choice, or a word from the table
   $("#center").innerHTML = centre(mine);
   // score chip
-  $("#scoreChip").textContent = TEAMS(G.game) ? `Us ${G.totals.score[team(me)]} · Them ${G.totals.score[1 - team(me)]}` : G.seats.map((x, s) => `${s === me ? "You" : x.name[0]} ${G.totals.score[s]}`).join(" · ");
+  $("#scoreChip").textContent = TEAMS(G.game) ? `Us ${G.totals.score[team(me)]} · Them ${G.totals.score[1 - team(me)]}${isEu && st.trump ? ` · ${SUIT_SIGN[st.trump]} trump` : ""}` : G.seats.map((x, s) => `${s === me ? "You" : x.name[0]} ${G.totals.score[s]}`).join(" · ");
 }
 const ORDER = { S: 0, H: 1, C: 2, D: 3 };
 const sortH = (a, b) => ORDER[a[1]] - ORDER[b[1]] || hearts.pow(a) - hearts.pow(b);
+const sortE = (a, b) => { const t = G.st.trump, k = (c) => (euchre.eff(c, t) === t ? -1 : ORDER[euchre.eff(c, t)]); return k(a) - k(b) || euchre.pow(a, t) - euchre.pow(b, t); }; // trump on the left
 const sortS = (a, b) => { const j = G.rules.jokers, ea = spades.eff(a, j), eb = spades.eff(b, j); return ORDER[ea] - ORDER[eb] || spades.pow(a, j) - spades.pow(b, j); };
 
 function layoutHand() { // rows so every card's visible strip is at least one tap target wide and tall
@@ -371,6 +385,7 @@ function layoutHand() { // rows so every card's visible strip is at least one ta
 
 function centre(mine) {
   const st = G.st, seatName = (s) => G.seats[s].name;
+  if (G.game === "euchre") return euchreCentre(mine);
   if (mine?.kind === "bid" && G.game === "ohhell") return more.bidPanel(mine, st);
   if (mine?.kind === "bid") {
     const nums = mine.legal.filter((a) => !a.blind), blind = mine.legal.some((a) => a.blind) ? `<button class="btn" data-act="bid" data-v="blind">Blind nil (before looking)</button>` : "";
@@ -401,10 +416,10 @@ function ask(seat) { // resolves with the human's action
   const st = G.st, m = MOD[G.game];
   return new Promise((resolve) => {
     const legal = m.legal(st);
-    pending = { seat, legal, kind: st.phase === "play" ? "play" : st.phase, sel: [], resolve: (a) => { pending = null; resolve(a); } };
+    pending = { seat, legal, kind: st.phase === "play" ? "play" : st.phase, sel: [], alone: false, resolve: (a) => { pending = null; resolve(a); } };
     drawTable();
     if (S.opt.haptics) platform.haptic("medium");
-    announce({ play: "Your turn.", bid: more.bidPrompt(G.game, st) || "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?" }[pending.kind]);
+    announce({ play: "Your turn.", bid: more.bidPrompt(G.game, st) || "Your turn to bid.", pass: "Choose three cards to pass.", moon: "You shot the moon! Add 26 to everyone else, or take 26 off your score?", ...EUCHRE_ASK }[pending.kind]);
   });
 }
 async function handoff(s) {
@@ -420,6 +435,7 @@ function finishHand() {
   const lines = sc.lines;
   if (G.game === "spades") { const mine = lines.filter((l) => l.team === team(me)); if (mine.some((l) => l.kind === "set" || ((l.kind === "nil" || l.kind === "blindNil") && !l.made))) sound.set(); else sound.made(); }
   else if (more.NAMES[G.game]) more.goodHand(G.game, lines.filter((l) => (l.team ?? l.seat) === me)) ? sound.made() : sound.set();
+  if (G.game === "euchre" && lines[0].team !== null) { if (lines[0].team === team(me)) sound.made(); else if (lines[0].kind.includes("uchre")) sound.set(); }
   G.history.push({ seed: st.seed, dealer: st.dealer, n: G.handNo + 1, lines, totals: sc.totals, bids: st.bids && [...st.bids], tricks: [...st.tricks], moon: st.moon });
   G.totals = sc.totals; G.handNo++; G.dealer = (G.dealer + 1) % 4; S.hands++;
   G.over = m.winner(G.totals, G.rules);
@@ -430,11 +446,11 @@ function finishHand() {
 let sessionHands = 0;
 
 function renderSheet() {
-  const h = G.history[G.history.length - 1], sp = TEAMS(G.game);
+  const h = G.history[G.history.length - 1], sp = TEAMS(G.game), bags = G.game === "spades";
   const who = (l) => G.seats[l.seat].name;
   const label = (l) => {
     switch (l.kind) {
-      case "made": return `Bid ${l.bid}, took ${l.took}`;
+      case "made": if (G.game === "euchre") return euchreLine(l); return `Bid ${l.bid}, took ${l.took}`;
       case "set": return `Bid ${l.bid}, took ${l.took}: set`;
       case "nil": return `${who(l)}: nil ${l.made ? "made" : "broken"}`;
       case "blindNil": return `${who(l)}: blind nil ${l.made ? "made" : "broken"}`;
@@ -442,16 +458,17 @@ function renderSheet() {
       case "boston": return "Boston: all 13 tricks";
       case "bagPenalty": return "Too many bags: penalty";
       case "moon": return `${who(l)} shot the moon (${l.choice === "sub" ? "took 26 off" : "everyone else +26"})`;
+      case "march": case "loner": case "lonerMarch": case "euchre": case "loneEuchre": case "thrown": return euchreLine(l);
       default: return more.sheetLabel(l, who) ?? who(l);
     }
   };
-  const groups = sp ? [0, 1].map((t) => ({ name: t === 0 ? `You and ${G.seats[2].name}` : `${G.seats[1].name} and ${G.seats[3].name}`, rows: h.lines.filter((l) => l.team === t), total: h.totals.score[t], bags: h.totals.bags?.[t] }))
+  const groups = sp ? [0, 1].map((t) => ({ name: t === 0 ? `You and ${G.seats[2].name}` : `${G.seats[1].name} and ${G.seats[3].name}`, rows: h.lines.filter((l) => l.team === t || (l.team === null && t === 0)), total: h.totals.score[t], bags: h.totals.bags?.[t] }))
     : [{ name: "This hand", rows: h.lines, total: null }];
   const table = groups.map((g) => `<h3>${esc(g.name)}</h3><table>${g.rows.map((l) => `<tr><td>${esc(label(l))}</td><td class="n ${l.pts < 0 ? "neg" : ""}">${l.pts > 0 ? "+" : ""}${l.pts}</td></tr>`).join("")}
-    ${g.total !== null ? `<tr><th>Total${g.bags !== undefined ? ` · ${g.bags} bag${g.bags === 1 ? "" : "s"}` : ""}</th><td class="n">${g.total}</td></tr>` : ""}</table>`).join("");
+    ${g.total !== null ? `<tr><th>Total${bags ? ` · ${g.bags} bag${g.bags === 1 ? "" : "s"}` : ""}</th><td class="n">${g.total}</td></tr>` : ""}</table>`).join("");
   const totals = sp ? "" : `<table>${G.seats.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="n">${h.totals.score[i]}</td></tr>`).join("")}</table>`;
   const mine = sp ? h.lines.filter((l) => l.team === 0) : h.lines.filter((l) => l.seat === 0);
-  const st = more.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
+  const st = G.game === "euchre" ? euchreStamp(h.lines[0]) : more.sheetStamp(G.game, mine) ?? (sp ? (mine.some((l) => l.kind === "set") ? stamp("Set", "#b03a2e") : mine.some((l) => l.kind === "boston") ? stamp("Boston!", "#2f5fa8") : mine.some((l) => l.kind === "nil" && l.made) ? stamp("Nil made", "#2f7a4f") : mine.some((l) => l.kind === "made") ? stamp("Made it", "#2f7a4f") : "")
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h2>Hand ${h.n}</h2>${table}${sp ? "" : `<h3>Game</h3>${totals}`}
     <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${h.seed}</span></p>
@@ -548,7 +565,7 @@ function renderCaregiver() {
     <div class="paper note">${toggle("care:lock", c.lock, "Lock settings and purchases behind the PIN")}${toggle("opt:comfort", S.opt.comfort, "Comfort mode")}
       ${toggle("care:straight", c.straight, "Open straight into a game")}
       <div class="row"><span>Computer players</span><div class="seg">${["easy", "standard", "expert", "extreme"].map((v) => `<button data-act="carelevel" data-v="${v}" aria-pressed="${S.last.opps === v}">${LEVEL_NAME[v]}</button>`).join("")}</div></div>
-      ${["hearts", "spades", "ohhell", "whist"].map((g) => toggle("care:game:" + g, c.games.includes(g), `Show ${GAME_NAME[g]}`)).join("")}</div>
+      ${["hearts", "spades", "euchre", "ohhell", "whist"].map((g) => toggle("care:game:" + g, c.games.includes(g), `Show ${GAME_NAME[g]}`)).join("")}</div>
     <div class="paper"><h2>Keep the game on screen</h2><p>Guided Access stops accidental swipes out of the game:</p>
       <ol><li>Settings › Accessibility › Guided Access: turn it on and set a passcode (different from this PIN).</li>
       <li>Open ${BRAND} and triple-click the side (or home) button, then tap Start.</li>
@@ -582,7 +599,7 @@ async function pin(mode) { // "check" | "set": a large keypad, four digits
 async function renderUnlock() {
   const prices = await platform.prices(), price = prices.everything || "$6.99";
   $("#unlock").innerHTML = `<div class="stack"><h1>Everything</h1>
-    <div class="paper"><h2>${price}, once</h2><p>Opens Spades, Oh Hell and Whist now, Euchre when it's ready, and every game we add after that. No ads, no subscription, nothing that renews.</p>
+    <div class="paper"><h2>${price}, once</h2><p>Opens Spades, Euchre, Oh Hell and Whist now, and every game we add after that. No ads, no subscription, nothing that renews.</p>
       <p>Shared with your family through Family Sharing. Hearts stays free either way.</p>
       <p class="muted">For comparison: the big card apps charge $9.99 for 30 days without ads.</p>
       ${platform.owns("everything") ? "<p><b>You have Everything. Thank you!</b></p>" : platform.native ? `<button class="btn big" data-act="buy" data-v="everything">Unlock for ${price}</button>` : `<p class="muted">This test build in the browser has everything unlocked.</p>`}
@@ -594,12 +611,13 @@ const HOWTO = {
   hearts: "Avoid points. Each heart is 1 point and the queen of spades is 13. Follow the suit that was led if you can; otherwise play anything. The highest card of the suit led wins the trick. Before most hands you pass three cards. The two of clubs leads the first trick. Take every heart and the queen to shoot the moon.",
   ...more.HOWTO,
   spades: "Partners sit across. Everyone bids how many tricks they'll take; nil means none. Follow suit if you can; spades are trump and beat any other suit. Make your team's bid for 10 points a trick; each extra trick is a bag, and too many bags cost points. Miss the bid and you lose 10 a trick.",
+  euchre: "Partners sit across, five cards each from a deck of nines to aces. The dealer turns up one card: in turn, anyone may order it up, and its suit is trump (the dealer picks it up and throws one away). If everyone passes, anyone may name another suit. The jack of trump is the highest card, the right bower; the other jack of the same colour is next, the left bower, and counts as trump. Follow suit if you can. The side that chose trump needs three of the five tricks for 1 point, all five for 2. Fall short and the other side scores 2: you've been euchred. Go alone, with your partner sitting out, and all five tricks score 4. First to 10 wins.",
 };
 function renderHowto() {
-  const g = [setupGame, S.last.game].find((x) => HOWTO[x]) || "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.custom);
+  const g = HOWTO[setupGame] && setupGame !== "hearts" ? setupGame : HOWTO[S.last.game] ? S.last.game : "hearts", r = rulesFor(cfg, g, S.last.preset, S.last.custom);
   $("#howto").innerHTML = `<div class="stack"><h1 class="sign">How to play</h1>
     <div class="seg">${Object.keys(HOWTO).map((x) => `<button data-act="howto" data-v="${x}" aria-pressed="${x === g}">${GAME_NAME[x]}</button>`).join("")}</div>
-    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${more.SERVES[g] || (g === "hearts" ? "about 15 minutes a game" : "about 25 minutes a game")}</p><p>${HOWTO[g]}</p></div>
+    <div class="paper recipe"><p class="from">From the kitchen table</p><h2>${GAME_NAME[g]}</h2><p class="serves">Serves 4 · ${more.SERVES[g] || (g === "spades" ? "about 25 minutes a game" : "about 15 minutes a game")}</p><p>${HOWTO[g]}</p></div>
     <div class="paper recipe"><p class="from">House rules</p><h2>${PRESET_NAME[S.last.preset]}</h2>${cfg.rules[g].map((d) => `<div class="row"><span>${d.name}<br><small class="muted">${d.explain}</small></span><b>${fmt(d, r[d.id])}</b></div>`).join("")}</div>
     <button class="btn ghost" data-act="${G && S.cur ? "resume" : "go"}" data-to="title">Back</button></div>`;
 }
@@ -662,27 +680,104 @@ function postScores(won, extreme) {
   if (g === "hearts") { if (won) set("hearts_best", G.totals.score[0]); set("hearts_wins", rec.won); }
   if (g === "spades") { set("spades_streak", rec.bestStreak || 0); set("spades_wins", rec.won); }
   if (more.NAMES[g]) set(`${g}_wins`, rec.won);
+  if (g === "euchre") set("euchre_wins", rec.won);
   if (won && extreme) set("extreme_wins", (S.best.extreme_wins || 0) + 1);
   return newBest;
 }
 
+// ---------------------------------------------------------------- Euchre at the table: the kitty, calling trump, the score sheet
+const SUIT_SIGN = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const EUCHRE_ASK = {
+  bid1: "Your call: order up the upcard, or pass.", bid2: "Your call: name trump, or pass.", discard: "You picked up the upcard. Choose a card to throw away.",
+  farmer: "Farmer's hand: choose three cards to swap with the kitty, or keep your hand.", defend: "The other side is going alone. Defend alone, or play with your partner?",
+};
+function euchreStatus(s) { // the seat plate: dealer, the call, sitting out, tricks
+  const st = G.st, bits = [];
+  if (s === st.dealer) bits.push("Dealer");
+  if (st.out.includes(s)) bits.push("Sitting out");
+  else if (st.maker === s) bits.push(`Called ${SUIT_SIGN[st.trump]}${st.alone ? " alone" : ""}`);
+  else if (st.defender === s) bits.push("Defends alone");
+  else if (st.maker === null && st.calls.some((c) => c.seat === s && c.call === "pass")) bits.push("Passed");
+  if ((st.phase === "play" || st.phase === "done") && st.maker !== null && !st.out.includes(s)) bits.push(`took ${st.tricks[s]}`);
+  return bits.map((b) => `<span>${b}</span>`).join("");
+}
+function kittyEl() { // the kitty on the felt: face-down cards under the upcard; after round one the upcard lies turned down, sideways
+  const st = G.st, down = st.phase === "bid2";
+  return `<div class="kitty ${down ? "down" : ""}" role="img" aria-label="${down ? `The ${cardName(st.up)} was turned down` : `Upcard: the ${cardName(st.up)}`}"><span class="kb">${backSvg}</span><span class="kb">${backSvg}</span><span class="up">${svgFor(st.up)}</span></div>`;
+}
+function euchreCentre(mine) { // the kitty sits beside the prompt; Comfort drops it (the prompt names the upcard) to keep the big hand clear
+  const st = G.st, big = S.opt.comfort, kitty = ["bid1", "bid2", "farmer"].includes(st.phase) && !big ? kittyEl() : "";
+  const top = (say) => `<div class="eurow">${kitty}<div class="say">${say}</div></div>`;
+  if (mine?.kind === "bid1" || mine?.kind === "bid2") {
+    const r1 = mine.kind === "bid1", canPass = mine.legal.some((a) => a.call === "pass");
+    const calls = r1 ? ["order"] : [...SUITS].filter((t) => mine.legal.some((a) => a.call === t));
+    const onlyAlone = !mine.legal.some((a) => a.call !== "pass" && !a.alone), alone = onlyAlone || mine.alone;
+    const say = r1 ? `${st.dealer === mine.seat ? "Pick up" : "Order up"} the ${cardName(st.up)}?` : `${canPass ? "Name trump, or pass" : "Stuck: name trump"}${big ? ` · ${SUIT_SIGN[st.up[1]]} down` : ""}`;
+    const callBtn = (t) => t === "order" ? `<button class="btn ${big ? "" : "big"}" data-act="call" data-v="order">${st.dealer === mine.seat ? "Pick it up" : "Order it up"}${alone ? ", alone" : ""}</button>`
+      : `<button class="btn suit" data-act="call" data-v="${t}" aria-label="${SUIT_WORD[t]}${alone ? ", alone" : ""}"><span class="sym s${t}">${SUIT_SIGN[t]}</span><small>${SUIT_WORD[t]}</small></button>`;
+    const pass = canPass ? `<button class="btn" data-act="call" data-v="pass">Pass</button>` : "";
+    const toggle = onlyAlone ? `<span class="say">${r1 ? "Ordering your partner up means going alone" : "Alone"}</span>` : `<button class="btn" data-act="alone" aria-pressed="${mine.alone}">Go alone: ${mine.alone ? "yes" : "no"}</button>`;
+    const row = big && !r1 ? calls : [...calls, ...(pass ? ["pass"] : [])]; // Comfort: three wide suit buttons; Pass moves down beside Go alone
+    return `${top(say)}<div class="callpad" style="--n:${row.length}">${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>
+      <div class="callpad" style="--n:${big && !r1 && pass ? 2 : 1}">${toggle}${big && !r1 ? pass : ""}</div>`;
+  }
+  if (mine?.kind === "discard") return `<div class="say">${mine.sel?.length ? "Tap it again to throw it away" : `You picked up the ${cardName(st.up)}. Tap a card to throw away.`}</div>`;
+  if (mine?.kind === "farmer") return `${top(`Farmer's hand! Pick three cards to swap with the kitty (${mine.sel.length}/3)`)}
+    <div class="callpad" style="--n:2">${mine.sel.length === 3 ? `<button class="btn big" data-act="farmer" data-v="swap">Swap these three</button>` : ""}<button class="btn" data-act="farmer" data-v="keep">Keep my hand</button></div>`;
+  if (mine?.kind === "defend") return `<div class="say">${esc(G.seats[st.maker].name)} is going alone. Defend alone?</div>
+    <div class="callpad" style="--n:2"><button class="btn big" data-act="defend" data-v="yes">Defend alone</button><button class="btn" data-act="defend" data-v="no">With my partner</button></div>`;
+  if (mine?.kind === "play" && mine.sel?.length) return `<div class="say">Tap the card again to play it</div>`;
+  if (st.phase !== "play" && st.phase !== "done" && G.seats[st.turn].kind === "bot") return top(`${esc(G.seats[st.turn].name)} is thinking…`);
+  return kitty;
+}
+function euchreSay(s, a, phase) { // VoiceOver (and the spoken table) hears every call
+  const st = G.st, you = G.seats[s].kind === "human" && s === 0, who = you ? "You" : G.seats[s].name, v = (y, o) => (you ? y : o);
+  if (phase === "farmer") return announce(a.swap ? `${who} ${v("swap", "swaps")} three cards with the kitty: a farmer's hand.` : `${who} ${v("keep", "keeps")} a farmer's hand.`);
+  if (phase === "discard") return announce(you ? `You threw away the ${cardName(a)}.` : `${who} picks up the ${cardName(st.up)} and throws away a card.`);
+  if (phase === "defend") return announce(`${who} ${a.defend ? v("defend", "defends") + " alone" : v("play", "plays") + " with a partner"}.`);
+  if (a.call === "pass") return announce(`${who} ${v("pass", "passes")}.${st.phase === "bid2" && phase === "bid1" ? ` The ${cardName(st.up)} is turned down.` : st.phase === "done" ? " Everyone passed: the cards are thrown in." : ""}`);
+  const what = a.call === "order" ? `${s === st.dealer ? v("pick", "picks") : v("order", "orders")} up the ${cardName(st.up)}` : `${v("call", "calls")} ${SUIT_WORD[a.call].toLowerCase()}`;
+  announce(`${who} ${what}${a.alone ? `, going alone; ${G.seats[partner(s)].name} sits out` : ""}. ${SUIT_WORD[st.trump]} are trump.`);
+}
+function euchreTable() {
+  const st = G.st, us = team(G.viewer);
+  if (st.maker === null) return st.phase === "bid2" ? `The ${cardName(st.up)} was turned down.` : `The upcard is the ${cardName(st.up)}.`;
+  const took = (t) => st.tricks[t] + st.tricks[t + 2];
+  return `${SUIT_WORD[st.trump]} are trump, called by ${G.seats[st.maker].name}${st.alone ? ", alone" : ""}. We have ${took(us)} tricks, they have ${took(1 - us)}.`;
+}
+function euchreLine(l) { // a score sheet line, in words
+  const who = l.seat != null ? G.seats[l.seat].name : "", s = l.trump ? SUIT_WORD[l.trump].toLowerCase() : "";
+  return { made: `${who} called ${s}: took ${l.took}`, march: `${who} called ${s}: all 5, a march`, loner: `${who} alone in ${s}: took ${l.took}`,
+    lonerMarch: `${who} alone in ${s}: all 5 tricks`, euchre: `Euchred ${who} (${s}, took ${l.took})`,
+    loneEuchre: `${l.defender != null ? G.seats[l.defender].name : ""} defended alone: euchred ${who}`, thrown: "Everyone passed: thrown in" }[l.kind];
+}
+function euchreStamp(l) { // from the side of whoever holds the phone first (seat 0's team)
+  if (l.team === null) return stamp("Thrown in", "#8a6f3e");
+  const set = l.kind === "euchre" || l.kind === "loneEuchre";
+  if (l.team !== 0) return set ? stamp("Euchred", "#b03a2e") : "";
+  return set ? stamp("Euchred them!", "#2f7a4f") : l.kind === "lonerMarch" ? stamp("Loner!", "#2f5fa8") : l.kind === "march" ? stamp("March!", "#2f5fa8") : stamp("Made it", "#2f7a4f");
+}
+
 // ---------------------------------------------------------------- spoken table and VoiceOver announcements
+
 const SUIT_WORD = { S: "Spades", H: "Hearts", D: "Diamonds", C: "Clubs" };
 function announce(text, { interrupt = false } = {}) {
   $("#announce").textContent = text; // VoiceOver reads the live region
   speech.say(text, { interrupt });
 }
 function describeHand(seat) {
-  const st = G.st, j = G.game === "spades" && G.rules.jokers, eff = (c) => (G.game === "spades" ? spades.eff(c, j) : c[1]);
+  const st = G.st, j = G.game === "spades" && G.rules.jokers, eff = (c) => (G.game === "spades" ? spades.eff(c, j) : G.game === "euchre" ? euchre.eff(c, st.trump) : c[1]);
   return "SHDC".split("").map((s) => { const cs = st.hands[seat].filter((c) => eff(c) === s); return cs.length ? `${SUIT_WORD[s]}: ${cs.map((c) => cardName(c).replace(/ of \w+$/, "")).join(", ")}.` : `No ${SUIT_WORD[s].toLowerCase()}.`; }).join(" ");
 }
 function describeTable() {
   const st = G.st, parts = [];
   if (st.trick.length) parts.push(st.trick.map((t) => `${G.seats[t.seat].name} played the ${cardName(t.card)}`).join(", ") + ".");
   else parts.push("No cards on the table.");
-  if (st.trump !== undefined) parts.push(st.trump ? `Trump is ${SUIT_WORD[st.trump].toLowerCase()}.` : "No trump this hand.");
+  if (G.game === "euchre") parts.push(euchreTable());
+  else if (st.trump !== undefined) parts.push(st.trump ? `Trump is ${SUIT_WORD[st.trump].toLowerCase()}.` : "No trump this hand.");
   if (st.bids) parts.push(G.seats.map((x, s) => `${x.name} bid ${st.bids[s] === null ? "nothing yet" : st.bids[s] === 0 ? "nil" : st.bids[s]} and has ${st.tricks[s]}`).join(". ") + ".");
-  if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : "");
+  if (pending && pending.seat === G.viewer && EUCHRE_ASK[pending.kind]) parts.push(EUCHRE_ASK[pending.kind]);
+  else if (pending && pending.seat === G.viewer) parts.push(pending.kind === "play" ? `Your turn. You can play ${pending.legal.length === st.hands[G.viewer].length ? "any card" : pending.legal.map(cardName).join(", ")}.` : pending.kind === "bid" ? "Your turn to bid." : pending.kind === "pass" ? "Choose three cards to pass." : "");
   return parts.join(" ");
 }
 
@@ -703,6 +798,9 @@ const ACT = {
     if (!pending || el.disabled) return;
     const c = el.dataset.card;
     if (pending.kind === "pass") { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < 3) pending.sel.push(c); return drawTable(); }
+    if (pending.kind === "farmer") { const i = pending.sel.indexOf(c); if (i >= 0) pending.sel.splice(i, 1); else if (pending.sel.length < 3) pending.sel.push(c); return drawTable(); }
+    if (pending.kind === "discard" && (S.opt.comfort || S.opt.confirm) && pending.sel[0] !== c) { pending.sel = [c]; speech.say(cardName(c) + ". Tap again to discard it.", { interrupt: true }); return drawTable(); }
+    if (pending.kind === "discard") return pending.resolve(c);
     if (pending.kind !== "play" || !pending.legal.includes(c)) return;
     if ((S.opt.comfort || S.opt.confirm) && pending.sel[0] !== c) { pending.sel = [c]; speech.say(cardName(c) + ". Tap again to play.", { interrupt: true }); return drawTable(); } // tap to pick, tap again to play
     pending.resolve(c);
@@ -711,6 +809,11 @@ const ACT = {
   bid: (el) => pending?.kind === "bid" && pending.resolve(el.dataset.v === "blind" ? { bid: 0, blind: true } : { bid: +el.dataset.v }),
   pass: () => pending?.kind === "pass" && pending.sel.length === 3 && pending.resolve([...pending.sel]),
   moon: (el) => pending?.kind === "moon" && pending.resolve(el.dataset.v),
+  // Euchre: calling trump, going alone, defending alone, a farmer's hand
+  call: (el) => { if (pending?.kind !== "bid1" && pending?.kind !== "bid2") return; const call = el.dataset.v, alone = call !== "pass" && (pending.alone || !pending.legal.some((a) => a.call === call && !a.alone)); pending.resolve(call === "pass" ? { call } : { call, alone }); },
+  alone: () => { if (pending?.kind === "bid1" || pending?.kind === "bid2") { pending.alone = !pending.alone; announce(pending.alone ? "Going alone: your partner will sit out." : "Playing with your partner."); drawTable(); } },
+  defend: (el) => pending?.kind === "defend" && pending.resolve({ defend: el.dataset.v === "yes" }),
+  farmer: (el) => pending?.kind === "farmer" && (el.dataset.v === "keep" ? pending.resolve({ swap: null }) : pending.sel.length === 3 && pending.resolve({ swap: [...pending.sel] })),
   handoff: () => handoff.done?.(),
   why: (el) => { const s = +el.dataset.seat; if (G.seats[s].kind !== "bot") return; why[s] = !why[s]; drawTable(); },
   peek: () => { const p = $("#peek"); if (!p.hidden) { p.hidden = true; return; } const last = G.history.slice(-5).reverse();
