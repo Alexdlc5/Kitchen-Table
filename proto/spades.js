@@ -116,7 +116,8 @@ export function score(st) {
         pts -= big || 10 * B;
       }
     } else if (T > 0) { over += T; lines.push({ team: t, kind: "bags", took: T, pts: T }); pts += T; }
-    if (r.boston === "took 13" && st.tricks[t] + st.tricks[t + 2] === 13) { lines.push({ team: t, kind: "boston", pts: 250 }); pts += 250; }
+    const boston = r.boston === "took 13" ? 250 : typeof r.boston === "number" ? r.boston : 0; // a number: a game saved when Boston was one
+    if (boston && st.tricks[t] + st.tricks[t + 2] === 13) { lines.push({ team: t, kind: "boston", pts: boston }); pts += boston; }
     bags[t] += over;
     while (bags[t] >= r.bagLimit) { bags[t] -= r.bagLimit; lines.push({ team: t, kind: "bagPenalty", pts: -r.bagPenalty }); pts -= r.bagPenalty; }
     score[t] += pts;
@@ -137,7 +138,7 @@ export function view(st, seat) {
   return {
     game: "spades", rules: st.rules, seat, dealer: st.dealer, phase: st.phase, turn: st.turn,
     hand: [...st.hands[seat]], sizes: st.hands.map((h) => h.length), bids: [...st.bids], blind: [...st.blind],
-    passed: st.passes[seat] && [...st.passes[seat]], received: st.received[seat] && [...st.received[seat]],
+    passed: st.passes?.[seat] ? [...st.passes[seat]] : null, received: st.received?.[seat] ? [...st.received[seat]] : null, // ?.: a game saved before the exchange existed
     trick: st.trick.map((t) => ({ ...t })), tricks: [...st.tricks], history: st.history.map((h) => ({ ...h })),
     broken: st.broken, totals: structuredClone(st.totals),
   };

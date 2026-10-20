@@ -199,6 +199,12 @@ test("spades blind nil exchange (R3): nil passes 2 to partner, partner passes 2 
   const off = spades.newHand(rulesFor(cfg, "spades", "kitchen", { blindSwap: 0 }), "0000-0000-0000-0000-0000-0000-01", 3, { score: [0, 200], bags: [0, 0] });
   for (const a of [{ bid: 0, blind: true }, { bid: 4 }, { bid: 4 }, { bid: 4 }]) spades.apply(off, a);
   assert.equal(off.phase, "play", "exchange 0: straight to play");
+  // a game saved before this update (no passes/received, the old rules) still plays and scores the same
+  const old = spades.newHand({ ...rulesFor(cfg, "spades", "kitchen"), boston: 250 }, newSeed(), 3);
+  delete old.passes; delete old.received; delete old.rules.blindSwap;
+  assert.equal(spades.view(old, 0).passed, null);
+  Object.assign(old, { bids: [6, 0, 5, 0], tricks: [7, 0, 6, 0], phase: "done" });
+  assert.equal(kinds(spades.score(old), 0), "made:202 boston:250");
 });
 
 test("spades 2 of clubs leads (R10): whoever holds it leads it; the 3 with Jokers", () => {
