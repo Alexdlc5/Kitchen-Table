@@ -48,7 +48,7 @@ export function trumpTile(st, svgFor, names) {
   if (!NAMES[st.game]) return ""; // Euchre names its trump in the score chip
   if (!st.trump) return `<div class="tt none" role="img" aria-label="No trump this hand"><b>No trump</b></div>`;
   const held = st.game === "whist" && st.hands[st.dealer].includes(st.trumpCard) ? `; ${names[st.dealer]} holds it` : "";
-  return `<div class="tt" role="img" aria-label="Trump is ${suitWord(st.trump)}. The ${cardName(st.trumpCard)} was turned${held}."><span class="ttc">${svgFor(st.trumpCard)}</span><b>Trump</b></div>`;
+  return `<div class="tt" role="img" aria-label="Trump is ${suitWord(st.trump)}. The ${cardName(st.trumpCard)} was turned${held}."><span class="ttc">${svgFor(st.trumpCard)}</span><b>Turned</b></div>`;
 }
 
 export function plateStatus(game, st, s) { // the words on a seat plate (one line each in Comfort)
@@ -64,16 +64,16 @@ export function bidPrompt(game, st) {
 export const bidsDone = (game, st) => (game === "ohhell" && st.phase === "play" ? ` The bids add up to ${st.bids.reduce((a, b) => a + b, 0)} for ${plural(st.size, "trick")}.` : "");
 
 // Oh Hell's bid: one stepper whatever the hand size; the hooked number is stepped over, never offered
-export function bidPanel(mine, st, extra = "") { // extra: one more button at the end of the row (the Comfort "?")
+export function bidPanel(mine, st, extra = "") { // extra: one more button at the end of the row (the Comfort "Hint")
   const ok = mine.legal.map((a) => a.bid), hook = hookBid(st), dir = mine.dir || 1;
   let v = Math.min(st.size, Math.max(0, mine.step ?? Math.round(st.size / 4)));
   if (!ok.includes(v)) v = ok.includes(v + dir) ? v + dir : v - dir;
   mine.step = v;
-  const sum = st.bids.reduce((a, b) => a + (b ?? 0), 0);
-  const note = `Bids so far: ${sum} for ${plural(st.size, "trick")}${hook !== null ? `. The hook: you can't bid ${hook}` : ""}.`;
+  const sum = st.bids.reduce((a, b) => a + (b ?? 0), 0), none = st.bids.every((b) => b === null);
+  const note = `${none ? "No bids yet" : `Bids so far: ${sum}`} · ${plural(st.size, "trick")} this hand${hook !== null ? `. The hook: you can't bid ${hook}` : ""}.`;
   return `<div class="say">${note}</div><div class="row stepper">
-    <button class="btn" data-act="step" data-v="-1" aria-label="One less" ${ok.some((b) => b < v) ? "" : "disabled"}>−</button><b class="chip" aria-hidden="true">${v}</b>
-    <button class="btn" data-act="step" data-v="1" aria-label="One more" ${ok.some((b) => b > v) ? "" : "disabled"}>+</button><button class="btn big" data-act="bid" data-v="${v}">Bid ${v}</button>${extra}</div>`;
+    <button class="btn" data-act="step" data-v="-1" aria-label="One less" ${ok.some((b) => b < v) ? "" : "disabled"}>−</button><button class="btn big" data-act="bid" data-v="${v}">Bid ${v}</button>
+    <button class="btn" data-act="step" data-v="1" aria-label="One more" ${ok.some((b) => b > v) ? "" : "disabled"}>+</button>${extra}</div>`;
 }
 
 export function sheetLabel(l, who) {

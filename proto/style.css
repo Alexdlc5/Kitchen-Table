@@ -212,12 +212,28 @@ html.comfort #seats .seat:not(.s-me) .st span + span::before { content: none; }
 /* after a bot plays: a little Why? tab on its plate's corner (outside the plate, so the plate never grows) */
 #seats .whytab { position: absolute; top: -12px; right: -6px; padding: 0 8px; border-radius: 999px; font: 700 max(15px, calc(var(--fs-s) * .9))/1.5 var(--sans); color: #3a2810;
   background: var(--brass); border: 1px solid #6e5224; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
-html.comfort #seats .whytab { top: 3px; right: 3px; }
+html.comfort #seats .whytab { top: auto; bottom: 3px; right: 3px; } /* on the plate's lower edge, by the card backs, never over a name */
+/* trump, in the bar: the word and a full-size suit */
+.bar .tp { gap: 6px; cursor: default; }
+.bar .tp small { font-size: var(--fs-s); }
+.bar .tp b { font: 700 max(28px, var(--fs-l))/1 var(--serif); }
+.bar .tp .sH, .bar .tp .sD { color: var(--red); }
+html.four .bar .tp .sD { color: #1f5fd6; } html.four .bar .tp .sC { color: #13894a; }
+.dialog .answer { font: italic 400 var(--fs-l)/1.35 var(--serif); }
+/* a tight table (an iPhone SE at Extra large text): the bar keeps Menu's icon, the panels use regular-height buttons */
+#table.tight #menuBtn span { display: none; }
+#table.tight #seats .s-left, #table.tight #seats .s-right { max-width: calc(50% - 64px); }
+#table.tight #seats .seat:not(.s-me) .st span { display: block; } #table.tight #seats .seat:not(.s-me) .st span + span::before { content: none; }
+#table.tight #center { gap: 6px; }
+#table.tight #center .btn.big { min-height: var(--tap); font: 700 var(--fs)/1.15 var(--serif); }
+#table.tight #center .say { padding: 4px 12px; }
+#table.tight #center .callpad, #table.tight #center .eurow { gap: 6px; }
 #seats .seat .ask:empty { display: none; }
 #seats .seat .ask { font-weight: 700; color: #6e4a16; }
 .s-top { top: calc(var(--safe-t) + 64px); left: 50%; transform: translateX(-50%); }
 .s-left { top: calc(var(--mid, 48%) + var(--tcw) * .9); left: 8px; }
 .s-right { top: calc(var(--mid, 48%) + var(--tcw) * .9); right: 8px; }
+html:not(.comfort) #seats .seat.s-me { max-width: calc(100% - 2 * var(--sideW, 0px) - 32px); }
 /* Comfort: the other three seats share one row under the bar, so the 1.6x hand leaves room for the trick */
 html.comfort #seats .seat:not(.s-me) { top: calc(var(--safe-t) + 70px); width: calc((100% - 32px) / 3); min-width: 0; padding: 4px 6px; transform: none; }
 html.comfort .s-left { left: 8px; }
@@ -244,13 +260,15 @@ html.comfort #seats .seat.s-me .st:empty { display: none; }
 #say .say { max-width: 440px; }
 html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 .say.small { font-weight: 500; font-size: var(--fs-s); max-width: 420px; }
-.row.stepper { gap: 8px; justify-content: center; flex-wrap: nowrap; }
+.row.stepper { gap: 8px; justify-content: center; flex-wrap: wrap; }
 .chip { font: 700 var(--fs-l)/1.2 var(--serif); min-width: 2.4ch; padding: 4px 10px; text-align: center; border-radius: 6px; color: var(--ink);
   background: var(--grain), linear-gradient(180deg, #fffbf2, var(--paper)); border: 1px solid var(--stock-edge); box-shadow: var(--lift-1); }
 /* the cut: a squared-up deck, wide enough to tap where you'd cut it */
 .deck { display: flex; justify-content: center; align-items: center; width: 100%; min-height: calc(var(--tap) * 2.2); margin: 6px 0 4px; padding: 10px 0; border: 0; border-radius: 10px; background: none; }
 .deck img { flex: none; width: 15%; height: auto; aspect-ratio: 5 / 7; margin: 0 -2.6%; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .fp { white-space: nowrap; }
+/* before the deal, while you cut: the felt and the bar only, nothing left over from the last hand */
+#table.predeal :is(#seats, #hand, #trick, #center, #say, #trump, #scoreChip) { visibility: hidden; }
 .deck:focus-visible { outline: 3px solid var(--brass-d); outline-offset: 2px; }
 .lasttrick { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
 .lasttrick > span { display: grid; gap: 4px; justify-items: center; }
@@ -258,11 +276,12 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 .bidpad { display: grid; grid-template-columns: repeat(5, minmax(var(--tap), 1fr)); gap: 8px; max-width: 420px; width: 100%; }
 .bidpad .btn { padding: 4px; }
 /* Euchre: the kitty with its upcard (turned sideways once it's turned down), and the pad for calling trump */
-.kitty { --kw: calc(var(--tcw) * .55); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
+.kitty { --kw: var(--cw); position: relative; flex: none; width: calc(var(--kw) + 12px); height: calc(var(--kw) * 1.4); }
 .kitty .kb, .kitty .up { position: absolute; top: 0; width: var(--kw); height: calc(var(--kw) * 1.4); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .kitty svg { display: block; width: 100%; height: 100%; }
 .kitty .kb:nth-child(1) { left: 0; transform: rotate(-5deg); } .kitty .kb:nth-child(2) { left: 4px; transform: rotate(3deg); }
 .kitty .up { left: 12px; }
+.kitty.small { --kw: calc(var(--tcw) * .8); } /* a tight table: the upcard leads the button row, still big enough to read */
 .kitty.down .up { transform: rotate(90deg) scale(.85); opacity: .8; }
 .eurow { display: flex; gap: 12px; align-items: center; justify-content: center; max-width: 420px; }
 .callpad { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 420px; }
@@ -277,7 +296,7 @@ html.comfort #say { bottom: auto; top: calc(var(--safe-t) + 66px); }
 #trump { position: absolute; left: 12px; z-index: 3; }
 #trump:empty { display: none; }
 #trump .tt { display: grid; justify-items: center; gap: 2px; color: var(--cream); font-size: var(--fs-s); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-#trump .ttc { display: block; width: calc(var(--tcw) * .62); height: calc(var(--tcw) * .62 * 1.4); transform: rotate(-8deg); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
+#trump .ttc { display: block; width: var(--tcw); height: calc(var(--tcw) * 1.4); transform: rotate(-4deg); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 #trump .ttc svg { width: 100%; height: 100%; }
 #trump .tt.none b { padding: 6px 10px; border: 1px dashed currentColor; border-radius: 6px; }
 #handoff { position: absolute; inset: 0; z-index: 8; display: grid; place-content: center; gap: 16px; text-align: center; padding: 24px; background: #3a2414; }

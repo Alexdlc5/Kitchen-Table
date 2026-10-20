@@ -32,9 +32,9 @@ const KEY = "kt.save", RESET = 1; // bump RESET for an "as a new player" TestFli
 const fresh = () => ({
   v: 1, reset: RESET, hands: 0, consentAsked: false,
   opt: { sound: true, loud: false, haptics: true, comfort: false, four: false, confirm: false, speed: "normal", lang: CHOSEN, analytics: null,
-    theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1 },
+    theme: "walnut", back: null, text: "normal", speak: false, speakRate: 1, cut: false },
   last: { game: "hearts", preset: "standard", custom: {}, partner: "standard", opps: "standard", seats: ["you", "bot", "bot", "bot"] },
-  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades", "euchre"], straight: false, euchre: 1 },
+  cur: null, deals: [], record: {}, best: {}, care: { pin: null, lock: false, games: ["hearts", "spades", "euchre"], straight: false, euchre: 1, cut: false },
 });
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); if (S.reset !== RESET) S = fresh(); } catch { S = fresh(); }
@@ -86,7 +86,7 @@ function refocus(s) {
 }
 function applyLook() {
   const root = document.documentElement;
-  root.classList.toggle("comfort", !!S.opt.comfort);
+  root.classList.toggle("comfort", !!S.opt.comfort); root.classList.toggle("four", four());
   root.style.setProperty("--speed", S.opt.speed === "fast" ? 0.6 : 1);
   const theme = trial || (ownsTheme(S.opt.theme) ? S.opt.theme : "walnut"), st = themeStyle(theme), felt = $("#felt"); // trial: a theme tried for one hand
   felt.style.background = st.background; felt.style.boxShadow = st.boxShadow;
@@ -94,7 +94,7 @@ function applyLook() {
   root.classList.toggle("text-l", S.opt.text === "large"); root.classList.toggle("text-xl", S.opt.text === "xl");
   speech.enabled = !!S.opt.speak; speech.rate = S.opt.speakRate || 1;
   sound.enabled = S.opt.sound; sound.setIgnoreSilent(S.opt.loud);
-  faces.clear(); look++; M = null; geo = null;
+  faces.clear(); look++; M = null; geo = null; tight = false;
   backSvg = themeBack(!trial && ownsTheme(S.opt.back) ? S.opt.back : theme);
   backImg = `<img src="data:image/svg+xml,${encodeURIComponent(backSvg)}" alt="">`; // the plates' little backs: one image node each, not an SVG tree
 }
@@ -105,18 +105,21 @@ const four = () => !!(S.opt.four || S.opt.comfort); // Comfort always deals the 
 const svgFor = (c) => { const k = c + four(); if (!faces.has(k)) faces.set(k, face(c, { four: four() })); return faces.get(k); };
 let backSvg = "", backImg = ""; // the chosen card back, drawn once per change of theme
 let look = 0, M = null, geo = null; // look: bumps with every theme/deck/text change; M: sizes read from the CSS once per look; geo: plate sizes
+let tight = false; // too little room (an iPhone SE at Extra large text): the table's compact forms, until the size or look changes
 
 // R2: nothing may pop up between the deal and the last trick. dialog() refuses unless the player opened it themselves.
 let handLive = false;
 const blocked = []; // ?debug: what tried to interrupt a hand (smoke.mjs fails on any)
-function dialog(html, { user = false } = {}) {
+// pause: the bots wait while it's open (the menu's "Paused", a Why? answer); kind: what it is, for tests
+function dialog(html, { user = false, pause = false, kind = "" } = {}) {
   if (handLive && !user) { blocked.push(html.slice(0, 60)); return Promise.resolve(null); }
+  dialog.pause = pause; dialog.kind = kind;
   const a = document.activeElement, opener = $("#dialog").contains(a) ? dialog.opener : a, key = $("#dialog").contains(a) ? dialog.key : sig(a); // a dialog opened from a dialog gives focus back to the first opener
   $("#dialogBody").innerHTML = html; $("#dialog").hidden = false; $("main").inert = true; dialog.opener = opener; dialog.key = key;
   const h = $("#dialogBody h2");
   if (h) { h.id = "dialogTitle"; h.tabIndex = -1; h.focus(); } // labelled by its heading, which VoiceOver reads first
   return new Promise((res) => { dialog.done = (v) => {
-    $("#dialog").hidden = true; $("main").inert = false; dialog.done = null; res(v);
+    $("#dialog").hidden = true; $("main").inert = false; dialog.done = null; dialog.pause = false; dialog.kind = ""; res(v);
     queueMicrotask(() => { if (!dialog.done) { if (opener?.isConnected && !opener.closest("[aria-hidden=true]")) opener.focus(); else if (!refocus(key)) focusScreen(screen); } });
   }; });
 }
@@ -232,7 +235,7 @@ const fmt = (d, v) => (d.type === "toggle" ? (v ? "On" : "Off") : d.id === "moon
 // ---------------------------------------------------------------- the game
 let G = null, runId = 0, pending = null, showTrick = null, whyNow = null;
 function newGame(game, fixed = null) {
-  closePeek();
+  closePeek(); tight = false;
   const L = S.last;
   L.game = game;
   const rules = rulesFor(cfg, game, L.preset, L.preset === "custom" ? customFor(game) : {});
@@ -248,7 +251,8 @@ function newGame(game, fixed = null) {
 async function startHand() {
   if (net && !net.host) return guestHand();
   const m = MOD[G.game], seed = (G.nextSeed ??= newSeed()); // kept until it's dealt: a fingerprint, once shown, is never swapped for another
-  const cut = G.seats[G.viewer]?.kind === "human" && !net ? await cutDeck(seed) : 0;
+  const n = G.game === "euchre" ? 24 : 52, mine = G.seats[G.viewer]?.kind === "human" && !net && ((qs.has("fast") && qs.has("cut")) || (S.opt.comfort ? S.care.cut : S.opt.cut));
+  const cut = !cutsDeal(G.game) ? 0 : mine ? await cutDeck(seed, n) : dealerCut(n);
   G.st = m.newHand(G.rules, seed, G.dealer, G.totals, G.handNo, cut);
   G.st.cut ??= cut; delete G.nextSeed;
   G.totals ??= structuredClone(G.st.totals);
@@ -269,14 +273,18 @@ function cutsDeal(game) {
   if (!(game in cutWorks)) { const m = MOD[game], s = newSeed(), deal = (c) => JSON.stringify(m.newHand(G.rules, s, 0, undefined, 0, c).hands); cutWorks[game] = deal(0) !== deal(17); }
   return cutWorks[game];
 }
-async function cutDeck(seed) {
-  if (!cutsDeal(G.game) || (qs.has("fast") && !qs.has("cut"))) return 0; // ?fast (tests) deals uncut unless it asks for the cut (&cut, smoke.mjs)
-  const n = G.game === "euchre" ? 24 : 52, fp = fingerprint(seed);
-  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed: its fingerprint is <b class="seed fp">${fp.slice(0, 4)} ${fp.slice(4)}</b>. Tap the deck where you'd like to cut it.</p>
+// P1-5 (passover 2): the dealer cuts at random unless you've asked to cut yourself (Options; the caregiver's switch in Comfort).
+// Either way the cut and the fingerprint go on the score sheet, so every hand can be checked.
+const dealerCut = (n) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % (n - 1));
+async function cutDeck(seed, n) { // on the table itself, before the cards come out
+  const fp = fingerprint(seed);
+  show("table"); $("#table").classList.add("predeal");
+  const v = await dialog(`<h2>Cut the deck</h2><p>The shuffle is fixed before you cut: its fingerprint is <b class="seed fp">${fp.slice(0, 4)} ${fp.slice(4)}</b>, printed on the score sheet. Tap the deck where you'd like to cut it.</p>
     <button class="deck" data-dlg="cut" data-n="${n}" aria-label="Cut the deck">${backImg.repeat(9)}</button>
-    <p class="muted">The score sheet prints the fingerprint and your cut, so anyone can deal this hand again on our website.</p>`);
-  const c = typeof v === "string" && v.startsWith("cut:") ? +v.slice(4) : 1 + (Math.floor(performance.now() * 7919) % (n - 1)); // closed without a tap: the moment decides
-  announce(`You cut ${c} cards.`);
+    <div class="stack"><button class="btn" data-dlg="dealer">Let the dealer cut</button></div>`);
+  $("#table").classList.remove("predeal");
+  const c = typeof v === "string" && v.startsWith("cut:") ? +v.slice(4) : dealerCut(n);
+  announce(v?.startsWith?.("cut:") ? `You cut ${c} cards.` : `The dealer cut ${c} cards.`);
   return c;
 }
 
@@ -310,6 +318,7 @@ async function run() {
       await wait((st.phase === "play" ? 520 : 380) * speed());
       await speech.idle(); // when the table is read aloud, the bots wait for the voice to finish
       if (vo) await said.idle(); // and for VoiceOver to finish reading the last thing that happened
+      while (dialog.pause && dialog.done) await wait(120); // and while the player reads a Why? answer, or has paused
       if (my !== runId) return;
       const d = decide(m.view(st, s), seat.level);
       action = d.action; G.reasons[s] = d.reason;
@@ -381,14 +390,14 @@ const offset = (p, k = 0.62) => { const cw = sizes().tcw; return [[0, cw * k * 0
 const sizes = () => (M ??= { cw: css("--cw"), tcw: css("--tcw"), tap: css("--tap"), fsS: css("--fs-s"), safeB: parseFloat(getComputedStyle($("#hand")).bottom) - 8 });
 const tpl = document.createElement("template");
 const make = (html) => { tpl.innerHTML = html; return tpl.content.firstElementChild; };
-const setHTML = (e, h) => { if (e._h !== h) { e._h = h; e.innerHTML = h; } };
-const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+const setHTML = (e, h) => { if (e._h === h) return false; e._h = h; e.innerHTML = h; return true; };
+const setText = (e, t) => { if (e.textContent === t) return false; e.textContent = t; return true; };
 const setStyle = (e, k, v) => { const c = (e._s ??= {}); if (c[k] !== v) { c[k] = v; if (k[0] === "-") e.style.setProperty(k, v); else e.style[k] = v; } };
 const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 let seatKey = "";
 
 function drawTable(justPlayed = -1) {
-  if (!G || !$("#handoff").hidden) return; // while the pass-the-phone cover is up, nothing of anyone's hand is drawn under it
+  if (!G?.st || !$("#handoff").hidden) return; // while the pass-the-phone cover is up, nothing of anyone's hand is drawn under it
   const st = G.st, me = G.viewer, Z = sizes(), comfort = !!S.opt.comfort, mine = pending && pending.seat === me ? pending : null;
   $("#readBtn").hidden = !S.opt.speak;
   // seats: words patched; the plates themselves only when the game, the viewer or the look changes
@@ -398,7 +407,9 @@ function drawTable(justPlayed = -1) {
   for (let s = 0; s < 4; s++) if (patchPlate(plates[s], s, mine)) geo = null;
   const hh = drawHand(mine, Z);
   // the room between the seats and the hand: plate sizes come from the last layout, unless their words just changed
-  if (!geo) geo = { free0: Math.max(...[2, ...(comfort ? [1, 3] : [])].map((p) => plates[(me + p) % 4].getBoundingClientRect().bottom)), meH: plates[me].offsetHeight };
+  const platesMoved = !geo;
+  if (!geo) geo = { free0: Math.max(...[2, ...(comfort ? [1, 3] : [])].map((p) => plates[(me + p) % 4].getBoundingClientRect().bottom)), meH: plates[me].offsetHeight,
+    sideW: Math.max(plates[(me + 1) % 4].offsetWidth, plates[(me + 3) % 4].offsetWidth) };
   const meBottom = Z.safeB + hh + 18, free1 = innerHeight - meBottom - geo.meH, free0 = geo.free0, ipad = innerWidth >= 700;
   setStyle(plates[me], "bottom", meBottom + "px");
   // the trick: in Comfort a row of named cards under the seats (it never competes with the big hand); on iPad the cards sit out
@@ -415,6 +426,7 @@ function drawTable(justPlayed = -1) {
   }
   const tb = $("#table"), box = $("#trick"), tr = showTrick || st.trick;
   setStyle(tb, "--free0", free0 + "px"); setStyle(tb, "--free1", free1 + "px"); setStyle(tb, "--mid", mid + "px"); setStyle(box, "--tw", tw + "px");
+  setStyle(tb, "--sideW", geo.sideW + "px"); // your plate is never wider than the gap between the side seats: its words wrap instead
   box.classList.toggle("named", comfort || ipad);
   const keys = new Set(tr.map((t) => t.seat + t.card + look));
   for (const e of [...box.children]) if (!keys.has(e.dataset.k)) e.remove();
@@ -427,17 +439,36 @@ function drawTable(justPlayed = -1) {
     }
     setStyle(e, "transform", `translate(${x}px, ${y}px) rotate(${tilt ? ((t.seat * 7) % 11) - 5 : 0}deg)`);
   }
-  // the turned trump (Oh Hell, Whist) beside your plate; the panels in the middle; one line from the table above your plate
-  const tt = $("#trump");
-  setHTML(tt, more.NAMES[G.game] ? more.trumpTile(st, svgFor, G.seats.map((x) => x.name)) : ""); setStyle(tt, "bottom", meBottom + "px");
-  setHTML($("#center"), centre(mine));
-  const say = sayLine(mine, comfort);
-  setHTML($("#say"), say ? `<div class="say">${esc(say)}</div>` : "");
-  // the score chip: what it shows, and all of it for VoiceOver
-  const sc = G.totals.score, us = team(me), trump = G.game === "euchre" && st.trump;
-  setText($("#scoreChip"), TEAMS(G.game) ? `Us ${sc[us]} · Them ${sc[1 - us]}${trump ? ` · ${SUIT_SIGN[trump]} trump` : ""}` : G.seats.map((x, s) => `${s === me ? "You" : x.name} ${sc[s]}`).join(" · "));
+  // trump, always in sight: a pill in the bar (Euchre once it's called, Oh Hell, Whist), and the turned card itself beside your
+  // plate when there's room for it at table size
+  const trump = (G.game === "euchre" || more.NAMES[G.game]) && st.trump, pill = $("#trumpPill"), turned = !!more.NAMES[G.game] && st.trumpCard && !comfort && !tight;
+  pill.hidden = !(trump || (more.NAMES[G.game] && !st.trump));
+  setHTML(pill, trump ? `<small>Trump</small><b class="s${trump}">${SUIT_SIGN[trump]}</b>` : "<small>No trump</small>");
+  setAttr(pill, "aria-label", trump ? `Trump is ${SUIT_WORD[trump].toLowerCase()}.` : "No trump this hand.");
+  const tt = $("#trump"), c1 = setHTML(tt, turned ? more.trumpTile(st, svgFor, G.seats.map((x) => x.name)) : "");
+  setStyle(tt, "bottom", meBottom + "px");
+  const c2 = setHTML($("#center"), centre(mine)), say = sayLine(mine, comfort), c3 = setHTML($("#say"), say ? `<div class="say">${esc(say)}</div>` : "");
+  // the score chip: what it shows (initials when the words are big and the screen is small), and all of it for VoiceOver
+  const sc = G.totals.score, us = team(me), low = G.game === "hearts", rank = 1 + sc.filter((x, s) => s !== me && (low ? x < sc[me] : x > sc[me])).length;
+  const c4 = setText($("#scoreChip"), TEAMS(G.game) ? `Us ${sc[us]} · Them ${sc[1 - us]}` : tight ? `You ${sc[me]} · ${["1st", "2nd", "3rd", "4th"][rank - 1]}` : G.seats.map((x, s) => `${s === me ? "You" : x.name} ${sc[s]}`).join(" · "));
+  $("#table").classList.toggle("tight", tight);
   setAttr($("#scoreChip"), "aria-label", `Score: ${TEAMS(G.game) ? `us ${sc[us]}, them ${sc[1 - us]}` : G.seats.map((x, s) => `${s === me ? "you" : x.name} ${sc[s]}`).join(", ")}.${trump ? ` ${SUIT_WORD[trump]} are trump.` : ""} Double-tap for details.`);
+  // when a panel, the say line, the turned card or the chip lands on a seat, the trick or the hand, switch to the compact forms
+  if (!tight && (c1 || c2 || c3 || c4 || platesMoved) && crowded()) { tight = true; geo = null; return drawTable(justPlayed); }
 }
+function crowded() { // one layout read, only when what's in the middle has just changed
+  const box = (e) => e.getBoundingClientRect(), hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+  const mine = [...document.querySelectorAll("#center > *, #say > *, #trump > *, #scoreChip")].map(box).filter((q) => q.height);
+  const theirs = [...document.querySelectorAll("#seats .seat, #trick .card, #hand"), document.querySelector(".bar #menuBtn")].filter((e) => !e.getAnimations().length).map(box).filter((q) => q.height);
+  const touch = (list) => list.some((a, i) => list.some((b, j) => j > i && hit(a, b)));
+  const seats = [...document.querySelectorAll("#seats .seat")].map(box), bar = [...document.querySelectorAll(".bar > :not([hidden])")].map(box);
+  // and so are two plates that touch (long words at a big text size), pills in the bar that touch, or a chip on two lines
+  const lines = document.createRange(); lines.selectNodeContents($("#scoreChip"));
+  return new Set([...lines.getClientRects()].map((q) => Math.round(q.top))).size > 1 || mine.some((p) => theirs.some((t) => hit(p, t))) || touch(seats) || touch(bar);
+}
+// an answer that opens on its own (Why?, a suggestion) where no line fits beside the cards; the bots wait while it's open
+const answerBox = (title, text) => dialog(`<h2>${esc(title)}</h2><p class="answer">${esc(text)}</p><button class="btn big" data-dlg="">OK</button>`, { user: true, pause: true, kind: "why" });
+const dialogP = (html, o) => dialog(html, { ...o, pause: true });
 
 // a seat plate: name, what they've done, level pips, the backs of their cards, and a Why? tab after a bot plays. Pinned in size:
 // nothing that appears later (a bid, the Why? tab) makes it grow. VoiceOver reads one sentence with all of it.
@@ -456,8 +487,8 @@ function patchPlate(e, s, mine) { // true when its words changed (its size may h
   if (bk && bk._n !== n) { bk._n = n; bk.innerHTML = backImg.repeat(n); }
   const wt = e.querySelector(".whytab");
   if (wt) wt.hidden = !whyOf(s);
-  const ask = e.querySelector(".ask"); // Comfort: "Tap a card" rides on your one-line strip, where the eye already is
-  if (ask) { const t = S.opt.comfort && mine?.kind === "play" ? (mine.sel?.length ? "Tap it again" : "Tap a card") : ""; if (ask.textContent !== t) { ask.textContent = t; moved = true; } }
+  const ask = e.querySelector(".ask"); // Comfort (and a tight table): "Tap a card" rides on your own plate, where the eye already is
+  if (ask) { const t = (S.opt.comfort || tight) && mine?.kind === "play" ? (mine.sel?.length ? "Tap it again" : "Tap a card") : ""; if (ask.textContent !== t) { ask.textContent = t; moved = true; } }
   setText(e.querySelector(".vh"), seatSentence(s, bits, turn));
   return moved;
 }
@@ -480,7 +511,7 @@ function seatSentence(s, bits, turn) { // "June, opponent, Standard. Bid nil, to
 // one line from the table, just above your plate: a Why? answer, whose turn it is, what to tap
 function sayLine(mine, comfort) {
   if (whyNow) return whyNow.text;
-  if (comfort) return ""; // Comfort's prompt is on your strip, and its Why? answers sit over the seat row
+  if (comfort || tight) return whyNow && !comfort ? whyNow.text : ""; // Comfort and tight tables: the prompt rides on your plate; answers open on their own
   const st = G.st;
   if (mine?.kind === "play") return mine.sel?.length ? "Tap the card again to play it" : "Your turn: tap a card";
   if (G.game !== "euchre" && st.phase === "bid" && G.seats[st.turn].kind === "bot") return `${G.seats[st.turn].name} is thinking…`;
@@ -537,7 +568,7 @@ function centre(mine) {
   if (mine?.kind === "bid" && G.game === "ohhell") return S.opt.comfort ? more.bidPanel(mine, st, suggest(mine)) : more.bidPanel(mine, st) + suggest(mine);
   if (mine?.kind === "bid") {
     const nums = mine.legal.filter((a) => !a.blind);
-    if (S.opt.comfort) { // a stepper keeps the big hand in view: one row, the number on the brass Bid button itself; below 1 is nil
+    if (S.opt.comfort || tight) { // a stepper keeps the big hand in view: one row, the number on the brass Bid button itself; below 1 is nil
       const ok = nums.map((a) => a.bid);
       mine.step = Math.min(13, Math.max(0, mine.step ?? 3));
       if (!ok.includes(mine.step)) mine.step = ok.reduce((x, y) => (Math.abs(y - mine.step) < Math.abs(x - mine.step) ? y : x));
@@ -560,7 +591,7 @@ function centre(mine) {
 // P2-6: a new bidder can ask what a Standard player would bid, and why. Comfort: a "?" at the end of the stepper row (the answer
 // shows over the seat row), since an iPhone SE has no room for another row above the big hand
 function suggest(mine) {
-  if (S.opt.comfort) return `<button class="btn" data-act="suggest" aria-label="Suggest a bid">?</button>`;
+  if (S.opt.comfort || tight) return `<button class="btn" data-act="suggest" aria-label="Suggest a bid">Hint</button>`;
   if (mine.hint) return `<div class="say small">${esc(mine.hint)}</div>`;
   return `<button class="btn ghost" data-act="suggest">Suggest a bid</button>`;
 }
@@ -645,7 +676,7 @@ function renderSheet() {
     : h.moon === 0 ? stamp("Moon!", "#2f5fa8") : mine[0]?.pts === 0 ? stamp("Clean hand", "#2f7a4f") : "");
   const goal = G.over === null ? goalLine() : "";
   $("#sheet").innerHTML = `<div class="stack"><div class="paper pad spiral">${st}<h1>Hand ${h.n}</h1>${table}${sp ? "" : `<h3>Game</h3>${totals}`}${goal ? `<p class="goal">${esc(goal)}</p>` : ""}
-    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span> · cut ${h.cut ?? 0} · fingerprint <span class="seed">${h.fp ?? fingerprint(h.seed)}</span></p>
+    <p class="muted">Deal #${S.hands} · dealer: ${esc(G.seats[h.dealer].name)} (${["you", "left of you", "across from you", "right of you"][h.dealer]}) · seed <span class="seed">${seedHTML(h.seed)}</span>${h.cut ? ` · cut ${h.cut}` : ""} · fingerprint <span class="seed">${h.fp ?? fingerprint(h.seed)}</span></p>
     <button class="link" style="color:var(--ink)" data-act="seedinfo">What is the seed?</button></div>
     ${trialPlate()}<button class="btn big" data-act="next">${G.over !== null ? "See who won" : "Next hand"}</button></div>`;
 }
@@ -744,6 +775,8 @@ function renderOptions() {
       <p class="muted">Blind or low-vision? ${BRAND} works with VoiceOver: every card, bid and play is announced, one at a time, and the table waits while VoiceOver reads. "Read the table aloud" speaks the same things with the phone's own voice if you don't use VoiceOver, and adds a Read button at the table.</p></div>
     <div class="paper"><h2>Table</h2>
       ${segRow("Speed", "speed", o.speed, [["relaxed", "Relaxed"], ["normal", "Normal"], ["fast", "Fast"]])}
+      ${toggle("opt:cut", o.cut, "Cut the deck myself before each deal", c ? { disabled: true, note: "(in Comfort, the caregiver decides)" } : {})}
+      <p class="muted">Off, the dealer cuts at random. Either way the score sheet prints the cut and the deck's fingerprint, so any hand can be checked on our website.</p>
       <div class="row"><label for="optBack">Card back</label><select id="optBack" data-act="back"><option value="">Matches the table</option>${owned.map((id) => `<option value="${id}" ${o.back === id ? "selected" : ""}>${esc(THEMES[id].name)}</option>`).join("")}</select></div>
       <div class="row"><span>Table theme</span><button class="btn" data-act="go" data-to="shop">${esc(THEMES[ownsTheme(o.theme) ? o.theme : "walnut"].name)} ›</button></div></div>
     <div class="paper">${toggle("opt:sound", o.sound, "Sound")}${toggle("opt:loud", o.loud, "Play sound when the phone is on silent")}
@@ -761,6 +794,7 @@ function renderCaregiver() {
     <div class="paper note">${toggle("care:lock", c.lock, "Lock settings and purchases behind the PIN")}${toggle("opt:comfort", S.opt.comfort, "Comfort mode")}
       ${segRow("Text size", "textsize", S.opt.text || "normal", TEXT_SIZES)}<p class="preview">This is how big the words will be.</p>
       ${toggle("care:straight", c.straight, "Open straight into a game")}
+      ${toggle("care:cut", c.cut, "In Comfort, let them cut the deck before each deal")}
       ${segRow("Computer players", "carelevel", S.last.opps, Object.entries(LEVEL_NAME))}
       ${["hearts", "spades", "euchre", "ohhell", "whist"].map((g) => toggle("care:game:" + g, c.games.includes(g), `Show ${GAME_NAME[g]}`)).join("")}</div>
     <div class="paper"><h2>Keep the game on screen</h2><p>Guided Access stops accidental swipes out of the game:</p>
@@ -925,10 +959,10 @@ function euchreStatus(s) { // the seat plate: dealer, the call, sitting out, tri
 }
 function kittyEl() { // the kitty on the felt: face-down cards under the upcard; after round one the upcard lies turned down, sideways
   const st = G.st, down = st.phase === "bid2";
-  return `<div class="kitty ${down ? "down" : ""}" role="img" aria-label="${down ? `The ${cardName(st.up)} was turned down` : `Upcard: the ${cardName(st.up)}`}"><span class="kb">${backSvg}</span><span class="kb">${backSvg}</span><span class="up">${svgFor(st.up)}</span></div>`;
+  return `<div class="kitty ${down ? "down" : ""} ${tight ? "small" : ""}" role="img" aria-label="${down ? `The ${cardName(st.up)} was turned down` : `Upcard: the ${cardName(st.up)}`}"><span class="kb">${backSvg}</span><span class="kb">${backSvg}</span><span class="up">${svgFor(st.up)}</span></div>`;
 }
-function euchreCentre(mine) { // the kitty sits beside the prompt; Comfort drops it (the prompt names the upcard) to keep the big hand clear
-  const st = G.st, big = S.opt.comfort, kitty = ["bid1", "bid2", "farmer"].includes(st.phase) && !big ? kittyEl() : "";
+function euchreCentre(mine) { // the upcard sits beside the prompt at hand-card size (smaller on a tight table); Comfort lays the pad out in wide rows
+  const st = G.st, big = S.opt.comfort || tight, kitty = ["bid1", "bid2", "farmer"].includes(st.phase) ? kittyEl() : "";
   const top = (say) => `<div class="eurow">${kitty}<div class="say">${say}</div></div>`;
   if (mine?.kind === "bid1" || mine?.kind === "bid2") {
     const r1 = mine.kind === "bid1", canPass = mine.legal.some((a) => a.call === "pass");
@@ -940,8 +974,9 @@ function euchreCentre(mine) { // the kitty sits beside the prompt; Comfort drops
     const pass = canPass ? `<button class="btn" data-act="call" data-v="pass">Pass</button>` : "";
     const toggle = onlyAlone ? `<span class="say">${r1 ? "Ordering your partner up means going alone" : "Alone"}</span>` : `<button class="btn" data-act="alone" aria-pressed="${mine.alone}">Go alone: ${mine.alone ? "yes" : "no"}</button>`;
     const row = big && !r1 ? calls : [...calls, ...(pass ? ["pass"] : [])]; // Comfort: three wide suit buttons; Pass moves down beside Go alone
-    return `${top(say)}<div class="callpad" style="--n:${row.length}">${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>
-      <div class="callpad" style="--n:${big && !r1 && pass ? 2 : 1}">${toggle}${big && !r1 ? pass : ""}</div>`;
+    const first = tight ? `<div class="callpad" style="--n:${row.length + 1}">${kitty}${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>` // tight: the upcard leads the row; the buttons say the rest
+      : `${top(say)}<div class="callpad" style="--n:${row.length}">${row.map((t) => (t === "pass" ? pass : callBtn(t))).join("")}</div>`;
+    return `${first}<div class="callpad" style="--n:${big && !r1 && pass ? 2 : 1}">${toggle}${big && !r1 ? pass : ""}</div>`;
   }
   if (mine?.kind === "discard") return `<div class="say">${mine.sel?.length ? "Tap it again to throw it away" : `You picked up the ${cardName(st.up)}. Tap a card to throw away.`}</div>`;
   if (mine?.kind === "farmer") return `${top(`Farmer's hand! Pick three cards to swap with the kitty (${mine.sel.length}/3)`)}
@@ -985,16 +1020,19 @@ const SUIT_WORD = { S: "Spades", H: "Hearts", D: "Diamonds", C: "Clubs" };
 const cardList = (cs) => cs.map(cardName).join(cs.length === 2 ? " and " : ", ");
 // VoiceOver reads the live region: one sentence at a time, each left up for as long as it takes to read (about 60 ms a
 // character), so a new one waits its turn instead of replacing the last. With VoiceOver on, the bots wait for the queue (run()).
-const said = { q: [], log: [], busy: false, idle: () => new Promise((done) => { const t = () => (said.busy ? setTimeout(t, 100) : done()); t(); }) };
+const said = { q: [], log: [], dropped: 0, busy: false, idle: () => new Promise((done) => { const t = () => (said.busy ? setTimeout(t, 100) : done()); t(); }) };
 const readMs = (t) => Math.max(1000, 60 * t.length);
-let vo = qs.has("vo"); // ?vo: tests. On the phone, the shell's ScreenReader plugin says whether VoiceOver is running
-try { const SR = window.Capacitor?.Plugins?.ScreenReader; SR?.isEnabled?.().then((r) => (vo = !!r?.value), () => {}); SR?.addListener?.("stateChange", (r) => (vo = !!r?.value)); } catch {}
+// whether VoiceOver is running: @capacitor/screen-reader on the phone (asked at start, told when it's switched on or off, and
+// asked again whenever the app comes back to the front); ?vo in tests
+let vo = qs.has("vo");
+const SR = window.Capacitor?.Plugins?.ScreenReader, voCheck = () => { try { SR?.isEnabled?.().then((r) => (vo = !!r?.value || qs.has("vo")), () => {}); } catch {} };
+try { voCheck(); SR?.addListener?.("stateChange", (r) => (vo = !!r?.value || qs.has("vo"))); addEventListener("visibilitychange", () => document.hidden || voCheck()); } catch {}
 function announce(text, { interrupt = false } = {}) {
   if (!text) return;
   speech.say(text, { interrupt });
   if (interrupt) said.q.length = 0; // a new hand: what's waiting from the last one goes; what's being read finishes
   said.q.push(text);
-  if (!vo && said.q.length > 4) said.q.splice(0, said.q.length - 4); // ponytail: nothing waits on the queue without VoiceOver, so its backlog stays short
+  if (!vo && said.q.length > 4) said.dropped += said.q.splice(0, said.q.length - 4).length; // ponytail: nothing waits on the queue without VoiceOver, so its backlog stays short
   if (!said.busy) (async () => { said.busy = true; while (said.q.length) { const t = said.q.shift(); $("#announce").textContent = t; if (DEBUG) said.log.push([performance.now(), t]); await wait(readMs(t)); } said.busy = false; })();
 }
 function lastTrick() { // the Read button and the menu: the trick that was just swept away
@@ -1058,8 +1096,9 @@ const ACT = {
     if (p?.kind !== "bid") return;
     const d = decide(MOD[G.game].view(G.st, p.seat), "standard"), b = d.action.bid, why = WHY[String(d.reason).split(":")[0]];
     p.hint = `A Standard player would bid ${b === 0 ? (G.game === "spades" ? "nil" : "0") : b}${why ? `: “${why}”` : "."}`; p.step = b;
-    if (S.opt.comfort) { const w = (whyNow = { seat: -1, text: p.hint }); setTimeout(() => { if (whyNow === w) { whyNow = null; drawTable(); } }, 8000); }
-    announce(p.hint); drawTable();
+    drawTable();
+    if (S.opt.comfort || tight) return answerBox("A suggestion", p.hint); // no room beside the pad: it opens on its own, and the table waits
+    announce(p.hint);
   },
   moon: (el) => pending?.kind === "moon" && pending.resolve(el.dataset.v),
   // Euchre: calling trump, going alone, defending alone, a farmer's hand
@@ -1068,11 +1107,14 @@ const ACT = {
   defend: (el) => pending?.kind === "defend" && pending.resolve({ defend: el.dataset.v === "yes" }),
   farmer: (el) => pending?.kind === "farmer" && (el.dataset.v === "keep" ? pending.resolve({ swap: null }) : pending.sel.length === 3 && pending.resolve({ swap: [...pending.sel] })),
   handoff: () => handoff.done?.(),
-  why: (el) => { // the bot's reason, in the line above your plate until the next card (never inside the plate, which would grow)
-    const s = +el.dataset.seat, r = whyOf(s);
+  why: (el) => { // the bot's reason, in the line above your plate until the next card (never inside the plate, which would grow);
+    const s = +el.dataset.seat, r = whyOf(s), name = G.seats[s].name; // where that line would cover a seat, it opens on its own
     if (!r) return;
-    const w = (whyNow = { seat: s, text: `${G.seats[s].name}: “${r}”` });
-    announce(w.text); drawTable();
+    if (S.opt.comfort || tight) return answerBox(name, `“${r}”`);
+    const w = (whyNow = { seat: s, text: `${name}: “${r}”` });
+    drawTable();
+    if (tight) { whyNow = null; drawTable(); return answerBox(name, `“${r}”`); } // it didn't fit after all
+    announce(w.text);
     setTimeout(() => { if (whyNow === w) { whyNow = null; drawTable(); } }, 6000);
   },
   peek: async () => { // the score pad as a sheet of its own: it never sits over a seat, and it's closed when the hand ends
@@ -1085,7 +1127,7 @@ const ACT = {
     peekOpen = false;
   },
   menu: async () => {
-    const v = await dialog(`<h2>Paused</h2><div class="stack"><button class="btn big" data-dlg="">Keep playing</button><button class="btn" data-dlg="last">Last trick</button><button class="btn" data-dlg="howto">How to play</button><button class="btn" data-dlg="leave">Save and leave</button>${S.care.lock ? "" : `<button class="btn" data-dlg="quit">End this game</button>`}</div>`, { user: true });
+    const v = await dialogP(`<h2>Paused</h2><div class="stack"><button class="btn big" data-dlg="">Keep playing</button><button class="btn" data-dlg="last">Last trick</button><button class="btn" data-dlg="howto">How to play</button><button class="btn" data-dlg="leave">Save and leave</button>${S.care.lock ? "" : `<button class="btn" data-dlg="quit">End this game</button>`}</div>`, { user: true });
     if (v === "last") {
       const t = G.st.lastTrick || [];
       return dialog(`<h2>Last trick</h2>${t.length ? `<div class="lasttrick" aria-hidden="true">${t.map((x) => `<span><span class="card">${svgFor(x.card)}</span><small>${esc(G.seats[x.seat].name)}</small></span>`).join("")}</div>` : ""}<p>${esc(lastTrick())}</p><button class="btn big" data-dlg="">Back to the table</button>`, { user: true });
@@ -1208,7 +1250,7 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault(); pressed = performance.now();
   if (!e.repeat) hold(el, ["keyup", "blur"]);
 });
-addEventListener("resize", () => { M = null; geo = null; if (screen === "table") drawTable(); });
+addEventListener("resize", () => { M = null; geo = null; tight = false; if (screen === "table") drawTable(); });
 addEventListener("keydown", (e) => { if (e.key === "Escape" && dialog.done) dialog.done(null); }); // a keyboard can always close a dialog
 
 // ---------------------------------------------------------------- family table test (DESIGN.md §9 spike): Hearts with two people on two
@@ -1252,6 +1294,6 @@ else if (S.care.straight) newGame(owns(S.last.game) && S.care.games.includes(S.l
 else go("title");
 window.Capacitor?.Plugins?.SplashScreen?.hide();
 
-if (DEBUG) window.kt = { S, cfg, blocked, applyLook, readMs, said, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, get peekOpen() { return peekOpen; }, go, newGame, ACT, dialog,
+if (DEBUG) window.kt = { S, cfg, blocked, applyLook, readMs, said, get dialogKind() { return dialog.kind; }, get tight() { return tight; }, get net() { return net; }, get pending() { return pending; }, get G() { return G; }, get screen() { return screen; }, get peekOpen() { return peekOpen; }, go, newGame, ACT, dialog,
   // smoke tests: let a bot sit in seat 0 so a whole hand plays itself
   autoplay(level = "standard") { if (G) G.seats.forEach((s) => { if (s.kind === "human") { s.kind = "bot"; s.level = level; } }); if (pending) { const p = pending, m = MOD[G.game]; p.resolve(decide(m.view(G.st, p.seat), level).action); } } };

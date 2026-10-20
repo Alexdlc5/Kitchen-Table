@@ -27,6 +27,8 @@ jobs:
         run: node scripts/smoke.mjs --se --comfort
       - name: the same on iPad (bigger cards and type)
         run: node scripts/smoke.mjs --ipad
+      - name: iPhone SE at Extra large text, with and without Comfort (what a phone set to Larger Text gets)
+        run: node scripts/smoke.mjs --se --text xl && node scripts/smoke.mjs --se --comfort --text xl
       - name: cards razor sharp at 3x, edges and corner index 2 device px or less (WebKit + Chromium, Comfort off and on)
         run: node scripts/crisp.mjs --check 2
       - name: every card face, nothing in the middle touches a corner index (two- and four-colour decks)

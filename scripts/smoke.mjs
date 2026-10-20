@@ -20,7 +20,7 @@ const server = createServer((req, res) => {
   res.writeHead(200, { "content-type": TYPES[extname(f)] || "application/octet-stream" }); res.end(readFileSync(f));
 }).listen(0);
 const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
-const shots = arg("--shots"), LANG = arg("--lang"), SE = process.argv.includes("--se"), COMFORT = process.argv.includes("--comfort"), IPAD = process.argv.includes("--ipad");
+const shots = arg("--shots"), LANG = arg("--lang"), TEXT = arg("--text"), SE = process.argv.includes("--se"), COMFORT = process.argv.includes("--comfort"), IPAD = process.argv.includes("--ipad");
 if (shots) mkdirSync(shots, { recursive: true });
 const VW = IPAD ? 820 : SE ? 375 : 402, VH = IPAD ? 1180 : SE ? 667 : 874, DPR = SE || IPAD ? 2 : 3;
 const SCREENS = ["title", "picker", "setup", "stats", "options", "caregiver", "unlock", "howto", "shop", "boards"];
@@ -38,7 +38,7 @@ const AUDIT = (id) => {
   // no two controls on top of each other (hand cards overlap on purpose; the pinned Deal bar floats over the page on purpose);
   // an open dialog is checked on its own
   const open = !document.getElementById("dialog").hidden;
-  const ctl = [...document.querySelectorAll(open ? "#dialog button" : `#${id} button, #${id} select`)].filter((e) => e.offsetParent && !e.closest("#hand, #trick, .hero, #handoff, .dealbar"));
+  const ctl = [...document.querySelectorAll(open ? "#dialog button" : `#${id} button, #${id} select, #${id} .bar > .pill`)].filter((e, i, a) => a.indexOf(e) === i && e.offsetParent && !e.closest("#hand, #trick, .hero, #handoff, .dealbar"));
   const label = (e) => (e.getAttribute("aria-label") || e.textContent).trim().slice(0, 20);
   const hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
   for (let i = 0; i < ctl.length; i++) for (let j = i + 1; j < ctl.length; j++)
@@ -46,14 +46,27 @@ const AUDIT = (id) => {
   // at the table, nothing sits on your hand or on the cards in the middle
   if (id === "table" && !open) {
     const hand = document.getElementById("hand").getBoundingClientRect(), trick = [...document.querySelectorAll("#trick .card")].map((e) => e.getBoundingClientRect());
-    for (const e of document.querySelectorAll("#seats .seat, #center > *, #say > *")) {
+    for (const e of document.querySelectorAll("#seats .seat, #center > *, #say > *, #trump > *")) {
       const q = e.getBoundingClientRect();
       if (hand.height && hit(q, hand)) out.push(`covers the hand: ${label(e)}`);
       if (trick.some((t) => hit(q, t))) out.push(`covers the trick: ${label(e)}`);
     }
+    out.push(...SEATS_CLEAR());
   }
   return out;
 };
+// passover 2: nothing in the middle (a pad, the say line, the turned card, the chip) sits on a seat, and every seat's name shows
+function SEATS_CLEAR() {
+  const out = [], hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+  const seats = [...document.querySelectorAll("#seats .seat")];
+  for (const e of document.querySelectorAll("#center > *, #say > *, #trump > *, #scoreChip"))
+    for (const s of seats) if (hit(e.getBoundingClientRect(), s.getBoundingClientRect())) out.push(`covers ${s.querySelector("b").textContent}'s seat: ${(e.getAttribute("aria-label") || e.textContent).trim().slice(0, 24)}`);
+  for (const s of seats) { // a card in flight (dealt, or swept to the winner) passes over plates on purpose
+    const b = s.querySelector("b"), q = b.getBoundingClientRect(), at = q.width && document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+    if (at && at !== b && !at.closest("#trick .card, #hand .card")?.getAnimations().length) out.push(`${b.textContent}'s name is covered by ${at.className?.baseVal ?? at.className ?? at.tagName}`);
+  }
+  return out;
+}
 // VoiceOver: each row of choices is a named radio group, each select has a label, each switch has a name; on a new screen the
 // focus is on that screen (its heading), not on a button of the screen that went away
 const A11Y = (id) => {
@@ -100,7 +113,8 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("response", (r) => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
-  if (COMFORT) await page.addInitScript(() => localStorage.setItem("kt.save", JSON.stringify({ reset: 1, opt: { comfort: true } })));
+  await page.addInitScript(`window.SEATS_CLEAR = ${SEATS_CLEAR.toString()};`);
+  if (COMFORT || TEXT) await page.addInitScript(([c, t]) => localStorage.setItem("kt.save", JSON.stringify({ reset: 1, opt: { comfort: c, ...(t ? { text: t, textAuto: false } : {}) } })), [COMFORT, TEXT]);
   await page.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast&cut${LANG ? "&lang=" + LANG : ""}`);
   await page.waitForFunction(() => window.kt, null, { timeout: 15000 });
   // every sentence the live region shows is logged with when it was written (kt.said.log); P0-3: none may be replaced before it
@@ -160,10 +174,19 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
       const seen = new Set(), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
       kt.autoplay();
-      let peeked = false;
+      let peeked = false, asked = false;
       for (let t = 0; t < 600 && kt.screen === "table"; t++) {
         if (!peeked && kt.G.st.hands[0].length <= 1) { peeked = true; kt.ACT.peek(); }
-        if (t > 2 && !document.getElementById("dialog").hidden && !kt.peekOpen) seen.add("overlay: dialog");
+        // a Why? asked mid-hand: its answer covers no seat and no card, or opens on its own (and the bots wait)
+        const why = !asked && t > 10 && document.getElementById("dialog").hidden && document.querySelector("#seats .seat:not([hidden]) .whytab:not([hidden])")?.closest(".seat");
+        if (why) {
+          asked = true; why.click(); // checked at once: under ?fast the next card (which ends a say-line answer) is only milliseconds away
+          if (kt.dialogKind === "why") { const n = kt.G.st.history.length; await sleep(400); if (kt.G.st.history.length !== n) seen.add("the bots played on under a Why? answer"); kt.dialog.done(null); }
+          else if (!document.querySelector("#say > *")) seen.add("Why? showed nothing");
+          else for (const s of SEATS_CLEAR()) seen.add("the Why answer " + s);
+        }
+        if (t > 2 && !document.getElementById("dialog").hidden && !kt.peekOpen && kt.dialogKind !== "why") seen.add("overlay: dialog");
+        if (document.getElementById("dialog").hidden) for (const s of SEATS_CLEAR()) seen.add(s);
         if (document.querySelector(".screen.on #consentCard")) seen.add("overlay: consent card");
         const tr = [...document.querySelectorAll("#trick .card")].filter((e) => !e.getAnimations().length).map((e) => e.getBoundingClientRect()); // a card flying in or swept to the winner passes over plates
         for (const s of document.querySelectorAll("#seats .seat")) if (tr.some((q) => hit(q, s.getBoundingClientRect()))) seen.add(`a trick card covers ${s.querySelector("b").textContent}`);
@@ -174,7 +197,7 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
       return [...seen, ...kt.blocked.map((b) => "overlay: blocked: " + b), ...(kt.screen === "sheet" ? [] : ["the hand never finished"])];
     });
     await report(`${game}-hand`, seen);
-    await report(`${game}-sheet`, [...(await page.evaluate(AUDIT, "sheet")), ...(await page.evaluate(() => { const h = kt.G.history.at(-1), t = document.getElementById("sheet").textContent; return [!t.includes(`cut ${h.cut}`) && "the sheet doesn't print the cut", !t.includes(h.fp) && "the sheet doesn't print the fingerprint"]; }))]);
+    await report(`${game}-sheet`, [...(await page.evaluate(AUDIT, "sheet")), ...(await page.evaluate(() => { const h = kt.G.history.at(-1), t = document.getElementById("sheet").textContent; return [h.cut && !t.includes(`cut ${h.cut}`) && "the sheet doesn't print the cut", !t.includes(h.fp) && "the sheet doesn't print the fingerprint"]; }))]);
     // reopening the app on the score sheet shows it again; it never scores the same hand twice
     await report(`${game}-reopen`, await page.evaluate(async () => { const n = kt.G.history.length, sc = JSON.stringify(kt.G.totals); kt.ACT.resume(); await new Promise((r) => setTimeout(r, 200)); return [kt.G.history.length !== n || JSON.stringify(kt.G.totals) !== sc ? "the hand was scored again" : null, kt.screen !== "sheet" ? `on ${kt.screen}, not the sheet` : null]; }));
     await page.evaluate(() => { kt.G.over = 0; kt.ACT.next(); });
@@ -242,6 +265,27 @@ for (const [name, bt] of [["webkit", webkit], ["chromium", chromium]]) {
     return [/NaN|undefined/.test(text) && "NaN or undefined on the page", rows < 20 && `only ${rows} rows drawn`];
   });
   await report("fair-deal", [...fair, ...(await page.evaluate(AUDIT, "stats"))]);
+  // P0: with VoiceOver on (the @capacitor/screen-reader plugin, stubbed here as the phone reports it), every sentence is
+  // shown for its whole reading time and the bots wait for it: nothing is dropped, and the cards never outrun the words
+  if (name === "webkit") {
+    const vp = await b.newPage({ viewport: { width: VW, height: VH } });
+    vp.on("pageerror", (e) => errors.push(e.message));
+    await vp.addInitScript(() => { window.Capacitor = { Plugins: { ScreenReader: { isEnabled: async () => ({ value: true }), addListener: () => {} } } }; });
+    await vp.goto(`http://localhost:${server.address().port}/proto/index.html?debug&fast`);
+    await vp.waitForFunction(() => window.kt);
+    const said = await vp.evaluate(async () => {
+      kt.newGame("hearts"); kt.autoplay();
+      await new Promise((r) => setTimeout(r, 14000));
+      const log = kt.said.log, out = [], plays = kt.G.st.history.length;
+      for (let i = 1; i < log.length; i++) if (log[i][0] - log[i - 1][0] < kt.readMs(log[i - 1][1]) - 5) out.push(`"${log[i - 1][1].slice(0, 30)}" cut short`);
+      if (kt.said.dropped) out.push(`${kt.said.dropped} sentences dropped`);
+      if (log.length < 6) out.push(`only ${log.length} sentences in 14 s`);
+      if (plays > log.length + 1) out.push(`${plays} cards played but only ${log.length} sentences shown: the bots didn't wait`);
+      return out;
+    });
+    await vp.close();
+    await report("voiceover", said);
+  }
   await b.close();
 }
 server.close();
